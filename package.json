@@ -47,6 +47,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:mutation": "stryker run",
+    "test:pack": "node scripts/verify-packed-consumers.mjs",
     "pack:check": "npm pack --dry-run && publint && attw --pack . --profile esm-only",
     "drift:check": "node scripts/verify-drift.mjs"
   },
