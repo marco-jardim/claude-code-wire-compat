@@ -258,6 +258,21 @@ function depthInput(depth: number): BuildRedactedEvidenceInput {
 }
 
 describe("redaction mutation boundaries", () => {
+  it("reports an invalid digest length with exact safe details", async () => {
+    const input = redactionInput();
+    const bodyByteLength = new TextEncoder().encode(input.body).byteLength;
+
+    await expectWireRejection(
+      () => buildRedactedEvidence(input, cryptoWithDigest(shortDigest)),
+      "REDACTION_FAILURE",
+      {
+        bodyByteLength,
+        messageCount: 1,
+        systemBlockCount: 1,
+      },
+    );
+  });
+
   it("emits exact ordered evidence while omitting credentials from every source", async () => {
     const redaction = await freshRedaction();
     const evidence = await redaction.buildRedactedEvidence(redactionInput());

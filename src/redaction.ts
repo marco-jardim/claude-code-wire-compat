@@ -376,11 +376,9 @@ export async function buildRedactedEvidence(
     });
   }
 
-  let bodySha256: string;
+  let digestBytes: Uint8Array;
   try {
-    const digestBytes = new Uint8Array(digest);
-    if (digestBytes.byteLength !== 32) throw wireError("REDACTION_FAILURE");
-    bodySha256 = toHex(digestBytes);
+    digestBytes = new Uint8Array(digest);
   } catch {
     throw wireError("REDACTION_FAILURE", {
       bodyByteLength: bodyBytes.byteLength,
@@ -388,6 +386,14 @@ export async function buildRedactedEvidence(
       systemBlockCount: input.request.system?.length ?? 0,
     });
   }
+  if (digestBytes.byteLength !== 32) {
+    throw wireError("REDACTION_FAILURE", {
+      bodyByteLength: bodyBytes.byteLength,
+      messageCount: input.request.messages.length,
+      systemBlockCount: input.request.system?.length ?? 0,
+    });
+  }
+  const bodySha256 = toHex(digestBytes);
 
   const evidence: RedactedRequestEvidence = {
     profileId: PROFILE_ID,
