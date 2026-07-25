@@ -151,3 +151,6 @@ vite.config.ts.timestamp-*
 # Generated mutation-testing and coverage output
 .stryker-tmp/
 coverage-*/
+
+# Stryker mutation reports
+reports/
