@@ -1,0 +1,71 @@
+{
+  "$schema": "claude-code-wire-compat/golden/v1",
+  "name": "outgoing-canary-context-hint-off",
+  "profileId": "claude-code-2.1.195-sdk-0.94.0",
+  "url": "https://api.anthropic.com/v1/messages?beta=true",
+  "method": "POST",
+  "headers": [
+    [
+      "anthropic-beta",
+      "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,prompt-caching-scope-2026-01-05,extended-cache-ttl-2025-04-11,context-management-2025-06-27,effort-2025-11-24,web-search-2025-03-05,advisor-tool-2026-03-01,redact-thinking-2026-02-12,thinking-token-count-2026-05-13"
+    ],
+    ["anthropic-dangerous-direct-browser-access", "true"],
+    ["anthropic-version", "2023-06-01"],
+    ["authorization", "Bearer REDACTED_SYNTHETIC_TOKEN"],
+    ["content-type", "application/json"],
+    ["user-agent", "claude-cli/2.1.195 (external, cli)"],
+    ["x-app", "cli"],
+    ["x-claude-code-session-id", "00000000-0000-4000-8000-000000000001"],
+    ["x-client-request-id", "00000000-0000-4000-8000-000000000002"],
+    ["x-stainless-arch", "x64"],
+    ["x-stainless-lang", "js"],
+    ["x-stainless-os", "Windows"],
+    ["x-stainless-package-version", "0.94.0"],
+    ["x-stainless-retry-count", "0"],
+    ["x-stainless-runtime", "node"],
+    ["x-stainless-runtime-version", "v24.15.0"],
+    ["x-stainless-timeout", "600"]
+  ],
+  "body": {
+    "model": "claude-opus-4-8",
+    "max_tokens": 8192,
+    "system": [
+      {
+        "type": "text",
+        "text": "x-anthropic-billing-header: cc_version=2.1.195.12f; cc_entrypoint=cli; cch=00000;"
+      },
+      {
+        "type": "text",
+        "text": "You are Claude Code, Anthropic's official CLI for Claude.",
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl": "1h"
+        }
+      },
+      {
+        "type": "text",
+        "text": "SYNTHETIC INTERACTIVE BASE PROMPT FIXTURE. This deterministic placeholder stands in for host-supplied system prompt text. The wire contract depends on block position and cache_control, not on this content.",
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl": "1h"
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "canary probe"
+      }
+    ],
+    "thinking": {
+      "type": "adaptive"
+    },
+    "output_config": {
+      "effort": "high"
+    },
+    "metadata": {
+      "user_id": "{\"device_id\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"account_uuid\":\"00000000-0000-4000-8000-000000000000\",\"session_id\":\"00000000-0000-4000-8000-000000000001\"}"
+    }
+  },
+  "notes": "Generated offline in the context-hint-disabled canary configuration with deterministic synthetic inputs."
+}
