@@ -1,0 +1,66 @@
+{
+  "name": "@tormentalabs/claude-code-wire-compat",
+  "version": "0.1.0-rc.1",
+  "description": "Runtime-neutral Claude Code Messages wire compatibility primitives",
+  "type": "module",
+  "private": false,
+  "license": "GPL-3.0-or-later",
+  "author": "claude-code-wire-compat contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-jardim/claude-code-wire-compat.git"
+  },
+  "bugs": {
+    "url": "https://github.com/marco-jardim/claude-code-wire-compat/issues"
+  },
+  "homepage": "https://github.com/marco-jardim/claude-code-wire-compat#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:mutation": "stryker run",
+    "pack:check": "npm pack --dry-run && publint && attw --pack .",
+    "drift:check": "node -e \"console.log('Offline drift verification is introduced with the frozen profile')\""
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@eslint/js": "10.0.1",
+    "@stryker-mutator/core": "9.6.1",
+    "@stryker-mutator/vitest-runner": "9.6.1",
+    "@types/node": "26.1.1",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "10.8.0",
+    "fast-check": "4.9.0",
+    "license-checker-rseidelsohn": "5.0.1",
+    "miniflare": "4.20260722.0",
+    "prettier": "3.9.6",
+    "publint": "0.3.22",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,0 +1,16 @@
+claude-code-wire-compat
+Copyright (C) 2026 the claude-code-wire-compat contributors
+
+SPDX-License-Identifier: GPL-3.0-or-later
+
+This package is a modified work derived from opencode-anthropic-fix:
+https://github.com/marco-jardim/opencode-anthropic-fix
+Upstream commit: 466d500
+Upstream license: GPL-3.0-or-later
+
+The modified work extracts and packages selected wire-compatibility behavior into a runtime-neutral TypeScript library. Files in this repository have been changed or newly written for package boundaries, deterministic APIs, portability, tests, documentation, and release governance.
+
+The complete corresponding source for this modified work is available at:
+https://github.com/marco-jardim/claude-code-wire-compat
+
+The full license text is in LICENSE.
