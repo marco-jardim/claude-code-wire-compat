@@ -95,9 +95,16 @@ describe("runtime/runtime-neutral (Wave 1 RED specification)", () => {
     const globalsBefore = Reflect.ownKeys(globalThis);
     const first = await import("../../src/index.js");
     const globalsAfterFirst = Reflect.ownKeys(globalThis);
+    // The public runtime surface is a CLOSED set. Wave 1 froze the skeleton at
+    // the profile and the typed error; Wave 2 Task 2.3 adds exactly the builder
+    // and the parser. Type-only exports are erased and never appear here, so any
+    // additional runtime export — including an accidental internal helper —
+    // fails this assertion.
     expect(Object.keys(first).sort()).toEqual([
       "CLAUDE_CODE_2_1_195_PROFILE",
       "ClaudeCodeWireError",
+      "buildClaudeCodeRequest",
+      "parseBuiltClaudeCodeRequest",
     ]);
     expect(globalsAfterFirst).toEqual(globalsBefore);
     expect(Reflect.ownKeys(globalThis)).toEqual(globalsBefore);
@@ -109,7 +116,8 @@ describe("runtime/runtime-neutral (Wave 1 RED specification)", () => {
       "buildClaudeCodeRequest",
     );
     const systemText = "runtime-neutral synthetic system";
-    const request = input(systemText, "hello");
+    const messageText = "hello";
+    const request = input(systemText, messageText);
     request["crypto"] = {
       subtle: { digest: webcrypto.subtle.digest.bind(webcrypto.subtle) },
     };
@@ -122,9 +130,14 @@ describe("runtime/runtime-neutral (Wave 1 RED specification)", () => {
     if (!isRecord(billing) || typeof billing["text"] !== "string") {
       throw new TypeError("Canonical billing block is missing.");
     }
+    // The fingerprint is seeded by the FIRST USER MESSAGE, never by the system
+    // prompt (upstream `lib/mimicry/system-prompt.mjs:134,143`). Asserting the
+    // system text here previously drove the builder to an invented
+    // system-vs-message branch that broke golden parity.
     expect(billing["text"]).toContain(
-      `cc_version=2.1.195.${fingerprint(systemText)}`,
+      `cc_version=2.1.195.${fingerprint(messageText)}`,
     );
+    expect(billing["text"]).not.toContain(fingerprint(systemText));
   });
 
   it("does not retain mutable state between builder calls", async () => {
