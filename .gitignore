@@ -144,3 +144,6 @@ vite.config.ts.timestamp-*
 
 # Local execution evidence (never commit)
 .com466-evidence/
+
+# Local agent/tooling scratch state (never commit to the public repository)
+.opencode/

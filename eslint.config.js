@@ -8,6 +8,7 @@ export default tseslint.config(
       "dist/**",
       "node_modules/**",
       ".com466-evidence/**",
+      ".opencode/**",
     ],
   },
   eslint.configs.recommended,
