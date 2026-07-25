@@ -26,11 +26,11 @@ function escapeRegExp(value: string): string {
 }
 
 function releaseCandidateHeading(): string | undefined {
-  const versionPattern = new RegExp(
-    `^##\\s*\\[${escapeRegExp(manifest.version)}\\].*$`,
-    "mu",
-  );
-  return changelog.match(versionPattern)?.[0];
+  return /^##\s*\[[^\]]+\].*$/mu.exec(changelog)?.[0];
+}
+
+function manifestReleaseCandidateHeadingPattern(): RegExp {
+  return new RegExp(`^##\\s*\\[${escapeRegExp(manifest.version)}\\].*$`, "mu");
 }
 
 function workflowTriggerNames(source: string): readonly string[] {
@@ -48,16 +48,14 @@ function workflowTriggerNames(source: string): readonly string[] {
 }
 
 describe("release candidate policy", () => {
-  it("uses the exact release candidate version", () => {
-    expect(manifest.version).toBe("0.1.0-rc.1");
-  });
-
-  it("names release candidate 0.1.0-rc.1 in the changelog", () => {
-    expect(changelog).toMatch(/^##\s*\[0\.1\.0-rc\.1\]/mu);
+  it("has a release candidate heading in the changelog", () => {
+    expect(releaseCandidateHeading()).toBeDefined();
   });
 
   it("keeps the changelog version aligned with the manifest", () => {
-    expect(releaseCandidateHeading()).toBeDefined();
+    expect(releaseCandidateHeading()).toMatch(
+      manifestReleaseCandidateHeadingPattern(),
+    );
   });
 
   it("marks the release candidate heading as unreleased", () => {

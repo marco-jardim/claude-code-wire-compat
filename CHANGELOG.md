@@ -2,7 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.1] - Unreleased
+## [0.1.0-rc.2] - Unreleased
+
+### Fixed
+
+- The public `ClaudeCodeRequestInput` type now declares the required `clientRequestId` field and
+  optional `crypto` provider field. These fields were enforced at runtime but missing from the
+  published type declarations, so TypeScript consumers could not construct a valid input without
+  a type error.
+
+## [0.1.0-rc.1] - 2026-07-25
 
 First release candidate. Published as a GitHub prerelease only; this version is deliberately not
 published to npm.
