@@ -91,10 +91,11 @@ export async function loadWave2Function<Fn extends UnknownFunction>(
 }
 
 /**
- * Assert that a module is still unimplemented.
+ * Report whether a module is still unimplemented.
  *
- * Wave 1 uses this to record the RED baseline positively, so the suite states
- * an intentional expectation instead of merely crashing.
+ * Returns `true` only for a genuine module-resolution failure. Import-time
+ * syntax errors, transitive dependency failures, and side-effect exceptions
+ * are rethrown so they cannot be mistaken for an absent Wave 2 module.
  */
 export async function expectModuleUnimplemented(
   moduleName: string,
@@ -102,7 +103,14 @@ export async function expectModuleUnimplemented(
   try {
     await loadWave2Module(moduleName);
     return false;
-  } catch {
-    return true;
+  } catch (error: unknown) {
+    if (
+      error instanceof Error &&
+      (("code" in error && error.code === "ERR_MODULE_NOT_FOUND") ||
+        /Failed to load url|Cannot find module/u.test(error.message))
+    ) {
+      return true;
+    }
+    throw error;
   }
 }

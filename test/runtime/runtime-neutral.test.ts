@@ -91,12 +91,14 @@ describe("runtime/runtime-neutral (Wave 1 RED specification)", () => {
     }
   });
 
-  it("imports the package entry idempotently without global side effects", async () => {
+  it("imports the package entry without global side effects and exposes only public runtime values", async () => {
     const globalsBefore = Reflect.ownKeys(globalThis);
     const first = await import("../../src/index.js");
     const globalsAfterFirst = Reflect.ownKeys(globalThis);
-    const second = await import("../../src/index.js");
-    expect(second).toBe(first);
+    expect(Object.keys(first).sort()).toEqual([
+      "CLAUDE_CODE_2_1_195_PROFILE",
+      "ClaudeCodeWireError",
+    ]);
     expect(globalsAfterFirst).toEqual(globalsBefore);
     expect(Reflect.ownKeys(globalThis)).toEqual(globalsBefore);
   });

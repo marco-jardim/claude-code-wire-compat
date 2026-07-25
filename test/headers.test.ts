@@ -168,11 +168,11 @@ describe("headers (Wave 1 RED specification)", () => {
       "buildOrderedHeaders",
     );
     const result = build(baseInput());
+    expect(result).toHaveLength(goldenHeaders().length);
     const canonical = structuredClone(result);
     expect(Object.isFrozen(result)).toBe(true);
     for (const pair of result) expect(Object.isFrozen(pair)).toBe(true);
     const first = result[0];
-    expect(first).toBeDefined();
     if (first !== undefined)
       expect(Reflect.set(first, "0", "changed")).toBe(false);
     expect(result).toEqual(canonical);

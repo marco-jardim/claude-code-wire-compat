@@ -9,7 +9,7 @@
  */
 
 import { createHash, webcrypto } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
@@ -38,6 +38,18 @@ function formulaFingerprint(text: string, cliVersion: string): string {
     .update(material, "utf8")
     .digest("hex")
     .slice(0, 3);
+}
+
+function sourceFiles(directory: URL): readonly URL[] {
+  const files: URL[] = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      files.push(...sourceFiles(new URL(`${entry.name}/`, directory)));
+    } else if (entry.isFile() && entry.name.endsWith(".ts")) {
+      files.push(new URL(entry.name, directory));
+    }
+  }
+  return files;
 }
 
 describe("fingerprint (Wave 1 RED specification)", () => {
@@ -123,12 +135,12 @@ describe("fingerprint (Wave 1 RED specification)", () => {
     // cch is STATIC, empirically confirmed; upstream xxHash is dead code.
   });
 
-  it("contains no xxHash implementation once the module exists", async () => {
-    if (await expectModuleUnimplemented("fingerprint")) return;
-
-    const sourcePath = new URL("../src/fingerprint.ts", import.meta.url);
-    if (!existsSync(sourcePath)) return;
-    expect(readFileSync(sourcePath, "utf8")).not.toMatch(/xxhash/i);
+  it("keeps every source module free of xxHash", () => {
+    const files = sourceFiles(new URL("../src/", import.meta.url));
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      expect(readFileSync(file, "utf8")).not.toMatch(/xxhash/iu);
+    }
   });
 
   it("maps an injected digest failure to CRYPTO_UNAVAILABLE", async () => {

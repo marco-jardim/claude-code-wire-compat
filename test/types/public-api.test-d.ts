@@ -8,6 +8,7 @@ import type {
   Message,
   ToolDefinition,
 } from "../../src/contracts.js";
+import { expectTypeOf } from "vitest";
 
 const runtimeIdentity: ClaudeCodeRuntimeIdentity = {
   sessionId: "session-1",
@@ -52,39 +53,24 @@ const request: ClaudeCodeRequestInput = {
   metadata: { requestId: "request-1", retry: 0, cached: false },
 };
 
-const invalidRole: Message = {
-  // @ts-expect-error invalid message role
-  role: "system",
-  content: "Hello",
-};
+expectTypeOf(request).toExtend<ClaudeCodeRequestInput>();
 
-const invalidRuntime: ClaudeCodeRuntimeIdentity = {
-  ...runtimeIdentity,
-  // @ts-expect-error invalid runtime
-  runtime: "deno",
-};
+expectTypeOf<{ role: "system"; content: string }>().not.toExtend<Message>();
+expectTypeOf<"deno">().not.toExtend<ClaudeCodeRuntimeIdentity["runtime"]>();
+expectTypeOf<"extreme">().not.toExtend<
+  NonNullable<ClaudeCodeRequestInput["effort"]>
+>();
+expectTypeOf<ClaudeCodeProtocolProfile>().toEqualTypeOf<
+  Readonly<ClaudeCodeProtocolProfile>
+>();
+expectTypeOf<HeaderPair>().toEqualTypeOf<Readonly<HeaderPair>>();
 
-const invalidEffort: ClaudeCodeRequestInput = {
-  ...request,
-  // @ts-expect-error invalid effort
-  effort: "extreme",
-};
+type HasOnlyKnownKeys<Candidate, Shape> =
+  Exclude<keyof Candidate, keyof Shape> extends never ? true : false;
 
-declare const profile: ClaudeCodeProtocolProfile;
-// @ts-expect-error profile fields are readonly
-profile.cliVersion = "2.1.195";
-
-declare const header: HeaderPair;
-// @ts-expect-error header pair elements are readonly
-header[0] = "authorization";
-
-const requestWithExtraProperty: ClaudeCodeRequestInput = {
-  ...request,
-  // @ts-expect-error unknown request property
-  unknownProperty: true,
-};
-
-void invalidRole;
-void invalidRuntime;
-void invalidEffort;
-void requestWithExtraProperty;
+expectTypeOf<
+  HasOnlyKnownKeys<
+    ClaudeCodeRequestInput & { unknownProperty: true },
+    ClaudeCodeRequestInput
+  >
+>().toEqualTypeOf<false>();
