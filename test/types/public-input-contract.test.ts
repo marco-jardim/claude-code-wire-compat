@@ -5,35 +5,9 @@ import {
   buildClaudeCodeRequest,
   CLAUDE_CODE_2_1_195_PROFILE,
 } from "../../src/index.js";
-import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 describe("public request input contract", () => {
-  it("type-checks the successful public input against its declaration", () => {
-    const program = ts.createProgram({
-      rootNames: [import.meta.filename],
-      options: {
-        module: ts.ModuleKind.NodeNext,
-        moduleResolution: ts.ModuleResolutionKind.NodeNext,
-        noEmit: true,
-        skipLibCheck: true,
-        strict: true,
-        target: ts.ScriptTarget.ES2022,
-        types: ["node", "vitest/globals"],
-      },
-    });
-    const diagnostics = ts
-      .getPreEmitDiagnostics(program)
-      .filter((diagnostic) =>
-        diagnostic.file?.fileName.endsWith("public-input-contract.test.ts"),
-      )
-      .map((diagnostic) =>
-        ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
-      );
-
-    expect(diagnostics).toEqual([]);
-  });
-
   it("builds a request using an explicitly annotated public input", async () => {
     const clientRequestId = "public-contract-request-1";
     const input: ClaudeCodeRequestInput = {

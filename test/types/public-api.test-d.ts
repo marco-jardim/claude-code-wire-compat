@@ -39,6 +39,7 @@ const request: ClaudeCodeRequestInput = {
   model: "claude-sonnet",
   maxTokens: 1024,
   messages: [message],
+  clientRequestId: "client-request-1",
   system: ["Be concise", { type: "text", text: "Use tools" }],
   tools: [tool],
   runtime: runtimeIdentity,
