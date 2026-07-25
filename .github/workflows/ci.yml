@@ -1,0 +1,105 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  node-20:
+    name: node-20
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  node-22:
+    name: node-22
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  node-24:
+    name: node-24
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  bun:
+    name: bun
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+      - run: npm ci
+      - run: bun test test/governance
+      - run: npm run build
+
+  workerd:
+    name: workerd
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Load the miniflare/workerd toolchain
+        run: node --input-type=module -e "const module = await import('miniflare'); if (!module.Miniflare) process.exit(1);"
+      - run: npm test
+      - run: npm run build
+
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:coverage
+      - run: npm run build
+      - run: npm run pack:check
+      - name: Production dependency licenses
+        run: npx --no-install license-checker-rseidelsohn --production --failOn "AGPL-1.0-only;SSPL-1.0;BUSL-1.1;UNLICENSED"
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+      - name: Mutation testing readiness
+        run: |
+          if [ "$(find src -type f -name '*.ts' ! -name 'index.ts' | wc -l)" -gt 0 ]; then npm run test:mutation; else echo "Mutation begins with runtime source"; fi
+      - run: npm run drift:check
