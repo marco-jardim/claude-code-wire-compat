@@ -21,6 +21,13 @@ This document is the normative trace from the pinned upstream implementation to 
 | Endpoint        | `https://api.anthropic.com/v1/messages?beta=true` |
 | Profile id      | `claude-code-2.1.195-sdk-0.94.0`                  |
 
+## Build configuration decision
+
+The implementation plan names `tsconfig.build.json` in two staging lists, but that file was
+deliberately not created. The root `tsconfig.json` is already the build configuration: the `build`
+script runs `tsc -p tsconfig.json`. A second build configuration would fork the build and allow
+emitted output to drift from what is typechecked.
+
 ## Headers
 
 | Behavior                             | Upstream file             |   Lines | Rule (concise)                                                                                                                                                                                                                                                                          | Future package test                      |
@@ -135,6 +142,17 @@ This document is the normative trace from the pinned upstream implementation to 
 | ------------------------ | ----------------------------------------------- | ----------------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
 | Foreground wire snapshot | `test/fixtures/golden/outgoing-foreground.json` | whole file (1-49) | Structure only: a top-level `headers` object and `body` object; the body contains model/token settings, ordered system blocks, messages, temperature, and metadata. Generated identity/request fields are normalized placeholders. | `test/golden-fixtures.test.ts` |
 
+### Fixture integrity
+
+| Fixture                                                      | Model                 | SHA-256                                                            |
+| ------------------------------------------------------------ | --------------------- | ------------------------------------------------------------------ |
+| `test/fixtures/golden/outgoing-foreground.json`              | `claude-sonnet-4-5`   | `8d6503cad96d1789dbdbf1c3b8a447dabf5d9a1181d69fbb5f153f23a885b7c9` |
+| `test/fixtures/golden/outgoing-canary-context-hint-off.json` | `claude-opus-4-8`     | `7fb1a118ec075b0767c586eb2e2c9e332afe2ca1fb4f6f351361b091a90835da` |
+| `test/fixtures/golden/decision-context-hint-rejected.json`   | n/a (decision record) | `6957d363e1e9512eb1a8d2c7170fa208b92e28460e7fb3b8576aa3814cdf4582` |
+
+`test/fixtures/golden/manifest.json` is the machine-readable copy of these hashes. This table and
+the manifest **MUST** both be updated when any fixture is regenerated.
+
 ## Billing fingerprint
 
 The exact formula is SHA-256 over the UTF-8 encoding of the concatenation:
@@ -196,18 +214,32 @@ document records that prior validation; generating this trace performs no networ
 The header side is now fully traced, so the disabled default no longer rests on the live result
 alone:
 
-| Behavior             | Upstream file                          |     Lines | Rule (concise)                                                                                                                                                        | Future package test         |
-| -------------------- | -------------------------------------- | --------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| Flag registration    | `lib/request-headers.mjs`              |       185 | `context-hint-2026-04-09` is a member of the opt-in `EXPERIMENTAL_BETA_FLAGS` registry.                                                                               | `test/betas.test.ts`        |
-| Beta emission        | `lib/mimicry/headers.mjs`              |   269-282 | The flag is pushed onto the beta list only behind the context-hint gate.                                                                                              | `test/betas.test.ts`        |
-| Body pairing         | `lib/mimicry/request-body.mjs`         |   588-595 | When the beta header contains the flag and the body lacks `context_hint`, inject `context_hint: {enabled:true}`.                                                      | `test/request-body.test.ts` |
-| Upstream default-off | `index.test.mjs`                       | 3212-3226 | Upstream's own test asserts the flag is **not** sent by default, citing the partial server rollout from v2.1.110+.                                                    | `test/betas.test.ts`        |
-| 400 latch-and-retry  | `index.mjs`                            | 3004-3005 | On rejection the flag is deleted from both the merged set and the beta latch state, then the request is retried without it.                                           | `test/betas.test.ts`        |
-| Rejection contract   | `test/conformance/regression.test.mjs` |   500-541 | Locks the sequence: first request carries the flag, the server returns 400 `Unexpected value "context-hint-2026-04-09" in anthropic-beta header`, the retry omits it. | `test/betas.test.ts`        |
+| Behavior              | Upstream file                          |     Lines | Rule (concise)                                                                                                                                                        | Future package test         |
+| --------------------- | -------------------------------------- | --------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| Flag registration     | `lib/request-headers.mjs`              |       185 | `context-hint-2026-04-09` is a member of the opt-in `EXPERIMENTAL_BETA_FLAGS` registry.                                                                               | `test/betas.test.ts`        |
+| Beta emission         | `lib/mimicry/headers.mjs`              |   269-282 | The flag is pushed onto the beta list only behind the context-hint gate.                                                                                              | `test/betas.test.ts`        |
+| Body pairing          | `lib/mimicry/request-body.mjs`         |   588-595 | When the beta header contains the flag and the body lacks `context_hint`, inject `context_hint: {enabled:true}`.                                                      | `test/request-body.test.ts` |
+| Default-path omission | `index.test.mjs`                       | 3212-3226 | Upstream's request test asserts the flag is **not** sent on its tested default path, citing the partial server rollout from v2.1.110+.                                | `test/betas.test.ts`        |
+| 400 latch-and-retry   | `index.mjs`                            | 3004-3005 | On rejection the flag is deleted from both the merged set and the beta latch state, then the request is retried without it.                                           | `test/betas.test.ts`        |
+| Rejection contract    | `test/conformance/regression.test.mjs` |   500-541 | Locks the sequence: first request carries the flag, the server returns 400 `Unexpected value "context-hint-2026-04-09" in anthropic-beta header`, the retry omits it. | `test/betas.test.ts`        |
 
-Upstream therefore already treats this flag as default-off and server-gated. The package pins the
-same decision as a profile constant rather than a runtime latch, because the runtime-neutral core
-performs no transport and so cannot observe a 400 or retry. Consumers own retry policy.
+### Governance ledger L9 — context-hint default divergence
+
+Upstream's own `context_hint` configuration option defaults to `true` (`lib/config.mjs:222`).
+Upstream also implements a runtime latch: when the server rejects the beta with HTTP 400, it
+deletes `context-hint-2026-04-09` from both the merged beta set and the latch state, then retries
+without it (`index.mjs:3004-3005`). The complete 400-then-retry sequence is locked by
+`test/conformance/regression.test.mjs:500-541`.
+
+This package instead pins `defaultCapabilities.contextHint = false` as a static profile constant.
+The runtime-neutral core performs no transport, so it cannot observe a 400 and cannot implement
+the runtime latch. Retry and latching are the consumer's responsibility. Consumers may opt in
+through the `capabilities?: Partial<ClaudeCodeCapabilities>` field on
+`ClaudeCodeRequestInput`.
+
+**Consequence:** for plugin users on accounts where the beta **is** enabled, migrating the plugin
+onto this package changes observable behavior: context hint stops being sent by default. The Wave
+6 wire-parity review **MUST** address this divergence.
 
 ## Header order is logical only
 
