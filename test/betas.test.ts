@@ -80,12 +80,15 @@ describe("betas (Wave 1 RED specification)", () => {
     expect(await expectModuleUnimplemented("betas")).toBe(false);
   });
 
-  it("matches the context-hint-off canary golden exactly", async () => {
+  it("matches the non-effort foreground golden exactly", async () => {
     const composeBetas = await loadWave2Function<ComposeBetas>(
       "betas",
       "composeBetas",
     );
-    const expected = fixtureBetas("outgoing-canary-context-hint-off.json");
+    // The foreground golden was generated for claude-sonnet-4-5, which the
+    // pinned profile marks effort-incapable, so its beta list omits
+    // effort-2025-11-24. Context hint is off in both goldens.
+    const expected = fixtureBetas("outgoing-foreground.json");
 
     expect(
       composeBetas({
@@ -108,12 +111,15 @@ describe("betas (Wave 1 RED specification)", () => {
     ]);
   });
 
-  it("matches the effort-enabled foreground golden exactly", async () => {
+  it("matches the effort-enabled canary golden exactly", async () => {
     const composeBetas = await loadWave2Function<ComposeBetas>(
       "betas",
       "composeBetas",
     );
-    const expected = fixtureBetas("outgoing-foreground.json");
+    // The canary golden was generated for claude-opus-4-8 with adaptive
+    // thinking and effort=high, so its beta list carries effort-2025-11-24
+    // immediately after context-management-2025-06-27.
+    const expected = fixtureBetas("outgoing-canary-context-hint-off.json");
     const actual = composeBetas({
       capabilities: capabilitiesFor("claude-opus-4-8"),
       effortRequested: true,
