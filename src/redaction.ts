@@ -43,11 +43,13 @@ const SAFE_ERROR_CODES = new Set([
 
 type SafePrimitive = string | number | boolean;
 
-interface TraversalEntry {
-  readonly value: unknown;
-  readonly depth: number;
-  readonly leaving: boolean;
-}
+type TraversalEntry =
+  | {
+      readonly kind: "visit";
+      readonly value: unknown;
+      readonly depth: number;
+    }
+  | { readonly kind: "leave"; readonly value: object };
 
 function wireError(
   code:
@@ -88,23 +90,21 @@ function measureString(value: string, encoder: TextEncoder): number {
 function validateInputGraph(value: unknown, encoder: TextEncoder): void {
   const active = new WeakSet();
   const completed = new WeakSet();
-  const stack: TraversalEntry[] = [{ value, depth: 0, leaving: false }];
+  const stack: TraversalEntry[] = [{ kind: "visit", value, depth: 0 }];
   let aggregateSize = 0;
 
   try {
-    while (stack.length > 0) {
-      const entry = stack.pop();
-      if (entry === undefined) break;
-
-      const current = entry.value;
-      if (entry.leaving) {
-        if (typeof current === "object" && current !== null) {
-          active.delete(current);
-          completed.add(current);
-        }
+    // Deliberately make an empty stack the normal loop exit, avoiding an
+    // untestable defensive branch after a separate length check.
+    let entry: TraversalEntry | undefined;
+    while ((entry = stack.pop()) !== undefined) {
+      if (entry.kind === "leave") {
+        active.delete(entry.value);
+        completed.add(entry.value);
         continue;
       }
 
+      const current = entry.value;
       if (entry.depth > MAX_INPUT_DEPTH) {
         throw wireError("INPUT_TOO_DEEP", { maximumDepth: MAX_INPUT_DEPTH });
       }
@@ -134,7 +134,7 @@ function validateInputGraph(value: unknown, encoder: TextEncoder): void {
         }
 
         active.add(current);
-        stack.push({ value: current, depth: entry.depth, leaving: true });
+        stack.push({ kind: "leave", value: current });
 
         const keys = Reflect.ownKeys(current);
         aggregateSize += keys.length;
@@ -150,9 +150,9 @@ function validateInputGraph(value: unknown, encoder: TextEncoder): void {
           aggregateSize += measureString(key, encoder);
           const child: unknown = descriptor.value;
           stack.push({
+            kind: "visit",
             value: child,
             depth: entry.depth + 1,
-            leaving: false,
           });
         }
       }
