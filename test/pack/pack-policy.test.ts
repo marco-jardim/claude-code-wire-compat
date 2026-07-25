@@ -8,6 +8,8 @@ import { dirname, join, resolve } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 
 interface PackageManifest {
+  name: string;
+  version: string;
   files: string[];
 }
 
@@ -16,6 +18,7 @@ interface PackFile {
 }
 
 interface PackResult {
+  filename: string;
   files: PackFile[];
 }
 
@@ -118,5 +121,21 @@ describe("published tarball policy", () => {
       ),
     ).toBe(false);
     expect(paths.some((path) => /\.(?:test|spec)\./u.test(path))).toBe(false);
+  });
+
+  it("derives the tarball filename from package identity", () => {
+    const manifest = JSON.parse(
+      readFileSync(join(repositoryRoot, "package.json"), "utf8"),
+    ) as PackageManifest;
+    const packOutput = execFileSync(
+      process.execPath,
+      [npmCliPath(), "pack", "--dry-run", "--json", "--ignore-scripts"],
+      { cwd: repositoryRoot, encoding: "utf8" },
+    );
+    const [packResult] = JSON.parse(packOutput) as PackResult[];
+    expect(packResult).toBeDefined();
+
+    const packageSlug = manifest.name.replace(/^@/u, "").replace(/\//gu, "-");
+    expect(packResult.filename).toBe(`${packageSlug}-${manifest.version}.tgz`);
   });
 });

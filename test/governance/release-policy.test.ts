@@ -1,26 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 
-import { describe, expect, it, beforeAll } from "vitest";
+import { describe, expect, it } from "vitest";
 
 interface PackageManifest {
   readonly name: string;
   readonly version: string;
   readonly files: readonly string[];
   readonly scripts?: Readonly<Record<string, string>>;
-}
-
-interface PackFile {
-  readonly path: string;
-}
-
-interface PackResult {
-  readonly filename: string;
-  readonly files: readonly PackFile[];
 }
 
 const repositoryRoot = join(import.meta.dirname, "..", "..");
@@ -32,52 +21,8 @@ const publishWorkflow = readFileSync(
   join(repositoryRoot, ".github", "workflows", "publish.yml"),
   "utf8",
 );
-let packed: PackResult | undefined;
-
-function npmCliPath(): string {
-  const candidates: string[] = [];
-  if (process.env.npm_execpath) {
-    candidates.push(process.env.npm_execpath);
-  }
-  try {
-    candidates.push(
-      createRequire(import.meta.url).resolve("npm/bin/npm-cli.js"),
-    );
-  } catch (error) {
-    if (
-      !(error instanceof Error) ||
-      !("code" in error) ||
-      (error.code !== "MODULE_NOT_FOUND" &&
-        error.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED")
-    ) {
-      throw error;
-    }
-  }
-  candidates.push(
-    resolve(
-      dirname(process.execPath),
-      "node_modules",
-      "npm",
-      "bin",
-      "npm-cli.js",
-    ),
-  );
-  const npmCli = candidates.find((candidate) => existsSync(candidate));
-  if (!npmCli) {
-    throw new Error(
-      `Unable to locate npm CLI; checked: ${candidates.join(", ")}`,
-    );
-  }
-  return npmCli;
-}
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}
-
-function packResult(): PackResult {
-  if (!packed) throw new Error("npm pack did not produce a result");
-  return packed;
 }
 
 function releaseCandidateHeading(): string | undefined {
@@ -103,19 +48,6 @@ function workflowTriggerNames(source: string): readonly string[] {
 }
 
 describe("release candidate policy", () => {
-  beforeAll(() => {
-    execFileSync(process.execPath, [npmCliPath(), "run", "build"], {
-      cwd: repositoryRoot,
-      encoding: "utf8",
-    });
-    const output = execFileSync(
-      process.execPath,
-      [npmCliPath(), "pack", "--dry-run", "--json", "--ignore-scripts"],
-      { cwd: repositoryRoot, encoding: "utf8" },
-    );
-    [packed] = JSON.parse(output) as PackResult[];
-  }, 120_000);
-
   it("uses the exact release candidate version", () => {
     expect(manifest.version).toBe("0.1.0-rc.1");
   });
@@ -135,35 +67,14 @@ describe("release candidate policy", () => {
     );
   });
 
-  it("derives the tarball filename from package identity", () => {
-    const packageSlug = manifest.name.replace(/^@/u, "").replace(/\//gu, "-");
-    expect(packResult().filename).toBe(
-      `${packageSlug}-${manifest.version}.tgz`,
-    );
-  });
-
-  it("packs only files covered by the manifest allowlist", () => {
-    const allowedEntries = manifest.files.map((entry) =>
-      entry.replace(/\\/gu, "/").replace(/\/$/u, ""),
-    );
-    const extraEntries = packResult()
-      .files.map(({ path }) => path.replace(/\\/gu, "/"))
-      .filter(
-        (path) =>
-          path !== "package.json" &&
-          !allowedEntries.some(
-            (entry) => path === entry || path.startsWith(`${entry}/`),
-          ),
-      );
-    expect(extraEntries).toEqual([]);
-  });
-
-  it("includes compiled JavaScript and declarations", () => {
-    const paths = packResult().files.map(({ path }) =>
-      path.replace(/\\/gu, "/"),
-    );
-    expect(paths).toContain("dist/index.js");
-    expect(paths).toContain("dist/index.d.ts");
+  it("declares the exact published file allowlist", () => {
+    expect(manifest.files).toEqual([
+      "dist",
+      "README.md",
+      "LICENSE",
+      "NOTICE",
+      "CHANGELOG.md",
+    ]);
   });
 
   it("limits publication workflow triggers", () => {
