@@ -223,11 +223,303 @@ export interface Message {
 }
 export type SystemInput = string | TextBlock;
 
-export interface ToolDefinition {
-  readonly name: string;
-  readonly description?: string;
-  readonly input_schema: Readonly<Record<string, JsonValue>>;
+export interface ToolInputSchema {
+  readonly type: "object";
+  readonly properties?: JsonValue | null;
+  readonly required?: readonly string[] | null;
+  readonly [key: string]: JsonValue | undefined;
 }
+
+export type ToolAllowedCaller =
+  "direct" | "code_execution_20250825" | "code_execution_20260120";
+
+export type ToolInputExample = Readonly<Record<string, JsonValue>>;
+
+export interface CustomToolDefinition {
+  readonly input_schema: ToolInputSchema;
+  readonly name: string;
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly description?: string;
+  readonly eager_input_streaming?: boolean | null;
+  readonly input_examples?: readonly ToolInputExample[];
+  readonly strict?: boolean;
+  readonly type?: never;
+}
+
+export interface ToolBash20241022 {
+  readonly name: "bash";
+  readonly type: "bash_20241022";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly input_examples?: readonly ToolInputExample[];
+  readonly strict?: boolean;
+}
+export interface ToolBash20250124 {
+  readonly name: "bash";
+  readonly type: "bash_20250124";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly input_examples?: readonly ToolInputExample[];
+  readonly strict?: boolean;
+}
+
+export interface CodeExecutionTool20250522 {
+  readonly name: "code_execution";
+  readonly type: "code_execution_20250522";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly strict?: boolean;
+}
+export interface CodeExecutionTool20250825 {
+  readonly name: "code_execution";
+  readonly type: "code_execution_20250825";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly strict?: boolean;
+}
+export interface CodeExecutionTool20260120 {
+  readonly name: "code_execution";
+  readonly type: "code_execution_20260120";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly strict?: boolean;
+}
+
+export interface ToolComputerUse20241022 {
+  readonly display_height_px: number;
+  readonly display_width_px: number;
+  readonly name: "computer";
+  readonly type: "computer_20241022";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly display_number?: number | null;
+  readonly input_examples?: readonly ToolInputExample[];
+  readonly strict?: boolean;
+}
+export interface ToolComputerUse20250124 {
+  readonly display_height_px: number;
+  readonly display_width_px: number;
+  readonly name: "computer";
+  readonly type: "computer_20250124";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly display_number?: number | null;
+  readonly input_examples?: readonly ToolInputExample[];
+  readonly strict?: boolean;
+}
+export interface ToolComputerUse20251124 {
+  readonly display_height_px: number;
+  readonly display_width_px: number;
+  readonly name: "computer";
+  readonly type: "computer_20251124";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly display_number?: number | null;
+  readonly enable_zoom?: boolean;
+  readonly input_examples?: readonly ToolInputExample[];
+  readonly strict?: boolean;
+}
+
+export interface MemoryTool20250818 {
+  readonly name: "memory";
+  readonly type: "memory_20250818";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly input_examples?: readonly ToolInputExample[];
+  readonly strict?: boolean;
+}
+
+export interface ToolTextEditor20241022 {
+  readonly name: "str_replace_editor";
+  readonly type: "text_editor_20241022";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly input_examples?: readonly ToolInputExample[];
+  readonly strict?: boolean;
+}
+export interface ToolTextEditor20250124 {
+  readonly name: "str_replace_editor";
+  readonly type: "text_editor_20250124";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly input_examples?: readonly ToolInputExample[];
+  readonly strict?: boolean;
+}
+export interface ToolTextEditor20250429 {
+  readonly name: "str_replace_based_edit_tool";
+  readonly type: "text_editor_20250429";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly input_examples?: readonly ToolInputExample[];
+  readonly strict?: boolean;
+}
+export interface ToolTextEditor20250728 {
+  readonly name: "str_replace_based_edit_tool";
+  readonly type: "text_editor_20250728";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly input_examples?: readonly ToolInputExample[];
+  readonly max_characters?: number | null;
+  readonly strict?: boolean;
+}
+
+export interface UserLocation {
+  readonly type: "approximate";
+  readonly city?: string | null;
+  readonly country?: string | null;
+  readonly region?: string | null;
+  readonly timezone?: string | null;
+}
+export interface WebSearchTool20250305 {
+  readonly name: "web_search";
+  readonly type: "web_search_20250305";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly allowed_domains?: readonly string[] | null;
+  readonly blocked_domains?: readonly string[] | null;
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly max_uses?: number | null;
+  readonly strict?: boolean;
+  readonly user_location?: UserLocation | null;
+}
+export interface WebSearchTool20260209 {
+  readonly name: "web_search";
+  readonly type: "web_search_20260209";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly allowed_domains?: readonly string[] | null;
+  readonly blocked_domains?: readonly string[] | null;
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly max_uses?: number | null;
+  readonly strict?: boolean;
+  readonly user_location?: UserLocation | null;
+}
+
+export interface WebFetchTool20250910 {
+  readonly name: "web_fetch";
+  readonly type: "web_fetch_20250910";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly allowed_domains?: readonly string[] | null;
+  readonly blocked_domains?: readonly string[] | null;
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly citations?: CitationsConfigParam | null;
+  readonly defer_loading?: boolean;
+  readonly max_content_tokens?: number | null;
+  readonly max_uses?: number | null;
+  readonly strict?: boolean;
+}
+export interface WebFetchTool20260209 {
+  readonly name: "web_fetch";
+  readonly type: "web_fetch_20260209";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly allowed_domains?: readonly string[] | null;
+  readonly blocked_domains?: readonly string[] | null;
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly citations?: CitationsConfigParam | null;
+  readonly defer_loading?: boolean;
+  readonly max_content_tokens?: number | null;
+  readonly max_uses?: number | null;
+  readonly strict?: boolean;
+}
+export interface WebFetchTool20260309 {
+  readonly name: "web_fetch";
+  readonly type: "web_fetch_20260309";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly allowed_domains?: readonly string[] | null;
+  readonly blocked_domains?: readonly string[] | null;
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly citations?: CitationsConfigParam | null;
+  readonly defer_loading?: boolean;
+  readonly max_content_tokens?: number | null;
+  readonly max_uses?: number | null;
+  readonly strict?: boolean;
+  readonly use_cache?: boolean;
+}
+
+export interface AdvisorTool20260301 {
+  readonly model: string;
+  readonly name: "advisor";
+  readonly type: "advisor_20260301";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly caching?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly max_uses?: number | null;
+  readonly strict?: boolean;
+}
+
+export interface ToolSearchToolBm25_20251119 {
+  readonly name: "tool_search_tool_bm25";
+  readonly type: "tool_search_tool_bm25_20251119" | "tool_search_tool_bm25";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly strict?: boolean;
+}
+export interface ToolSearchToolRegex20251119 {
+  readonly name: "tool_search_tool_regex";
+  readonly type: "tool_search_tool_regex_20251119" | "tool_search_tool_regex";
+  readonly allowed_callers?: readonly ToolAllowedCaller[];
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly defer_loading?: boolean;
+  readonly strict?: boolean;
+}
+
+export interface MCPToolConfig {
+  readonly defer_loading?: boolean;
+  readonly enabled?: boolean;
+}
+export interface MCPToolDefaultConfig {
+  readonly defer_loading?: boolean;
+  readonly enabled?: boolean;
+}
+export interface MCPToolset {
+  readonly mcp_server_name: string;
+  readonly type: "mcp_toolset";
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly configs?: Readonly<Record<string, MCPToolConfig>> | null;
+  readonly default_config?: MCPToolDefaultConfig;
+}
+
+export type ToolDefinition =
+  | CustomToolDefinition
+  | ToolBash20241022
+  | ToolBash20250124
+  | CodeExecutionTool20250522
+  | CodeExecutionTool20250825
+  | CodeExecutionTool20260120
+  | ToolComputerUse20241022
+  | ToolComputerUse20250124
+  | ToolComputerUse20251124
+  | MemoryTool20250818
+  | ToolTextEditor20241022
+  | ToolTextEditor20250124
+  | ToolTextEditor20250429
+  | ToolTextEditor20250728
+  | WebSearchTool20250305
+  | WebSearchTool20260209
+  | WebFetchTool20250910
+  | WebFetchTool20260209
+  | WebFetchTool20260309
+  | AdvisorTool20260301
+  | ToolSearchToolBm25_20251119
+  | ToolSearchToolRegex20251119
+  | MCPToolset;
 
 export interface ClaudeCodeCapabilities {
   readonly contextHint: boolean;

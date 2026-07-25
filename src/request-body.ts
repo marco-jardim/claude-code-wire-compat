@@ -613,27 +613,330 @@ function system(value: unknown): readonly TextBlock[] {
   );
 }
 
+function stringArray(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) fail("INVALID_INPUT");
+  return value.map((item) => requireString(item));
+}
+
+function allowedCallers(value: unknown): readonly string[] {
+  const callers = stringArray(value);
+  for (const caller of callers) {
+    if (
+      caller !== "direct" &&
+      caller !== "code_execution_20250825" &&
+      caller !== "code_execution_20260120"
+    ) {
+      fail("INVALID_INPUT");
+    }
+  }
+  return callers;
+}
+
+function inputExamples(
+  value: unknown,
+): readonly Readonly<Record<string, JsonValue>>[] {
+  if (!Array.isArray(value)) fail("INVALID_INPUT");
+  return value.map((example) => validatedJsonObject(example));
+}
+
+function toolInputSchema(value: unknown): Readonly<Record<string, JsonValue>> {
+  const record = requireRecord(value);
+  if (hasOwn(record, "type") && record["type"] !== "object")
+    fail("INVALID_INPUT");
+  const entries: [string, JsonValue][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "type") entries.push([key, "object"]);
+    else if (key === "required")
+      entries.push([key, nullable(item, stringArray)]);
+    else entries.push([key, validatedJson(item)]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function userLocation(value: unknown): Readonly<Record<string, unknown>> {
+  const record = requireRecord(value);
+  requireKeys(
+    record,
+    ["type", "city", "country", "region", "timezone"],
+    ["type"],
+  );
+  if (record["type"] !== "approximate") fail("INVALID_INPUT");
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    entries.push([
+      key,
+      key === "type" ? "approximate" : nullable(record[key], requireString),
+    ]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function mcpToolConfig(value: unknown): Readonly<Record<string, boolean>> {
+  const record = requireRecord(value);
+  requireKeys(record, ["defer_loading", "enabled"], []);
+  return Object.fromEntries(
+    Object.keys(record).map((key) => [key, requireBoolean(record[key])]),
+  );
+}
+
+function mcpConfigs(
+  value: unknown,
+): Readonly<Record<string, Readonly<Record<string, boolean>>>> {
+  const record = requireRecord(value);
+  return Object.fromEntries(
+    Object.keys(record).map((key) => [key, mcpToolConfig(record[key])]),
+  );
+}
+
+interface BuiltInToolSpec {
+  readonly name?: string;
+  readonly allowed: readonly string[];
+  readonly required: readonly string[];
+}
+
+const COMMON_TOOL_KEYS = [
+  "name",
+  "type",
+  "allowed_callers",
+  "cache_control",
+  "defer_loading",
+  "strict",
+] as const;
+
+function builtInToolSpec(type: unknown): BuiltInToolSpec {
+  if (type === "bash_20241022" || type === "bash_20250124") {
+    return {
+      name: "bash",
+      allowed: [...COMMON_TOOL_KEYS, "input_examples"],
+      required: ["name", "type"],
+    };
+  }
+  if (
+    type === "code_execution_20250522" ||
+    type === "code_execution_20250825" ||
+    type === "code_execution_20260120"
+  ) {
+    return {
+      name: "code_execution",
+      allowed: COMMON_TOOL_KEYS,
+      required: ["name", "type"],
+    };
+  }
+  if (
+    type === "computer_20241022" ||
+    type === "computer_20250124" ||
+    type === "computer_20251124"
+  ) {
+    return {
+      name: "computer",
+      allowed: [
+        ...COMMON_TOOL_KEYS,
+        "display_height_px",
+        "display_width_px",
+        "display_number",
+        "input_examples",
+        ...(type === "computer_20251124" ? ["enable_zoom"] : []),
+      ],
+      required: ["display_height_px", "display_width_px", "name", "type"],
+    };
+  }
+  if (type === "memory_20250818") {
+    return {
+      name: "memory",
+      allowed: [...COMMON_TOOL_KEYS, "input_examples"],
+      required: ["name", "type"],
+    };
+  }
+  if (
+    type === "text_editor_20241022" ||
+    type === "text_editor_20250124" ||
+    type === "text_editor_20250429" ||
+    type === "text_editor_20250728"
+  ) {
+    return {
+      name:
+        type === "text_editor_20241022" || type === "text_editor_20250124"
+          ? "str_replace_editor"
+          : "str_replace_based_edit_tool",
+      allowed: [
+        ...COMMON_TOOL_KEYS,
+        "input_examples",
+        ...(type === "text_editor_20250728" ? ["max_characters"] : []),
+      ],
+      required: ["name", "type"],
+    };
+  }
+  if (type === "web_search_20250305" || type === "web_search_20260209") {
+    return {
+      name: "web_search",
+      allowed: [
+        ...COMMON_TOOL_KEYS,
+        "allowed_domains",
+        "blocked_domains",
+        "max_uses",
+        "user_location",
+      ],
+      required: ["name", "type"],
+    };
+  }
+  if (
+    type === "web_fetch_20250910" ||
+    type === "web_fetch_20260209" ||
+    type === "web_fetch_20260309"
+  ) {
+    return {
+      name: "web_fetch",
+      allowed: [
+        ...COMMON_TOOL_KEYS,
+        "allowed_domains",
+        "blocked_domains",
+        "citations",
+        "max_content_tokens",
+        "max_uses",
+        ...(type === "web_fetch_20260309" ? ["use_cache"] : []),
+      ],
+      required: ["name", "type"],
+    };
+  }
+  if (type === "advisor_20260301") {
+    return {
+      name: "advisor",
+      allowed: [...COMMON_TOOL_KEYS, "model", "caching", "max_uses"],
+      required: ["model", "name", "type"],
+    };
+  }
+  if (
+    type === "tool_search_tool_bm25_20251119" ||
+    type === "tool_search_tool_bm25"
+  ) {
+    return {
+      name: "tool_search_tool_bm25",
+      allowed: COMMON_TOOL_KEYS,
+      required: ["name", "type"],
+    };
+  }
+  if (
+    type === "tool_search_tool_regex_20251119" ||
+    type === "tool_search_tool_regex"
+  ) {
+    return {
+      name: "tool_search_tool_regex",
+      allowed: COMMON_TOOL_KEYS,
+      required: ["name", "type"],
+    };
+  }
+  if (type === "mcp_toolset") {
+    return {
+      allowed: [
+        "mcp_server_name",
+        "type",
+        "cache_control",
+        "configs",
+        "default_config",
+      ],
+      required: ["mcp_server_name", "type"],
+    };
+  }
+  return fail("INVALID_INPUT");
+}
+
+function customToolDefinition(record: Record<string, unknown>): ToolDefinition {
+  requireKeys(
+    record,
+    [
+      "input_schema",
+      "name",
+      "allowed_callers",
+      "cache_control",
+      "defer_loading",
+      "description",
+      "eager_input_streaming",
+      "input_examples",
+      "strict",
+    ],
+    ["input_schema", "name"],
+  );
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "input_schema") entries.push([key, toolInputSchema(item)]);
+    else if (key === "name" || key === "description")
+      entries.push([key, requireString(item)]);
+    else if (key === "allowed_callers")
+      entries.push([key, allowedCallers(item)]);
+    else if (key === "cache_control")
+      entries.push([key, nullable(item, (raw) => cacheControl(raw, true))]);
+    else if (key === "defer_loading" || key === "strict")
+      entries.push([key, requireBoolean(item)]);
+    else if (key === "eager_input_streaming")
+      entries.push([key, nullable(item, requireBoolean)]);
+    else entries.push([key, inputExamples(item)]);
+  }
+  return Object.fromEntries(entries) as unknown as ToolDefinition;
+}
+
+function builtInToolDefinition(
+  record: Record<string, unknown>,
+): ToolDefinition {
+  const type = record["type"];
+  const spec = builtInToolSpec(type);
+  requireKeys(record, spec.allowed, spec.required);
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "type") entries.push([key, type]);
+    else if (key === "name") {
+      if (item !== spec.name) fail("INVALID_INPUT");
+      entries.push([key, item]);
+    } else if (key === "mcp_server_name" || key === "model")
+      entries.push([key, requireString(item)]);
+    else if (key === "allowed_callers")
+      entries.push([key, allowedCallers(item)]);
+    else if (key === "cache_control" || key === "caching")
+      entries.push([key, nullable(item, cacheControl)]);
+    else if (
+      key === "defer_loading" ||
+      key === "strict" ||
+      key === "enable_zoom" ||
+      key === "use_cache"
+    )
+      entries.push([key, requireBoolean(item)]);
+    else if (key === "input_examples") entries.push([key, inputExamples(item)]);
+    else if (key === "display_height_px" || key === "display_width_px")
+      entries.push([key, requireNumber(item)]);
+    else if (
+      key === "display_number" ||
+      key === "max_characters" ||
+      key === "max_content_tokens" ||
+      key === "max_uses"
+    )
+      entries.push([key, nullable(item, requireNumber)]);
+    else if (key === "allowed_domains" || key === "blocked_domains")
+      entries.push([key, nullable(item, stringArray)]);
+    else if (key === "citations")
+      entries.push([key, nullable(item, citationsConfig)]);
+    else if (key === "user_location")
+      entries.push([key, nullable(item, userLocation)]);
+    else if (key === "configs") entries.push([key, nullable(item, mcpConfigs)]);
+    else if (key === "default_config") entries.push([key, mcpToolConfig(item)]);
+    else fail("INVALID_INPUT");
+  }
+  return Object.fromEntries(entries) as unknown as ToolDefinition;
+}
+
 function tools(value: unknown): readonly ToolDefinition[] {
   if (!Array.isArray(value)) fail("INVALID_INPUT");
   const names = new Set<string>();
   return value.map((item) => {
     const record = requireRecord(item);
-    const name = requireString(record["name"]);
-    if (names.has(name)) fail("INVALID_INPUT");
-    names.add(name);
-    const schema = validatedJsonObject(record["input_schema"]);
-    const result: ToolDefinition = hasOwn(record, "description")
-      ? {
-          name,
-          description: requireString(record["description"]),
-          input_schema: schema,
-        }
-      : { name, input_schema: schema };
-    if (hasOwn(record, "cache_control")) {
-      return {
-        ...result,
-        cache_control: cacheControl(record["cache_control"], true),
-      };
+    const result = hasOwn(record, "type")
+      ? builtInToolDefinition(record)
+      : customToolDefinition(record);
+    if (hasOwn(record, "name")) {
+      const name = requireString(record["name"]);
+      if (names.has(name)) fail("INVALID_INPUT");
+      names.add(name);
     }
     return result;
   });
