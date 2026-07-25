@@ -8,6 +8,7 @@ import type {
   RedactedRequestEvidence,
 } from "./contracts.js";
 import { ClaudeCodeWireError } from "./contracts.js";
+import { classifySurrogateAt } from "./unicode.js";
 
 export interface BuildRedactedEvidenceInput {
   readonly profile: ClaudeCodeProtocolProfile;
@@ -67,17 +68,9 @@ function wireError(
 
 function isValidUnicode(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
-    const unit = value.charCodeAt(index);
-    if (unit >= 0xd800 && unit <= 0xdbff) {
-      const next = value.charCodeAt(index + 1);
-      // A trailing high surrogate makes charCodeAt(index + 1) return NaN.
-      // Every relational comparison against NaN is false, so use a negated
-      // in-range test.
-      if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
-      index += 1;
-    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
-      return false;
-    }
+    const classification = classifySurrogateAt(value, index);
+    if (classification === "loneSurrogate") return false;
+    if (classification === "surrogatePair") index += 1;
   }
   return true;
 }

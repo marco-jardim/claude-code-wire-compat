@@ -34,8 +34,19 @@ describe("Unicode validation governance", () => {
     }
   });
 
-  it.each(guardedModules)("retains the NaN-safe guard in src/%s", (module) => {
-    const source = readFileSync(join(root, "src", module), "utf8");
-    expect(source).toContain(">= 0xdc00 &&");
-  });
+  it.each(guardedModules)(
+    "uses the NaN-safe shared guard in src/%s",
+    (module) => {
+      const unicodeSource = readFileSync(
+        join(root, "src", "unicode.ts"),
+        "utf8",
+      );
+      expect(unicodeSource).toContain(">= 0xdc00 &&");
+
+      const source = readFileSync(join(root, "src", module), "utf8");
+      expect(source).toContain(
+        'import { classifySurrogateAt } from "./unicode.js";',
+      );
+    },
+  );
 });

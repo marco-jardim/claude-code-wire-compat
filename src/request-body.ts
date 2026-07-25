@@ -10,6 +10,7 @@ import type {
   ToolResultBlock,
   ToolUseBlock,
 } from "./contracts.js";
+import { classifySurrogateAt } from "./unicode.js";
 
 const MAX_DEPTH = 100;
 const MAX_ITEMS = 100_000;
@@ -61,13 +62,9 @@ function inspectString(value: string, state: InspectionState): void {
     ) {
       fail("INVALID_INPUT");
     }
-    if (unit >= 0xd800 && unit <= 0xdbff) {
-      const next = value.charCodeAt(index + 1);
-      if (!(next >= 0xdc00 && next <= 0xdfff)) fail("INVALID_UNICODE");
-      index += 1;
-    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
-      fail("INVALID_UNICODE");
-    }
+    const classification = classifySurrogateAt(value, index);
+    if (classification === "loneSurrogate") fail("INVALID_UNICODE");
+    if (classification === "surrogatePair") index += 1;
   }
 }
 

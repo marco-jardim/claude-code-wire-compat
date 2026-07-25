@@ -6,6 +6,7 @@ import type {
   TextBlock,
 } from "./contracts.js";
 import { ClaudeCodeWireError } from "./contracts.js";
+import { classifySurrogateAt } from "./unicode.js";
 
 const IDENTITY_TEXT =
   "You are Claude Code, Anthropic's official CLI for Claude.";
@@ -39,16 +40,9 @@ function validateText(text: string): void {
       fail("INVALID_UNICODE");
     }
 
-    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
-      const next = text.charCodeAt(index + 1);
-      // A trailing high surrogate makes charCodeAt(index + 1) return NaN.
-      // Every relational comparison against NaN is false, so use a negated
-      // in-range test.
-      if (!(next >= 0xdc00 && next <= 0xdfff)) fail("INVALID_UNICODE");
-      index += 1;
-    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
-      fail("INVALID_UNICODE");
-    }
+    const classification = classifySurrogateAt(text, index);
+    if (classification === "loneSurrogate") fail("INVALID_UNICODE");
+    if (classification === "surrogatePair") index += 1;
   }
 }
 

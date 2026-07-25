@@ -22,6 +22,7 @@ import { buildRedactedEvidence, toSafeErrorDetails } from "./redaction.js";
 import { buildCanonicalBody } from "./request-body.js";
 import { sha256Hex } from "./sha256.js";
 import { buildCanonicalSystem } from "./system-prompt.js";
+import { classifySurrogateAt } from "./unicode.js";
 
 const METHOD = "POST";
 const MAX_INPUT_DEPTH = 100;
@@ -91,16 +92,9 @@ function inspectString(value: string): number {
   for (let index = 0; index < value.length; index += 1) {
     const unit = value.charCodeAt(index);
     if (unit <= 0x1f || unit === 0x7f) fail("INVALID_UNICODE");
-    if (unit >= 0xd800 && unit <= 0xdbff) {
-      const next = value.charCodeAt(index + 1);
-      // A trailing high surrogate makes charCodeAt(index + 1) return NaN.
-      // Every relational comparison against NaN is false, so use a negated
-      // in-range test.
-      if (!(next >= 0xdc00 && next <= 0xdfff)) fail("INVALID_UNICODE");
-      index += 1;
-    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
-      fail("INVALID_UNICODE");
-    }
+    const classification = classifySurrogateAt(value, index);
+    if (classification === "loneSurrogate") fail("INVALID_UNICODE");
+    if (classification === "surrogatePair") index += 1;
   }
   return new TextEncoder().encode(value).byteLength;
 }
