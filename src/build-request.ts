@@ -93,7 +93,10 @@ function inspectString(value: string): number {
     if (unit <= 0x1f || unit === 0x7f) fail("INVALID_UNICODE");
     if (unit >= 0xd800 && unit <= 0xdbff) {
       const next = value.charCodeAt(index + 1);
-      if (next < 0xdc00 || next > 0xdfff) fail("INVALID_UNICODE");
+      // A trailing high surrogate makes charCodeAt(index + 1) return NaN.
+      // Every relational comparison against NaN is false, so use a negated
+      // in-range test.
+      if (!(next >= 0xdc00 && next <= 0xdfff)) fail("INVALID_UNICODE");
       index += 1;
     } else if (unit >= 0xdc00 && unit <= 0xdfff) {
       fail("INVALID_UNICODE");

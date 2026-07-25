@@ -41,7 +41,10 @@ function validateText(text: string): void {
 
     if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
       const next = text.charCodeAt(index + 1);
-      if (next < 0xdc00 || next > 0xdfff) fail("INVALID_UNICODE");
+      // A trailing high surrogate makes charCodeAt(index + 1) return NaN.
+      // Every relational comparison against NaN is false, so use a negated
+      // in-range test.
+      if (!(next >= 0xdc00 && next <= 0xdfff)) fail("INVALID_UNICODE");
       index += 1;
     } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
       fail("INVALID_UNICODE");
