@@ -27,3 +27,4 @@ export default tseslint.config(
     ...tseslint.configs.disableTypeChecked,
   },
 );
+// SPDX-License-Identifier: GPL-3.0-or-later

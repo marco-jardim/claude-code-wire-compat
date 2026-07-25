@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -41,5 +42,19 @@ describe("public governance files", () => {
       "Developer Certificate of Origin",
     );
     expect(file("CONTRIBUTING.md")).toContain("GPL-3.0-or-later");
+  });
+
+  it("carries an SPDX identifier on every first-party source file", () => {
+    const files = [
+      "src/index.ts",
+      "eslint.config.js",
+      "vitest.config.ts",
+      "stryker.config.mjs",
+      ".github/workflows/ci.yml",
+      ".github/workflows/publish.yml",
+    ];
+    for (const name of files) {
+      expect(file(name)).toContain("SPDX-License-Identifier: GPL-3.0-or-later");
+    }
   });
 });

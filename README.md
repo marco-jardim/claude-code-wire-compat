@@ -32,4 +32,4 @@ Do not include access tokens, account identifiers, session identifiers, or priva
 
 SPDX-License-Identifier: GPL-3.0-or-later
 
-This repository is a modified work derived from [opencode-anthropic-auth](https://github.com/marco-jardim/opencode-anthropic-fix) at upstream commit `466d500`. See [NOTICE](./NOTICE) for attribution and modification details. Corresponding source is available in this public repository.
+This repository is a modified work derived from [opencode-anthropic-fix](https://github.com/marco-jardim/opencode-anthropic-fix) at upstream commit `466d500`. See [NOTICE](./NOTICE) for attribution and modification details. Corresponding source is available in this public repository.
