@@ -23,6 +23,10 @@ function rotateRight(value: number, count: number): number {
 }
 
 function wordAt(words: Uint32Array, index: number): number {
+  // The fallback is unreachable at runtime because every call site indexes
+  // within the allocated array. It exists solely to satisfy
+  // noUncheckedIndexedAccess and is therefore this file's sole uncovered
+  // branch, intentionally not covered by a test.
   return words[index] ?? 0;
 }
 

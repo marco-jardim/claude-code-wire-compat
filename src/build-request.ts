@@ -165,14 +165,31 @@ function validateProfile(
   return profile;
 }
 
+function isCryptoProvider(value: unknown): value is Pick<Crypto, "subtle"> {
+  if (!isRecord(value)) return false;
+  const subtleDescriptor = Object.getOwnPropertyDescriptor(value, "subtle");
+  if (
+    subtleDescriptor === undefined ||
+    !("value" in subtleDescriptor) ||
+    !isRecord(subtleDescriptor.value)
+  ) {
+    return false;
+  }
+  const digestDescriptor = Object.getOwnPropertyDescriptor(
+    subtleDescriptor.value,
+    "digest",
+  );
+  return (
+    digestDescriptor !== undefined &&
+    "value" in digestDescriptor &&
+    typeof digestDescriptor.value === "function"
+  );
+}
+
 function validateCrypto(value: unknown): Pick<Crypto, "subtle"> | undefined {
   if (value === undefined) return undefined;
-  if (!isRecord(value)) fail("CRYPTO_UNAVAILABLE");
-  const subtle = ownValue(value, "subtle");
-  if (!isRecord(subtle) || typeof ownValue(subtle, "digest") !== "function") {
-    fail("CRYPTO_UNAVAILABLE");
-  }
-  return value as Pick<Crypto, "subtle">;
+  if (!isCryptoProvider(value)) fail("CRYPTO_UNAVAILABLE");
+  return value;
 }
 
 function validateInput(input: ClaudeCodeRequestInput): {
@@ -449,7 +466,15 @@ function evidenceRequest(
   return request;
 }
 
-/** Builds one canonical request for the pinned Claude Code wire profile. */
+/**
+ * Builds one canonical request for the pinned Claude Code wire profile.
+ *
+ * @param profile - The only accepted value is the exported
+ * `CLAUDE_CODE_2_1_195_PROFILE` singleton. Any other object, even a
+ * structurally identical clone, is rejected with `ClaudeCodeWireError` code
+ * `INVALID_INPUT`. This deliberate fail-closed behaviour prevents callers from
+ * substituting an unpinned protocol profile.
+ */
 export async function buildClaudeCodeRequest(
   input: ClaudeCodeRequestInput,
   profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
@@ -529,7 +554,15 @@ export async function buildClaudeCodeRequest(
   }
 }
 
-/** Validates and clones a previously built request into a deeply frozen value. */
+/**
+ * Validates and clones a previously built request into a deeply frozen value.
+ *
+ * @param profile - The only accepted value is the exported
+ * `CLAUDE_CODE_2_1_195_PROFILE` singleton. Any other object, even a
+ * structurally identical clone, is rejected with `ClaudeCodeWireError` code
+ * `INVALID_INPUT`. This deliberate fail-closed behaviour prevents callers from
+ * substituting an unpinned protocol profile.
+ */
 export function parseBuiltClaudeCodeRequest(
   value: unknown,
   profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,

@@ -14,6 +14,10 @@ npm install @tormentalabs/claude-code-wire-compat
 
 The package targets Node.js 20 or newer and is designed to remain portable to Bun and standards-based worker runtimes. Consumers own credentials, transport, persistence, refresh coordination, retries, and deployment policy.
 
+## Protocol profile
+
+The only accepted `profile` value is the exported `CLAUDE_CODE_2_1_195_PROFILE` singleton. Any other object, even a structurally identical clone, is rejected with `ClaudeCodeWireError` code `INVALID_INPUT`. This deliberate fail-closed behaviour prevents callers from substituting an unpinned protocol profile.
+
 ## Development
 
 ```sh
