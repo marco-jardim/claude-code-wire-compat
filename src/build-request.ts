@@ -41,6 +41,17 @@ const INPUT_KEYS = new Set([
   "thinking",
   "effort",
   "metadata",
+  "contextManagement",
+  "outputConfig",
+  "speed",
+  "serviceTier",
+  "outputFormat",
+  "toolChoice",
+  "topP",
+  "topK",
+  "stopSequences",
+  "stream",
+  "temperature",
   "clientRequestId",
   "crypto",
 ]);
@@ -81,6 +92,11 @@ function ownValue(value: object, key: string): unknown {
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
   if (descriptor === undefined || !("value" in descriptor)) fail();
   return descriptor.value;
+}
+
+function present<T>(value: T | undefined): T {
+  if (value === undefined) fail();
+  return value;
 }
 
 function assertExactKeys(value: object, allowed: ReadonlySet<string>): void {
@@ -445,6 +461,20 @@ function evidenceRequest(
     thinking?: NonNullable<ClaudeCodeRequestInput["thinking"]>;
     effort?: NonNullable<ClaudeCodeRequestInput["effort"]>;
     metadata?: NonNullable<ClaudeCodeRequestInput["metadata"]>;
+    contextManagement?: Exclude<
+      ClaudeCodeRequestInput["contextManagement"],
+      undefined
+    >;
+    outputConfig?: Exclude<ClaudeCodeRequestInput["outputConfig"], undefined>;
+    speed?: Exclude<ClaudeCodeRequestInput["speed"], undefined>;
+    serviceTier?: Exclude<ClaudeCodeRequestInput["serviceTier"], undefined>;
+    outputFormat?: Exclude<ClaudeCodeRequestInput["outputFormat"], undefined>;
+    toolChoice?: Exclude<ClaudeCodeRequestInput["toolChoice"], undefined>;
+    topP?: Exclude<ClaudeCodeRequestInput["topP"], undefined>;
+    topK?: Exclude<ClaudeCodeRequestInput["topK"], undefined>;
+    stopSequences?: Exclude<ClaudeCodeRequestInput["stopSequences"], undefined>;
+    stream?: Exclude<ClaudeCodeRequestInput["stream"], undefined>;
+    temperature?: Exclude<ClaudeCodeRequestInput["temperature"], undefined>;
   } = {
     accessToken: input.accessToken,
     model: canonicalModelId,
@@ -459,6 +489,24 @@ function evidenceRequest(
   if (input.thinking !== undefined) request.thinking = input.thinking;
   if (input.effort !== undefined) request.effort = input.effort;
   if (input.metadata !== undefined) request.metadata = input.metadata;
+  if (Object.hasOwn(input, "contextManagement"))
+    request.contextManagement = present(input.contextManagement);
+  if (Object.hasOwn(input, "outputConfig"))
+    request.outputConfig = present(input.outputConfig);
+  if (Object.hasOwn(input, "speed")) request.speed = present(input.speed);
+  if (Object.hasOwn(input, "serviceTier"))
+    request.serviceTier = present(input.serviceTier);
+  if (Object.hasOwn(input, "outputFormat"))
+    request.outputFormat = present(input.outputFormat);
+  if (Object.hasOwn(input, "toolChoice"))
+    request.toolChoice = present(input.toolChoice);
+  if (Object.hasOwn(input, "topP")) request.topP = present(input.topP);
+  if (Object.hasOwn(input, "topK")) request.topK = present(input.topK);
+  if (Object.hasOwn(input, "stopSequences"))
+    request.stopSequences = present(input.stopSequences);
+  if (Object.hasOwn(input, "stream")) request.stream = present(input.stream);
+  if (Object.hasOwn(input, "temperature"))
+    request.temperature = present(input.temperature);
   return request;
 }
 

@@ -27,7 +27,33 @@ const MAX_DEPTH = 100;
 const MAX_ITEMS = 100_000;
 const MAX_SIZE = 1_000_000;
 const CONTEXT_HINT_BETA = "context-hint-2026-04-09";
+const TASK_BUDGET_BETA = "task-budgets-2026-03-13";
+const FAST_MODE_BETA = "fast-mode-2026-02-01";
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+const INPUT_KEYS = [
+  "accessToken",
+  "model",
+  "maxTokens",
+  "messages",
+  "system",
+  "tools",
+  "runtime",
+  "capabilities",
+  "thinking",
+  "effort",
+  "metadata",
+  "contextManagement",
+  "outputConfig",
+  "speed",
+  "serviceTier",
+  "outputFormat",
+  "toolChoice",
+  "topP",
+  "topK",
+  "stopSequences",
+  "stream",
+  "temperature",
+] as const;
 
 interface InspectionState {
   readonly active: WeakSet<object>;
@@ -175,7 +201,8 @@ function validatedJson(value: unknown): JsonValue {
 }
 
 function requireNumber(value: unknown): number {
-  if (typeof value !== "number") fail("INVALID_INPUT");
+  if (typeof value !== "number" || !Number.isFinite(value))
+    fail("INVALID_INPUT");
   return value;
 }
 
@@ -971,6 +998,195 @@ function metadata(value: unknown): Readonly<Record<string, JsonValue>> {
   return validatedJsonObject(record);
 }
 
+function typedNumberObject(
+  value: unknown,
+  allowedTypes: readonly string[],
+): Readonly<Record<string, unknown>> {
+  const record = requireRecord(value);
+  requireKeys(record, ["type", "value"], ["type", "value"]);
+  const type = record["type"];
+  if (typeof type !== "string" || !allowedTypes.includes(type))
+    fail("INVALID_INPUT");
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    entries.push([key, key === "type" ? type : requireNumber(record[key])]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function clearThinkingKeep(value: unknown): unknown {
+  if (value === "all") return value;
+  const record = requireRecord(value);
+  if (record["type"] === "all") {
+    requireKeys(record, ["type"], ["type"]);
+    return { type: "all" };
+  }
+  return typedNumberObject(record, ["thinking_turns"]);
+}
+
+function contextManagementEdit(
+  value: unknown,
+): Readonly<Record<string, unknown>> {
+  const record = requireRecord(value);
+  const type = record["type"];
+  let allowed: readonly string[];
+  if (type === "clear_thinking_20251015") {
+    allowed = ["type", "keep"];
+  } else if (type === "clear_tool_uses_20250919") {
+    allowed = [
+      "type",
+      "clear_at_least",
+      "clear_tool_inputs",
+      "exclude_tools",
+      "keep",
+      "trigger",
+    ];
+  } else if (type === "compact_20260112") {
+    allowed = ["type", "instructions", "pause_after_compaction", "trigger"];
+  } else {
+    return fail("INVALID_INPUT");
+  }
+  requireKeys(record, allowed, ["type"]);
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "type") entries.push([key, type]);
+    else if (type === "clear_thinking_20251015") {
+      entries.push([key, clearThinkingKeep(item)]);
+    } else if (type === "clear_tool_uses_20250919") {
+      if (key === "clear_at_least")
+        entries.push([
+          key,
+          nullable(item, (raw) => typedNumberObject(raw, ["input_tokens"])),
+        ]);
+      else if (key === "clear_tool_inputs")
+        entries.push([
+          key,
+          nullable(item, (raw) =>
+            typeof raw === "boolean" ? raw : stringArray(raw),
+          ),
+        ]);
+      else if (key === "exclude_tools")
+        entries.push([key, nullable(item, stringArray)]);
+      else if (key === "keep")
+        entries.push([key, typedNumberObject(item, ["tool_uses"])]);
+      else
+        entries.push([
+          key,
+          typedNumberObject(item, ["input_tokens", "tool_uses"]),
+        ]);
+    } else if (key === "instructions")
+      entries.push([key, nullable(item, requireString)]);
+    else if (key === "pause_after_compaction")
+      entries.push([key, requireBoolean(item)]);
+    else
+      entries.push([
+        key,
+        nullable(item, (raw) => typedNumberObject(raw, ["input_tokens"])),
+      ]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function contextManagement(value: unknown): Readonly<Record<string, unknown>> {
+  const record = requireRecord(value);
+  requireKeys(record, ["edits"], []);
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (!Array.isArray(item)) fail("INVALID_INPUT");
+    entries.push([key, item.map((edit) => contextManagementEdit(edit))]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function outputFormat(value: unknown): Readonly<Record<string, unknown>> {
+  const record = requireRecord(value);
+  requireKeys(record, ["schema", "type"], ["schema", "type"]);
+  if (record["type"] !== "json_schema") fail("INVALID_INPUT");
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    entries.push([
+      key,
+      key === "type" ? "json_schema" : validatedJsonObject(record[key]),
+    ]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function toolChoice(value: unknown): Readonly<Record<string, unknown>> {
+  const record = requireRecord(value);
+  const type = record["type"];
+  const allowed =
+    type === "none"
+      ? ["type"]
+      : type === "auto" || type === "any"
+        ? ["type", "disable_parallel_tool_use"]
+        : type === "tool"
+          ? ["name", "type", "disable_parallel_tool_use"]
+          : fail("INVALID_INPUT");
+  requireKeys(record, allowed, type === "tool" ? ["name", "type"] : ["type"]);
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    if (key === "type") entries.push([key, type]);
+    else if (key === "name") entries.push([key, requireString(record[key])]);
+    else entries.push([key, requireBoolean(record[key])]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function betaEnabled(
+  profile: ClaudeCodeProtocolProfile | undefined,
+  beta: string,
+): boolean {
+  return profile?.orderedBetas.includes(beta) === true;
+}
+
+function outputConfig(
+  value: unknown,
+  profile: ClaudeCodeProtocolProfile | undefined,
+  adapterEffort: unknown,
+  adapterEffortActive: boolean,
+): Readonly<Record<string, unknown>> {
+  const record = requireRecord(value);
+  requireKeys(record, ["effort", "maxOutputTokens"], []);
+  if (
+    hasOwn(record, "effort") &&
+    adapterEffort !== undefined &&
+    record["effort"] !== adapterEffort
+  ) {
+    fail("INVALID_INPUT");
+  }
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "effort") {
+      if (
+        item !== null &&
+        item !== "low" &&
+        item !== "medium" &&
+        item !== "high" &&
+        item !== "xhigh" &&
+        item !== "max"
+      ) {
+        fail("INVALID_INPUT");
+      }
+      entries.push([key, item]);
+    } else {
+      if (!betaEnabled(profile, TASK_BUDGET_BETA))
+        fail("UNSUPPORTED_CAPABILITY");
+      entries.push([
+        "max_output_tokens",
+        item === null ? null : requirePositiveInteger(item),
+      ]);
+    }
+  }
+  if (adapterEffortActive && !hasOwn(record, "effort")) {
+    entries.push(["effort", adapterEffort]);
+  }
+  return Object.fromEntries(entries);
+}
+
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
     for (const key of Reflect.ownKeys(value))
@@ -1011,6 +1227,7 @@ export function buildCanonicalBody(
   ]);
 
   const input = requireRecord(rawInput);
+  requireKeys(input, INPUT_KEYS, ["maxTokens", "messages"]);
   const resolvedModel = modelResolution(rawResolvedModel);
   if (hasOwn(input, "model") && input["model"] !== resolvedModel.id) {
     fail("UNSUPPORTED_MODEL");
@@ -1046,8 +1263,12 @@ export function buildCanonicalBody(
     thinkingActive = true;
   }
 
-  if (!thinkingActive) result["temperature"] = 1;
+  if (!thinkingActive && !hasOwn(input, "temperature")) {
+    result["temperature"] = 1;
+  }
 
+  let adapterEffort: unknown;
+  let adapterEffortActive = false;
   if (hasOwn(input, "effort")) {
     const effort = input["effort"];
     if (
@@ -1059,12 +1280,47 @@ export function buildCanonicalBody(
     ) {
       fail("INVALID_EFFORT");
     }
+    adapterEffort = effort;
     if (
       isRecord(result["thinking"]) &&
       result["thinking"]["type"] === "adaptive"
     ) {
-      result["output_config"] = { effort };
+      adapterEffortActive = true;
+      if (!hasOwn(input, "outputConfig")) {
+        result["output_config"] = { effort };
+      }
     }
+  }
+
+  for (const key of Object.keys(input)) {
+    const item = input[key];
+    if (key === "contextManagement")
+      result["context_management"] = nullable(item, contextManagement);
+    else if (key === "outputConfig")
+      result["output_config"] = outputConfig(
+        item,
+        profile,
+        adapterEffort,
+        adapterEffortActive,
+      );
+    else if (key === "speed") {
+      if (item !== null && item !== "standard" && item !== "fast")
+        fail("INVALID_INPUT");
+      if (item === "fast" && !betaEnabled(profile, FAST_MODE_BETA))
+        fail("UNSUPPORTED_CAPABILITY");
+      result["speed"] = item;
+    } else if (key === "serviceTier") {
+      if (item !== "auto" && item !== "standard_only") fail("INVALID_INPUT");
+      result["service_tier"] = item;
+    } else if (key === "outputFormat")
+      result["output_format"] = nullable(item, outputFormat);
+    else if (key === "toolChoice") result["tool_choice"] = toolChoice(item);
+    else if (key === "topP") result["top_p"] = requireNumber(item);
+    else if (key === "topK") result["top_k"] = requireNumber(item);
+    else if (key === "stopSequences")
+      result["stop_sequences"] = stringArray(item);
+    else if (key === "stream") result["stream"] = requireBoolean(item);
+    else if (key === "temperature") result["temperature"] = requireNumber(item);
   }
 
   if (contextHintEnabled(input, resolvedModel, profile)) {

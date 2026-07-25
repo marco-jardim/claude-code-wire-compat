@@ -521,6 +521,83 @@ export type ToolDefinition =
   | ToolSearchToolRegex20251119
   | MCPToolset;
 
+export interface AllThinkingTurns {
+  readonly type: "all";
+}
+export interface ThinkingTurns {
+  readonly type: "thinking_turns";
+  readonly value: number;
+}
+export interface ClearThinking20251015Edit {
+  readonly type: "clear_thinking_20251015";
+  readonly keep?: ThinkingTurns | AllThinkingTurns | "all";
+}
+export interface InputTokensClearAtLeast {
+  readonly type: "input_tokens";
+  readonly value: number;
+}
+export interface InputTokensTrigger {
+  readonly type: "input_tokens";
+  readonly value: number;
+}
+export interface ToolUsesKeep {
+  readonly type: "tool_uses";
+  readonly value: number;
+}
+export interface ToolUsesTrigger {
+  readonly type: "tool_uses";
+  readonly value: number;
+}
+export interface ClearToolUses20250919Edit {
+  readonly type: "clear_tool_uses_20250919";
+  readonly clear_at_least?: InputTokensClearAtLeast | null;
+  readonly clear_tool_inputs?: boolean | readonly string[] | null;
+  readonly exclude_tools?: readonly string[] | null;
+  readonly keep?: ToolUsesKeep;
+  readonly trigger?: InputTokensTrigger | ToolUsesTrigger;
+}
+export interface Compact20260112Edit {
+  readonly type: "compact_20260112";
+  readonly instructions?: string | null;
+  readonly pause_after_compaction?: boolean;
+  readonly trigger?: InputTokensTrigger | null;
+}
+export interface ContextManagementConfig {
+  readonly edits?: readonly (
+    ClearToolUses20250919Edit | ClearThinking20251015Edit | Compact20260112Edit
+  )[];
+}
+
+export interface JSONOutputFormat {
+  readonly schema: Readonly<Record<string, JsonValue>>;
+  readonly type: "json_schema";
+}
+
+export interface OutputConfigInput {
+  readonly effort?: "low" | "medium" | "high" | "xhigh" | "max" | null;
+  /** Beta-only: requires `task-budgets-2026-03-13`; absent from SDK 0.94.0. */
+  readonly maxOutputTokens?: number | null;
+}
+
+export interface ToolChoiceAny {
+  readonly type: "any";
+  readonly disable_parallel_tool_use?: boolean;
+}
+export interface ToolChoiceAuto {
+  readonly type: "auto";
+  readonly disable_parallel_tool_use?: boolean;
+}
+export interface ToolChoiceNone {
+  readonly type: "none";
+}
+export interface ToolChoiceTool {
+  readonly name: string;
+  readonly type: "tool";
+  readonly disable_parallel_tool_use?: boolean;
+}
+export type ToolChoice =
+  ToolChoiceAuto | ToolChoiceAny | ToolChoiceTool | ToolChoiceNone;
+
 export interface ClaudeCodeCapabilities {
   readonly contextHint: boolean;
   readonly adaptiveThinking: boolean;
@@ -553,6 +630,17 @@ export interface ClaudeCodeRequestInput {
   };
   readonly effort?: "low" | "medium" | "high" | "max";
   readonly metadata?: Readonly<Record<string, JsonPrimitive>>;
+  readonly contextManagement?: ContextManagementConfig | null;
+  readonly outputConfig?: OutputConfigInput;
+  readonly speed?: "standard" | "fast" | null;
+  readonly serviceTier?: "auto" | "standard_only";
+  readonly outputFormat?: JSONOutputFormat | null;
+  readonly toolChoice?: ToolChoice;
+  readonly topP?: number;
+  readonly topK?: number;
+  readonly stopSequences?: readonly string[];
+  readonly stream?: boolean;
+  readonly temperature?: number;
   /** Supplies the `x-client-request-id` header. */
   readonly clientRequestId: string;
   /** Injects the Web Crypto provider used to hash the request body. */
