@@ -109,7 +109,7 @@ jobs:
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
           tar -xzf gitleaks.tar.gz gitleaks
-          ./gitleaks detect --no-git --source . --redact --exit-code 1
+          ./gitleaks detect --no-git --source . --redact --config .gitleaks.toml --exit-code 1
           rm -f gitleaks.tar.gz gitleaks
       - name: Mutation testing readiness
         run: |
