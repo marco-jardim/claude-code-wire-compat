@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -20,6 +21,31 @@ const root = process.cwd();
 const manifest = JSON.parse(
   readFileSync(join(root, "package.json"), "utf8"),
 ) as PackageManifest;
+
+const NODE_BUILTINS =
+  "assert|async_hooks|buffer|child_process|cluster|console|constants|crypto|dgram|diagnostics_channel|dns|domain|events|fs|http|http2|https|inspector|module|net|os|path|perf_hooks|process|punycode|querystring|readline|repl|stream|string_decoder|sys|timers|tls|trace_events|tty|url|util|v8|vm|wasi|worker_threads|zlib";
+
+export function runtimeNeutralityErrors(source: string): readonly string[] {
+  const errors: string[] = [];
+  const specifier = String.raw`['"](?:node:[^'"]+|(?:${NODE_BUILTINS})(?:/[^'"]*)?)['"]`;
+  if (new RegExp(String.raw`\bfrom\s*${specifier}`, "u").test(source))
+    errors.push("node builtin import");
+  if (
+    new RegExp(String.raw`\b(?:import|require)\s*\(\s*${specifier}`, "u").test(
+      source,
+    )
+  )
+    errors.push("node builtin import");
+  if (new RegExp(String.raw`\bimport\s+${specifier}`, "u").test(source))
+    errors.push("node builtin import");
+  if (/\bprocess\s*\.\s*[A-Za-z_$]/u.test(source))
+    errors.push("process global");
+  if (/\bBuffer\s*(?:\.|\()/u.test(source)) errors.push("Buffer global");
+  if (/\b__(?:dirname|filename)\b/u.test(source))
+    errors.push("commonjs global");
+  if (source.toLowerCase().includes("xxhash")) errors.push("xxhash reference");
+  return errors;
+}
 
 function policyErrors(value: PackageManifest): readonly string[] {
   const errors: string[] = [];
@@ -95,9 +121,35 @@ describe("package policy", () => {
     const source = sourceFiles(join(root, "src"))
       .map((path) => readFileSync(path, "utf8"))
       .join("\n");
-    expect(source).not.toMatch(
-      /(?:node:|from\s+['"](?:fs|path|buffer|crypto|process)['"]|\bBuffer\b|\bprocess\b)/u,
-    );
-    expect(source.toLowerCase()).not.toContain("xxhash");
+    expect(runtimeNeutralityErrors(source)).toEqual([]);
+  });
+
+  it.each([
+    ['import { readFileSync } from "node:fs";', "node builtin import"],
+    ['import { join } from "path";', "node builtin import"],
+    ['const os = require("os");', "node builtin import"],
+    ['import "node:crypto";', "node builtin import"],
+    ["const home = process.env.HOME;", "process global"],
+    ['const b = Buffer.from("x");', "Buffer global"],
+    ["const here = __dirname;", "commonjs global"],
+    ["// hash via xxhash64", "xxhash reference"],
+  ] as const)("detects runtime-specific source", (source, expectedError) => {
+    expect(runtimeNeutralityErrors(source)).toContain(expectedError);
+  });
+
+  it.each([
+    "// we process the blocks in canonical order",
+    "/** Buffered output is not used here. */",
+    'const digest = await subtle.digest("SHA-256", bytes);',
+    "export interface ProcessingResult { readonly ok: boolean }",
+    "// see the node: protocol docs for background",
+  ])("allows runtime-neutral source", (source) => {
+    expect(runtimeNeutralityErrors(source)).toEqual([]);
+  });
+
+  it("declares the ESM-only profile so the pack gate can exit zero", () => {
+    const scripts = (manifest as { readonly scripts?: Record<string, string> })
+      .scripts;
+    expect(scripts?.["pack:check"]).toContain("--profile esm-only");
   });
 });

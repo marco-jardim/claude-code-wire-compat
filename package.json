@@ -43,7 +43,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:mutation": "stryker run",
-    "pack:check": "npm pack --dry-run && publint && attw --pack .",
+    "pack:check": "npm pack --dry-run && publint && attw --pack . --profile esm-only",
     "drift:check": "node -e \"console.log('Offline drift verification is introduced with the frozen profile')\""
   },
   "devDependencies": {
