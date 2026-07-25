@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 interface PackageManifest {
   files: string[];
@@ -66,6 +66,13 @@ function npmCliPath(): string {
 }
 
 describe("published tarball policy", () => {
+  beforeAll(() => {
+    execFileSync(process.execPath, [npmCliPath(), "run", "build"], {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+    });
+  }, 120_000);
+
   it("contains only the declared public files and compiled output", () => {
     const manifest = JSON.parse(
       readFileSync(join(repositoryRoot, "package.json"), "utf8"),
