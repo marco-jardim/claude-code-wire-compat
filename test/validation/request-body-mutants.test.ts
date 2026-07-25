@@ -225,29 +225,77 @@ describe("request body inspection mutation boundaries", () => {
 });
 
 describe("request body canonicalization mutation boundaries", () => {
-  it("sorts nested JSON keys and preserves every JSON primitive exactly", () => {
-    const result = build(baseInput(), model, [], {
-      z: true,
-      a: null,
-      nested: { z: "last", a: 7, middle: false },
-      list: [null, "text", 3, true, false],
-    });
+  it("preserves nested JSON key insertion order", () => {
+    const result = build(
+      {
+        ...baseInput(),
+        tools: [
+          {
+            name: "ordered",
+            input_schema: {
+              z: true,
+              nested: { z: "last", a: 7, middle: false },
+              list: [{ z: "array-last", a: "array-first" }],
+              a: null,
+            },
+          },
+        ],
+      },
+      model,
+      [],
+      {
+        z: true,
+        nested: { z: "last", a: 7, middle: false },
+        list: [
+          null,
+          "text",
+          3,
+          true,
+          false,
+          { z: "array-last", a: "array-first" },
+        ],
+        a: null,
+      },
+    );
     const metadata = result["metadata"];
     expect(metadata).toEqual({
-      a: null,
-      list: [null, "text", 3, true, false],
-      nested: { a: 7, middle: false, z: "last" },
       z: true,
+      nested: { z: "last", a: 7, middle: false },
+      list: [
+        null,
+        "text",
+        3,
+        true,
+        false,
+        { z: "array-last", a: "array-first" },
+      ],
+      a: null,
     });
     expect(Object.keys(metadata as object)).toEqual([
-      "a",
-      "list",
-      "nested",
       "z",
+      "nested",
+      "list",
+      "a",
     ]);
     expect(
       Object.keys((metadata as Record<string, unknown>)["nested"] as object),
-    ).toEqual(["a", "middle", "z"]);
+    ).toEqual(["z", "a", "middle"]);
+    expect(
+      Object.keys(
+        (
+          (metadata as Record<string, unknown>)["list"] as unknown[]
+        )[5] as object,
+      ),
+    ).toEqual(["z", "a"]);
+
+    const tools = result["tools"] as readonly Record<string, unknown>[];
+    const inputSchema = tools[0]?.["input_schema"];
+    expect(Object.keys(inputSchema as object)).toEqual([
+      "z",
+      "nested",
+      "list",
+      "a",
+    ]);
   });
 
   it.each(["5m", "1h"])("preserves the accepted cache ttl %s", (ttl) => {

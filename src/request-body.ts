@@ -139,18 +139,18 @@ function requirePositiveInteger(value: unknown): number {
   return value;
 }
 
-function canonicalJsonObject(
+function validatedJsonObject(
   value: unknown,
 ): Readonly<Record<string, JsonValue>> {
   const record = requireRecord(value);
   const entries: [string, JsonValue][] = [];
-  for (const key of Object.keys(record).sort()) {
-    entries.push([key, canonicalJson(record[key])]);
+  for (const key of Object.keys(record)) {
+    entries.push([key, validatedJson(record[key])]);
   }
   return Object.fromEntries(entries);
 }
 
-function canonicalJson(value: unknown): JsonValue {
+function validatedJson(value: unknown): JsonValue {
   if (
     value === null ||
     typeof value === "string" ||
@@ -159,8 +159,8 @@ function canonicalJson(value: unknown): JsonValue {
   ) {
     return value;
   }
-  if (Array.isArray(value)) return value.map((item) => canonicalJson(item));
-  return canonicalJsonObject(value);
+  if (Array.isArray(value)) return value.map((item) => validatedJson(item));
+  return validatedJsonObject(value);
 }
 
 function cacheControl(value: unknown): Readonly<Record<string, unknown>> {
@@ -199,7 +199,7 @@ function textBlock(value: unknown): TextBlock {
 function toolUseBlock(value: unknown): ToolUseBlock {
   const record = requireRecord(value);
   if (record["type"] !== "tool_use") fail("INVALID_INPUT");
-  const input = canonicalJsonObject(record["input"]);
+  const input = validatedJsonObject(record["input"]);
   return {
     type: "tool_use",
     id: requireString(record["id"]),
@@ -282,7 +282,7 @@ function tools(value: unknown): readonly ToolDefinition[] {
     const name = requireString(record["name"]);
     if (names.has(name)) fail("INVALID_INPUT");
     names.add(name);
-    const schema = canonicalJsonObject(record["input_schema"]);
+    const schema = validatedJsonObject(record["input_schema"]);
     const result: ToolDefinition = hasOwn(record, "description")
       ? {
           name,
@@ -325,8 +325,8 @@ function metadata(value: unknown): Readonly<Record<string, JsonValue>> {
   if (hasOwn(record, "user_id") && typeof record["user_id"] !== "string") {
     fail("INVALID_INPUT");
   }
-  // canonicalJsonObject returns a record by construction.
-  return canonicalJsonObject(record);
+  // validatedJsonObject returns a record by construction.
+  return validatedJsonObject(record);
 }
 
 function deepFreeze<T>(value: T): T {
