@@ -111,7 +111,4 @@ jobs:
           tar -xzf gitleaks.tar.gz gitleaks
           ./gitleaks detect --no-git --source . --redact --config .gitleaks.toml --exit-code 1
           rm -f gitleaks.tar.gz gitleaks
-      - name: Mutation testing readiness
-        run: |
-          if [ "$(find src -type f -name '*.ts' ! -name 'index.ts' | wc -l)" -gt 0 ]; then npm run test:mutation; else echo "Mutation begins with runtime source"; fi
       - run: npm run drift:check

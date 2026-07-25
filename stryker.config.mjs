@@ -5,6 +5,8 @@ export default {
   testRunner: "vitest",
   vitest: { configFile: "vitest.mutation.config.ts" },
   reporters: ["clear-text", "progress", "json"],
+  incremental: true,
+  incrementalFile: "reports/mutation/incremental.json",
   /*
    * `break` is the enforced floor. The implementation plan requires a mutation
    * score of at least 90% overall, so the build must fail below that rather

@@ -5,6 +5,10 @@ import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
 const ci = readFileSync(join(root, ".github", "workflows", "ci.yml"), "utf8");
+const mutation = readFileSync(
+  join(root, ".github", "workflows", "mutation.yml"),
+  "utf8",
+);
 const publish = readFileSync(
   join(root, ".github", "workflows", "publish.yml"),
   "utf8",
@@ -27,10 +31,18 @@ describe("CI policy", () => {
     "npm run pack:check",
     "license-checker-rseidelsohn",
     "gitleaks",
-    "Mutation",
     "npm run drift:check",
   ])("contains quality gate %s", (gate) => {
     expect(ci).toContain(gate);
+  });
+
+  it("defines the scheduled and on-demand mutation gate", () => {
+    expect(mutation).toContain("jobs:\n  mutation:");
+    expect(mutation).toContain("workflow_dispatch:");
+    expect(mutation).toContain("schedule:");
+    expect(mutation).toContain("npm run test:mutation");
+    expect(mutation).not.toContain("secrets.");
+    expect(ci).not.toContain("npm run test:mutation");
   });
 
   it("does not consume repository secrets for pull requests", () => {
@@ -50,7 +62,7 @@ describe("CI policy", () => {
   });
 
   it("pins every GitHub Action to an immutable commit SHA", () => {
-    for (const workflow of [ci, publish]) {
+    for (const workflow of [ci, mutation, publish]) {
       const refs = [...workflow.matchAll(/uses:\s*(\S+)/gu)].map(
         (match) => match[1],
       );
