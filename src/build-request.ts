@@ -18,6 +18,7 @@ import {
 } from "./metadata.js";
 import { resolveModel } from "./models.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
+import type { NormalizedRequestInput } from "./redaction.js";
 import { buildRedactedEvidence, toSafeErrorDetails } from "./redaction.js";
 import { buildCanonicalBody } from "./request-body.js";
 import { sha256Hex } from "./sha256.js";
@@ -431,7 +432,7 @@ function headerValue(headers: readonly HeaderPair[], name: string): string {
 function evidenceRequest(
   input: ClaudeCodeRequestInput,
   canonicalModelId: string,
-): ClaudeCodeRequestInput {
+): NormalizedRequestInput {
   const request: {
     accessToken: string;
     model: string;

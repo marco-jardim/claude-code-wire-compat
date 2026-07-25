@@ -76,6 +76,10 @@ export interface ClaudeCodeRequestInput {
   };
   readonly effort?: "low" | "medium" | "high" | "max";
   readonly metadata?: Readonly<Record<string, JsonPrimitive>>;
+  /** Supplies the `x-client-request-id` header. */
+  readonly clientRequestId: string;
+  /** Injects the Web Crypto provider used to hash the request body. */
+  readonly crypto?: Pick<Crypto, "subtle">;
 }
 
 export interface ClaudeCodeProtocolProfile {

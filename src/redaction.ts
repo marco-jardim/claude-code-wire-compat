@@ -10,9 +10,15 @@ import type {
 import { ClaudeCodeWireError } from "./contracts.js";
 import { classifySurrogateAt } from "./unicode.js";
 
+/** Excludes the id emitted as `x-client-request-id` and validation-time crypto seam. */
+export type NormalizedRequestInput = Omit<
+  ClaudeCodeRequestInput,
+  "clientRequestId" | "crypto"
+>;
+
 export interface BuildRedactedEvidenceInput {
   readonly profile: ClaudeCodeProtocolProfile;
-  readonly request: ClaudeCodeRequestInput;
+  readonly request: NormalizedRequestInput;
   readonly modelFamily: "haiku" | "sonnet" | "opus";
   readonly logicalHeaders: readonly HeaderPair[];
   readonly betaFeatures: readonly string[];
