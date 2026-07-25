@@ -49,7 +49,8 @@ function changingTypeBlock(
     get(current, property, receiver): unknown {
       if (property === "type") {
         reads += 1;
-        return reads === 1 ? dispatchedType : "wrong";
+        const dispatchRead = dispatchedType === "tool_use" ? 2 : 3;
+        return reads <= dispatchRead ? dispatchedType : "wrong";
       }
       return Reflect.get(current, property, receiver);
     },
@@ -383,6 +384,67 @@ describe("buildCanonicalBody field validation", () => {
     expectCode("UNSUPPORTED_MODEL", () =>
       build({ ...BASE_INPUT, model: "claude-synthetic-mismatch" }),
     );
+  });
+
+  it("rejects a non-string value routed through requireString", () => {
+    const input: unknown = {
+      ...BASE_INPUT,
+      tools: [{ name: 1, input_schema: {} }],
+    };
+    expectCode("INVALID_INPUT", () => build(input));
+  });
+
+  it("rejects a non-text block in a tool-result content array", () => {
+    const input: unknown = {
+      ...BASE_INPUT,
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "tool_use", id: "id", name: "tool", input: {} }],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "id",
+              content: [{ type: "image", text: "not text" }],
+            },
+          ],
+        },
+      ],
+    };
+    expectCode("INVALID_INPUT", () => build(input));
+  });
+
+  it("rejects a tool-use block whose type changes after dispatch", () => {
+    const input: unknown = {
+      ...BASE_INPUT,
+      messages: [
+        { role: "assistant", content: [changingTypeBlock("tool_use")] },
+      ],
+    };
+    expectCode("INVALID_INPUT", () => build(input));
+  });
+
+  it("rejects a tool-result block whose type changes after dispatch", () => {
+    const input: unknown = {
+      ...BASE_INPUT,
+      messages: [{ role: "user", content: [changingTypeBlock("tool_result")] }],
+    };
+    expectCode("INVALID_INPUT", () => build(input));
+  });
+
+  it("rejects a non-array system value", () => {
+    const systemBlocks: unknown = {};
+    expectCode("INVALID_INPUT", () =>
+      build(BASE_INPUT, RESOLVED_MODEL, systemBlocks),
+    );
+  });
+
+  it("rejects a non-array tools value", () => {
+    const input: unknown = { ...BASE_INPUT, tools: {} };
+    expectCode("INVALID_INPUT", () => build(input));
   });
 });
 

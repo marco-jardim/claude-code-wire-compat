@@ -184,4 +184,16 @@ describe("buildCanonicalSystem validation", () => {
       buildCanonicalSystem(invalidInput([entry]), BILLING, IDENTITY)[2],
     ).toEqual({ type: "text", text: "x" });
   });
+
+  it("rejects input whose cumulative property-key size is oversized", () => {
+    const oversizedInput: unknown = { ["x".repeat(1_000_001)]: true };
+
+    expect(() => {
+      Reflect.apply(buildCanonicalSystem, undefined, [
+        oversizedInput,
+        BILLING,
+        IDENTITY,
+      ]);
+    }).toThrow(expect.objectContaining({ code: "INPUT_TOO_LARGE" }));
+  });
 });

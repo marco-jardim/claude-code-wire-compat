@@ -328,9 +328,8 @@ function metadata(value: unknown): Readonly<Record<string, JsonValue>> {
   if (hasOwn(record, "user_id") && typeof record["user_id"] !== "string") {
     fail("INVALID_INPUT");
   }
-  const result = canonicalJson(record);
-  if (!isRecord(result)) fail("INVALID_INPUT");
-  return result;
+  // canonicalJsonObject returns a record by construction.
+  return canonicalJsonObject(record);
 }
 
 function deepFreeze<T>(value: T): T {
