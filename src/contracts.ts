@@ -6,32 +6,217 @@ export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
   JsonPrimitive | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 
+export interface CacheControlEphemeral {
+  readonly type: "ephemeral";
+  readonly ttl?: "5m" | "1h";
+}
+
+/** Pre-RC3 package compatibility extension; SDK-derived block types do not use it. */
+export interface TextBlockCacheControl extends CacheControlEphemeral {
+  readonly scope?: "global";
+}
+
+export interface CitationsConfigParam {
+  readonly enabled?: boolean;
+}
+
+export interface CitationCharLocationParam {
+  readonly cited_text: string;
+  readonly document_index: number;
+  readonly document_title: string | null;
+  readonly end_char_index: number;
+  readonly start_char_index: number;
+  readonly type: "char_location";
+}
+
+export interface CitationContentBlockLocationParam {
+  readonly cited_text: string;
+  readonly document_index: number;
+  readonly document_title: string | null;
+  readonly end_block_index: number;
+  readonly start_block_index: number;
+  readonly type: "content_block_location";
+}
+
+export interface CitationPageLocationParam {
+  readonly cited_text: string;
+  readonly document_index: number;
+  readonly document_title: string | null;
+  readonly end_page_number: number;
+  readonly start_page_number: number;
+  readonly type: "page_location";
+}
+
+export interface CitationSearchResultLocationParam {
+  readonly cited_text: string;
+  readonly end_block_index: number;
+  readonly search_result_index: number;
+  readonly source: string;
+  readonly start_block_index: number;
+  readonly title: string | null;
+  readonly type: "search_result_location";
+}
+
+export interface CitationWebSearchResultLocationParam {
+  readonly cited_text: string;
+  readonly encrypted_index: string;
+  readonly title: string | null;
+  readonly type: "web_search_result_location";
+  readonly url: string;
+}
+
+export type TextCitationParam =
+  | CitationCharLocationParam
+  | CitationPageLocationParam
+  | CitationContentBlockLocationParam
+  | CitationWebSearchResultLocationParam
+  | CitationSearchResultLocationParam;
+
 export interface TextBlock {
-  readonly type: "text";
   readonly text: string;
-  readonly cache_control?: {
-    readonly type: "ephemeral";
-    readonly ttl?: "5m" | "1h";
-    readonly scope?: "global";
-  };
+  readonly type: "text";
+  readonly cache_control?: TextBlockCacheControl | null;
+  readonly citations?: readonly TextCitationParam[] | null;
+}
+
+export interface Base64ImageSource {
+  readonly data: string;
+  readonly media_type: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  readonly type: "base64";
+}
+
+export interface FileImageSource {
+  readonly file_id: string;
+  readonly type: "file";
+}
+
+export interface URLImageSource {
+  readonly type: "url";
+  readonly url: string;
+}
+
+export interface ImageBlock {
+  readonly source: Base64ImageSource | URLImageSource | FileImageSource;
+  readonly type: "image";
+  readonly cache_control?: CacheControlEphemeral | null;
+}
+
+export interface Base64PDFSource {
+  readonly data: string;
+  readonly media_type: "application/pdf";
+  readonly type: "base64";
+}
+
+export interface ContentBlockSource {
+  readonly content: string | readonly (TextBlock | ImageBlock)[];
+  readonly type: "content";
+}
+
+export interface FileDocumentSource {
+  readonly file_id: string;
+  readonly type: "file";
+}
+
+export interface PlainTextSource {
+  readonly data: string;
+  readonly media_type: "text/plain";
+  readonly type: "text";
+}
+
+export interface URLPDFSource {
+  readonly type: "url";
+  readonly url: string;
+}
+
+export interface DocumentBlock {
+  readonly source:
+    | Base64PDFSource
+    | PlainTextSource
+    | ContentBlockSource
+    | URLPDFSource
+    | FileDocumentSource;
+  readonly type: "document";
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly citations?: CitationsConfigParam | null;
+  readonly context?: string | null;
+  readonly title?: string | null;
+}
+
+export interface ThinkingBlock {
+  readonly signature: string;
+  readonly thinking: string;
+  readonly type: "thinking";
+}
+
+export interface RedactedThinkingBlock {
+  readonly data: string;
+  readonly type: "redacted_thinking";
+}
+
+export interface SearchResultBlock {
+  readonly content: readonly TextBlock[];
+  readonly source: string;
+  readonly title: string;
+  readonly type: "search_result";
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly citations?: CitationsConfigParam;
+}
+
+export interface ToolReferenceBlock {
+  readonly tool_name: string;
+  readonly type: "tool_reference";
+  readonly cache_control?: CacheControlEphemeral | null;
+}
+
+export interface DirectCaller {
+  readonly type: "direct";
+}
+
+export interface ServerToolCaller {
+  readonly tool_id: string;
+  readonly type: "code_execution_20250825";
+}
+
+export interface ServerToolCaller20260120 {
+  readonly tool_id: string;
+  readonly type: "code_execution_20260120";
 }
 
 export interface ToolUseBlock {
-  readonly type: "tool_use";
   readonly id: string;
+  readonly input: JsonValue;
   readonly name: string;
-  readonly input: Readonly<Record<string, JsonValue>>;
+  readonly type: "tool_use";
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly caller?: DirectCaller | ServerToolCaller | ServerToolCaller20260120;
 }
 
+export type ToolResultContentBlock =
+  | TextBlock
+  | ImageBlock
+  | SearchResultBlock
+  | DocumentBlock
+  | ToolReferenceBlock;
+
 export interface ToolResultBlock {
-  readonly type: "tool_result";
   readonly tool_use_id: string;
-  readonly content: string | readonly TextBlock[];
+  readonly type: "tool_result";
+  readonly cache_control?: CacheControlEphemeral | null;
+  readonly content?: string | readonly ToolResultContentBlock[];
   readonly is_error?: boolean;
 }
 
-export type MessageContent =
-  string | readonly (TextBlock | ToolUseBlock | ToolResultBlock)[];
+export type MessageContentBlock =
+  | TextBlock
+  | ImageBlock
+  | DocumentBlock
+  | SearchResultBlock
+  | ThinkingBlock
+  | RedactedThinkingBlock
+  | ToolUseBlock
+  | ToolResultBlock;
+
+export type MessageContent = string | readonly MessageContentBlock[];
 export interface Message {
   readonly role: "user" | "assistant";
   readonly content: MessageContent;

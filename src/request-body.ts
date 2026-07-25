@@ -2,12 +2,23 @@
 
 import { ClaudeCodeWireError } from "./contracts.js";
 import type {
+  CacheControlEphemeral,
   ClaudeCodeProtocolProfile,
+  CitationsConfigParam,
+  DocumentBlock,
+  ImageBlock,
   JsonValue,
   Message,
+  MessageContentBlock,
+  RedactedThinkingBlock,
+  SearchResultBlock,
   TextBlock,
+  TextCitationParam,
+  ThinkingBlock,
   ToolDefinition,
+  ToolReferenceBlock,
   ToolResultBlock,
+  ToolResultContentBlock,
   ToolUseBlock,
 } from "./contracts.js";
 import { classifySurrogateAt } from "./unicode.js";
@@ -163,73 +174,401 @@ function validatedJson(value: unknown): JsonValue {
   return validatedJsonObject(value);
 }
 
-function cacheControl(value: unknown): Readonly<Record<string, unknown>> {
+function requireNumber(value: unknown): number {
+  if (typeof value !== "number") fail("INVALID_INPUT");
+  return value;
+}
+
+function requireBoolean(value: unknown): boolean {
+  if (typeof value !== "boolean") fail("INVALID_INPUT");
+  return value;
+}
+
+function requireKeys(
+  record: Record<string, unknown>,
+  allowed: readonly string[],
+  required: readonly string[],
+): void {
+  const allowedKeys = new Set(allowed);
+  for (const key of Object.keys(record)) {
+    if (!allowedKeys.has(key)) fail("INVALID_INPUT");
+  }
+  for (const key of required) {
+    if (!hasOwn(record, key)) fail("INVALID_INPUT");
+  }
+}
+
+function nullable<T>(value: unknown, validate: (item: unknown) => T): T | null {
+  return value === null ? null : validate(value);
+}
+
+function cacheControl(
+  value: unknown,
+  allowScope = false,
+): CacheControlEphemeral {
   const record = requireRecord(value);
-  if (record["type"] !== "ephemeral") fail("INVALID_INPUT");
-  const result: Record<string, unknown> = { type: "ephemeral" };
-  if (hasOwn(record, "ttl")) {
-    if (record["ttl"] !== "5m" && record["ttl"] !== "1h") {
-      fail("INVALID_INPUT");
+  requireKeys(record, allowScope ? ["type", "ttl", "scope"] : ["type", "ttl"], [
+    "type",
+  ]);
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "type") {
+      if (item !== "ephemeral") fail("INVALID_INPUT");
+      entries.push([key, item]);
+    } else if (key === "ttl") {
+      if (item !== "5m" && item !== "1h") fail("INVALID_INPUT");
+      entries.push([key, item]);
+    } else {
+      if (item !== "global") fail("INVALID_INPUT");
+      entries.push([key, item]);
     }
-    result["ttl"] = record["ttl"];
   }
-  if (hasOwn(record, "scope")) {
-    if (record["scope"] !== "global") fail("INVALID_INPUT");
-    result["scope"] = "global";
+  return Object.fromEntries(entries) as unknown as CacheControlEphemeral;
+}
+
+function citationsConfig(value: unknown): CitationsConfigParam {
+  const record = requireRecord(value);
+  requireKeys(record, ["enabled"], []);
+  return Object.fromEntries(
+    Object.keys(record).map((key) => [key, requireBoolean(record[key])]),
+  );
+}
+
+function textCitation(value: unknown): TextCitationParam {
+  const record = requireRecord(value);
+  const type = record["type"];
+  const common = ["cited_text", "type"];
+  let strings: readonly string[];
+  let numbers: readonly string[];
+  let nullableStrings: readonly string[];
+  if (type === "char_location") {
+    strings = ["cited_text"];
+    numbers = ["document_index", "end_char_index", "start_char_index"];
+    nullableStrings = ["document_title"];
+  } else if (type === "content_block_location") {
+    strings = ["cited_text"];
+    numbers = ["document_index", "end_block_index", "start_block_index"];
+    nullableStrings = ["document_title"];
+  } else if (type === "page_location") {
+    strings = ["cited_text"];
+    numbers = ["document_index", "end_page_number", "start_page_number"];
+    nullableStrings = ["document_title"];
+  } else if (type === "search_result_location") {
+    strings = ["cited_text", "source"];
+    numbers = ["end_block_index", "search_result_index", "start_block_index"];
+    nullableStrings = ["title"];
+  } else if (type === "web_search_result_location") {
+    strings = ["cited_text", "encrypted_index", "url"];
+    numbers = [];
+    nullableStrings = ["title"];
+  } else {
+    return fail("INVALID_INPUT");
   }
-  return result;
+  const allowed = [...common, ...strings, ...numbers, ...nullableStrings];
+  requireKeys(record, allowed, allowed);
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "type") entries.push([key, type]);
+    else if (numbers.includes(key)) entries.push([key, requireNumber(item)]);
+    else if (nullableStrings.includes(key))
+      entries.push([key, nullable(item, requireString)]);
+    else entries.push([key, requireString(item)]);
+  }
+  return Object.fromEntries(entries) as unknown as TextCitationParam;
 }
 
 function textBlock(value: unknown): TextBlock {
   const record = requireRecord(value);
+  requireKeys(
+    record,
+    ["text", "type", "cache_control", "citations"],
+    ["text", "type"],
+  );
   if (record["type"] !== "text") fail("INVALID_INPUT");
-  const base = {
-    type: "text",
-    text: requireString(record["text"]),
-  } as const;
-  if (hasOwn(record, "cache_control")) {
-    return {
-      ...base,
-      cache_control: cacheControl(record["cache_control"]),
-    } as TextBlock;
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "text") entries.push([key, requireString(item)]);
+    else if (key === "type") entries.push([key, "text"]);
+    else if (key === "cache_control")
+      entries.push([key, nullable(item, (raw) => cacheControl(raw, true))]);
+    else {
+      if (item === null) entries.push([key, null]);
+      else {
+        if (!Array.isArray(item)) fail("INVALID_INPUT");
+        entries.push([key, item.map((citation) => textCitation(citation))]);
+      }
+    }
   }
-  return base;
+  return Object.fromEntries(entries) as unknown as TextBlock;
+}
+
+function imageBlock(value: unknown): ImageBlock {
+  const record = requireRecord(value);
+  requireKeys(record, ["source", "type", "cache_control"], ["source", "type"]);
+  if (record["type"] !== "image") fail("INVALID_INPUT");
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "type") entries.push([key, "image"]);
+    else if (key === "cache_control")
+      entries.push([key, nullable(item, cacheControl)]);
+    else entries.push([key, imageSource(item)]);
+  }
+  return Object.fromEntries(entries) as unknown as ImageBlock;
+}
+
+function imageSource(value: unknown): ImageBlock["source"] {
+  const record = requireRecord(value);
+  const type = record["type"];
+  const allowed =
+    type === "base64"
+      ? ["data", "media_type", "type"]
+      : type === "file"
+        ? ["file_id", "type"]
+        : type === "url"
+          ? ["type", "url"]
+          : fail("INVALID_INPUT");
+  requireKeys(record, allowed, allowed);
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "type") entries.push([key, type]);
+    else if (key === "media_type") {
+      if (
+        item !== "image/jpeg" &&
+        item !== "image/png" &&
+        item !== "image/gif" &&
+        item !== "image/webp"
+      )
+        fail("INVALID_INPUT");
+      entries.push([key, item]);
+    } else entries.push([key, requireString(item)]);
+  }
+  return Object.fromEntries(entries) as unknown as ImageBlock["source"];
+}
+
+function documentBlock(value: unknown): DocumentBlock {
+  const record = requireRecord(value);
+  requireKeys(
+    record,
+    ["source", "type", "cache_control", "citations", "context", "title"],
+    ["source", "type"],
+  );
+  if (record["type"] !== "document") fail("INVALID_INPUT");
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "source") entries.push([key, documentSource(item)]);
+    else if (key === "type") entries.push([key, "document"]);
+    else if (key === "cache_control")
+      entries.push([key, nullable(item, cacheControl)]);
+    else if (key === "citations")
+      entries.push([key, nullable(item, citationsConfig)]);
+    else entries.push([key, nullable(item, requireString)]);
+  }
+  return Object.fromEntries(entries) as unknown as DocumentBlock;
+}
+
+function documentSource(value: unknown): DocumentBlock["source"] {
+  const record = requireRecord(value);
+  const type = record["type"];
+  let allowed: readonly string[];
+  if (type === "base64" || type === "text")
+    allowed = ["data", "media_type", "type"];
+  else if (type === "content") allowed = ["content", "type"];
+  else if (type === "url") allowed = ["type", "url"];
+  else if (type === "file") allowed = ["file_id", "type"];
+  else return fail("INVALID_INPUT");
+  requireKeys(record, allowed, allowed);
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "type") entries.push([key, type]);
+    else if (key === "media_type") {
+      if (
+        (type === "base64" && item !== "application/pdf") ||
+        (type === "text" && item !== "text/plain")
+      )
+        fail("INVALID_INPUT");
+      entries.push([key, item]);
+    } else if (key === "content") {
+      if (typeof item === "string") entries.push([key, item]);
+      else {
+        if (!Array.isArray(item)) fail("INVALID_INPUT");
+        entries.push([
+          key,
+          item.map((block) => {
+            const blockRecord = requireRecord(block);
+            if (blockRecord["type"] === "text") return textBlock(blockRecord);
+            if (blockRecord["type"] === "image") return imageBlock(blockRecord);
+            return fail("INVALID_INPUT");
+          }),
+        ]);
+      }
+    } else entries.push([key, requireString(item)]);
+  }
+  return Object.fromEntries(entries) as unknown as DocumentBlock["source"];
+}
+
+function thinkingBlock(value: unknown): ThinkingBlock {
+  const record = requireRecord(value);
+  requireKeys(
+    record,
+    ["signature", "thinking", "type"],
+    ["signature", "thinking", "type"],
+  );
+  if (record["type"] !== "thinking") fail("INVALID_INPUT");
+  return Object.fromEntries(
+    Object.keys(record).map((key) => [
+      key,
+      key === "type" ? "thinking" : requireString(record[key]),
+    ]),
+  ) as unknown as ThinkingBlock;
+}
+
+function redactedThinkingBlock(value: unknown): RedactedThinkingBlock {
+  const record = requireRecord(value);
+  requireKeys(record, ["data", "type"], ["data", "type"]);
+  if (record["type"] !== "redacted_thinking") fail("INVALID_INPUT");
+  return Object.fromEntries(
+    Object.keys(record).map((key) => [
+      key,
+      key === "type" ? "redacted_thinking" : requireString(record[key]),
+    ]),
+  ) as unknown as RedactedThinkingBlock;
+}
+
+function searchResultBlock(value: unknown): SearchResultBlock {
+  const record = requireRecord(value);
+  requireKeys(
+    record,
+    ["content", "source", "title", "type", "cache_control", "citations"],
+    ["content", "source", "title", "type"],
+  );
+  if (record["type"] !== "search_result") fail("INVALID_INPUT");
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "content") {
+      if (!Array.isArray(item)) fail("INVALID_INPUT");
+      entries.push([key, item.map((block) => textBlock(block))]);
+    } else if (key === "source" || key === "title")
+      entries.push([key, requireString(item)]);
+    else if (key === "type") entries.push([key, "search_result"]);
+    else if (key === "cache_control")
+      entries.push([key, nullable(item, cacheControl)]);
+    else entries.push([key, citationsConfig(item)]);
+  }
+  return Object.fromEntries(entries) as unknown as SearchResultBlock;
+}
+
+function toolReferenceBlock(value: unknown): ToolReferenceBlock {
+  const record = requireRecord(value);
+  requireKeys(
+    record,
+    ["tool_name", "type", "cache_control"],
+    ["tool_name", "type"],
+  );
+  if (record["type"] !== "tool_reference") fail("INVALID_INPUT");
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "tool_name") entries.push([key, requireString(item)]);
+    else if (key === "type") entries.push([key, "tool_reference"]);
+    else entries.push([key, nullable(item, cacheControl)]);
+  }
+  return Object.fromEntries(entries) as unknown as ToolReferenceBlock;
 }
 
 function toolUseBlock(value: unknown): ToolUseBlock {
   const record = requireRecord(value);
+  requireKeys(
+    record,
+    ["id", "input", "name", "type", "cache_control", "caller"],
+    ["id", "input", "name", "type"],
+  );
   if (record["type"] !== "tool_use") fail("INVALID_INPUT");
-  const input = validatedJsonObject(record["input"]);
-  return {
-    type: "tool_use",
-    id: requireString(record["id"]),
-    name: requireString(record["name"]),
-    input,
-  };
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "id" || key === "name")
+      entries.push([key, requireString(item)]);
+    else if (key === "input") entries.push([key, validatedJson(item)]);
+    else if (key === "type") entries.push([key, "tool_use"]);
+    else if (key === "cache_control")
+      entries.push([key, nullable(item, cacheControl)]);
+    else entries.push([key, toolCaller(item)]);
+  }
+  return Object.fromEntries(entries) as unknown as ToolUseBlock;
+}
+
+function toolCaller(value: unknown): ToolUseBlock["caller"] {
+  const record = requireRecord(value);
+  const type = record["type"];
+  if (type === "direct") {
+    requireKeys(record, ["type"], ["type"]);
+    return { type };
+  }
+  if (type !== "code_execution_20250825" && type !== "code_execution_20260120")
+    return fail("INVALID_INPUT");
+  requireKeys(record, ["tool_id", "type"], ["tool_id", "type"]);
+  return Object.fromEntries(
+    Object.keys(record).map((key) => [
+      key,
+      key === "type" ? type : requireString(record[key]),
+    ]),
+  ) as unknown as NonNullable<ToolUseBlock["caller"]>;
+}
+
+function toolResultContentBlock(value: unknown): ToolResultContentBlock {
+  const record = requireRecord(value);
+  if (record["type"] === "text") return textBlock(record);
+  if (record["type"] === "image") return imageBlock(record);
+  if (record["type"] === "search_result") return searchResultBlock(record);
+  if (record["type"] === "document") return documentBlock(record);
+  if (record["type"] === "tool_reference") return toolReferenceBlock(record);
+  return fail("INVALID_INPUT");
 }
 
 function toolResultBlock(value: unknown): ToolResultBlock {
   const record = requireRecord(value);
+  requireKeys(
+    record,
+    ["tool_use_id", "type", "cache_control", "content", "is_error"],
+    ["tool_use_id", "type"],
+  );
   if (record["type"] !== "tool_result") fail("INVALID_INPUT");
-  const rawContent = record["content"];
-  const content = Array.isArray(rawContent)
-    ? rawContent.map((item) => textBlock(item))
-    : requireString(rawContent);
-  const result: {
-    type: "tool_result";
-    tool_use_id: string;
-    content: string | readonly TextBlock[];
-    is_error?: boolean;
-  } = {
-    type: "tool_result",
-    tool_use_id: requireString(record["tool_use_id"]),
-    content,
-  };
-  if (hasOwn(record, "is_error")) {
-    if (typeof record["is_error"] !== "boolean") fail("INVALID_INPUT");
-    result.is_error = record["is_error"];
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "tool_use_id") entries.push([key, requireString(item)]);
+    else if (key === "type") entries.push([key, "tool_result"]);
+    else if (key === "cache_control")
+      entries.push([key, nullable(item, cacheControl)]);
+    else if (key === "content") {
+      if (typeof item === "string") entries.push([key, item]);
+      else {
+        if (!Array.isArray(item)) fail("INVALID_INPUT");
+        entries.push([key, item.map((block) => toolResultContentBlock(block))]);
+      }
+    } else entries.push([key, requireBoolean(item)]);
   }
-  return result;
+  return Object.fromEntries(entries) as unknown as ToolResultBlock;
+}
+
+function messageContentBlock(value: unknown): MessageContentBlock {
+  const record = requireRecord(value);
+  if (record["type"] === "text") return textBlock(record);
+  if (record["type"] === "image") return imageBlock(record);
+  if (record["type"] === "document") return documentBlock(record);
+  if (record["type"] === "search_result") return searchResultBlock(record);
+  if (record["type"] === "thinking") return thinkingBlock(record);
+  if (record["type"] === "redacted_thinking")
+    return redactedThinkingBlock(record);
+  return fail("INVALID_INPUT");
 }
 
 function messages(value: unknown): readonly Message[] {
@@ -257,7 +596,7 @@ function messages(value: unknown): readonly Message[] {
         resultIds.push(parsed.tool_use_id);
         return parsed;
       }
-      return fail("INVALID_INPUT");
+      return messageContentBlock(blockRecord);
     });
     return { role, content };
   });
@@ -293,7 +632,7 @@ function tools(value: unknown): readonly ToolDefinition[] {
     if (hasOwn(record, "cache_control")) {
       return {
         ...result,
-        cache_control: cacheControl(record["cache_control"]),
+        cache_control: cacheControl(record["cache_control"], true),
       };
     }
     return result;
