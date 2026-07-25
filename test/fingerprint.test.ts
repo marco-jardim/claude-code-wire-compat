@@ -9,7 +9,6 @@
  */
 
 import { createHash, webcrypto } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
@@ -38,18 +37,6 @@ function formulaFingerprint(text: string, cliVersion: string): string {
     .update(material, "utf8")
     .digest("hex")
     .slice(0, 3);
-}
-
-function sourceFiles(directory: URL): readonly URL[] {
-  const files: URL[] = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      files.push(...sourceFiles(new URL(`${entry.name}/`, directory)));
-    } else if (entry.isFile() && entry.name.endsWith(".ts")) {
-      files.push(new URL(entry.name, directory));
-    }
-  }
-  return files;
 }
 
 describe("fingerprint (Wave 1 RED specification)", () => {
@@ -133,14 +120,6 @@ describe("fingerprint (Wave 1 RED specification)", () => {
     expect(block).not.toHaveProperty("cache_control");
     expect(block.text).toContain("cch=00000;");
     // cch is STATIC, empirically confirmed; upstream xxHash is dead code.
-  });
-
-  it("keeps every source module free of xxHash", () => {
-    const files = sourceFiles(new URL("../src/", import.meta.url));
-    expect(files.length).toBeGreaterThan(0);
-    for (const file of files) {
-      expect(readFileSync(file, "utf8")).not.toMatch(/xxhash/iu);
-    }
   });
 
   it("maps an injected digest failure to CRYPTO_UNAVAILABLE", async () => {

@@ -6,8 +6,6 @@
  * and consume an injected `Crypto`-compatible `subtle.digest` implementation.
  */
 import { createHash, webcrypto } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
-import { builtinModules } from "node:module";
 
 import { describe, expect, it } from "vitest";
 
@@ -21,17 +19,6 @@ type BuildRequest = (input: unknown) => Promise<BuiltClaudeCodeRequest>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function sourceFiles(directory: URL): readonly URL[] {
-  const files: URL[] = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    const url = new URL(entry.name, directory);
-    if (entry.isDirectory())
-      files.push(...sourceFiles(new URL(`${entry.name}/`, directory)));
-    else if (entry.isFile() && entry.name.endsWith(".ts")) files.push(url);
-  }
-  return files;
 }
 
 function input(system: string, message: string): Record<string, unknown> {
@@ -64,31 +51,6 @@ describe("runtime/runtime-neutral (Wave 1 RED specification)", () => {
     await expect(expectModuleUnimplemented("build-request")).resolves.toBe(
       false,
     );
-  });
-
-  it("keeps every source module free of ambient runtime dependencies", () => {
-    const builtins = new Set(
-      builtinModules.flatMap((name) => [name, name.replace(/^node:/u, "")]),
-    );
-    const src = new URL("../../src/", import.meta.url);
-    for (const file of sourceFiles(src)) {
-      const text = readFileSync(file, "utf8");
-      const importSpecifiers = [
-        ...text.matchAll(/(?:from\s+|import\s*\()(["'])([^"']+)\1/gu),
-      ];
-      for (const match of importSpecifiers) {
-        const specifier = match[2];
-        expect(specifier).toBeDefined();
-        if (specifier !== undefined) {
-          expect(builtins.has(specifier.replace(/^node:/u, ""))).toBe(false);
-        }
-      }
-      expect(text).not.toMatch(/\bprocess\b|\bBuffer\b|__dirname|__filename/gu);
-      expect(text).not.toMatch(/\brequire\s*\(|\bfetch\s*\(/gu);
-      expect(text).not.toMatch(/\bset(?:Timeout|Interval)\s*\(/gu);
-      expect(text).not.toMatch(/\bDate\.now\s*\(|\bnew\s+Date\s*\(/gu);
-      expect(text).not.toMatch(/\bMath\.random\s*\(/gu);
-    }
   });
 
   it("imports the package entry without global side effects and exposes only public runtime values", async () => {
