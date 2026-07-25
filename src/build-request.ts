@@ -436,6 +436,7 @@ function headerValue(headers: readonly HeaderPair[], name: string): string {
 
 function evidenceRequest(
   input: ClaudeCodeRequestInput,
+  canonicalModelId: string,
 ): ClaudeCodeRequestInput {
   const request: {
     accessToken: string;
@@ -451,7 +452,7 @@ function evidenceRequest(
     metadata?: NonNullable<ClaudeCodeRequestInput["metadata"]>;
   } = {
     accessToken: input.accessToken,
-    model: input.model,
+    model: canonicalModelId,
     maxTokens: input.maxTokens,
     messages: input.messages,
     runtime: input.runtime,
@@ -508,7 +509,7 @@ export async function buildClaudeCodeRequest(
       identity,
     );
     const canonicalBody = buildCanonicalBody(
-      evidenceRequest(validated.source),
+      evidenceRequest(validated.source, resolvedModel.id),
       effectiveModel,
       system,
       metadata,
@@ -534,7 +535,7 @@ export async function buildClaudeCodeRequest(
     const evidence = await buildRedactedEvidence(
       {
         profile: pinnedProfile,
-        request: evidenceRequest(validated.source),
+        request: evidenceRequest(validated.source, resolvedModel.id),
         modelFamily: resolvedModel.family,
         logicalHeaders: headers,
         betaFeatures: betas,
