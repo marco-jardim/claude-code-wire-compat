@@ -67,6 +67,10 @@ function policyErrors(value: PackageManifest): readonly string[] {
     JSON.stringify(value.exports) !==
     JSON.stringify({
       ".": { types: "./dist/index.d.ts", import: "./dist/index.js" },
+      "./profiles/claude-code-2.1.195": {
+        types: "./dist/profiles/claude-code-2.1.195.d.ts",
+        import: "./dist/profiles/claude-code-2.1.195.js",
+      },
     })
   )
     errors.push("explicit exports");
