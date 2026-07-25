@@ -12,4 +12,6 @@ Install with `npm ci`, then run `npm run lint`, `npm run typecheck`, `npm test`,
 
 Mutation testing runs nightly and on demand rather than on every pull request. Run it locally with `npm run test:mutation`; Stryker uses an incremental cache to make repeat runs fast.
 
+`npm run drift:check` compares the pinned profile against a local checkout of the upstream source, so it is a local quality gate. When that checkout is absent, it deliberately exits nonzero with `SOURCE_UNAVAILABLE`; do not suppress or work around that result. CI instead runs the fixture-driven `test/drift` suite.
+
 Keep public commit messages neutral and use Conventional Commits. Changes to the public API must include tests and documentation.

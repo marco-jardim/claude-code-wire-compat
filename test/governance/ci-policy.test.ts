@@ -31,7 +31,7 @@ describe("CI policy", () => {
     "npm run pack:check",
     "license-checker-rseidelsohn",
     "gitleaks",
-    "npm run drift:check",
+    "npx vitest run test/drift",
   ])("contains quality gate %s", (gate) => {
     expect(ci).toContain(gate);
   });
