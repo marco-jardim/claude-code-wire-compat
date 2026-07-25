@@ -48,7 +48,7 @@
     "test:coverage": "vitest run --coverage",
     "test:mutation": "stryker run",
     "pack:check": "npm pack --dry-run && publint && attw --pack . --profile esm-only",
-    "drift:check": "node -e \"console.log('Offline drift verification is introduced with the frozen profile')\""
+    "drift:check": "node scripts/verify-drift.mjs"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
@@ -59,6 +59,7 @@
     "@vitest/coverage-v8": "4.1.10",
     "eslint": "10.8.0",
     "fast-check": "4.9.0",
+    "globals": "17.7.0",
     "license-checker-rseidelsohn": "5.0.1",
     "miniflare": "4.20260722.0",
     "prettier": "3.9.6",

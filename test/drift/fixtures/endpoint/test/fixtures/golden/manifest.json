@@ -1,0 +1,7 @@
+{
+  "fixtures": {
+    "outgoing-foreground.json": "8d6503cad96d1789dbdbf1c3b8a447dabf5d9a1181d69fbb5f153f23a885b7c9",
+    "outgoing-canary-context-hint-off.json": "7fb1a118ec075b0767c586eb2e2c9e332afe2ca1fb4f6f351361b091a90835da",
+    "decision-context-hint-rejected.json": "6957d363e1e9512eb1a8d2c7170fa208b92e28460e7fb3b8576aa3814cdf4582"
+  }
+}
