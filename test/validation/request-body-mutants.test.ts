@@ -1,0 +1,671 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { describe, expect, it } from "vitest";
+
+import { composeBetas } from "../../src/betas.js";
+import { ClaudeCodeWireError } from "../../src/contracts.js";
+import type { ClaudeCodeWireErrorCode } from "../../src/contracts.js";
+import { resolveModel } from "../../src/models.js";
+import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
+import { buildCanonicalBody } from "../../src/request-body.js";
+
+const model = {
+  id: "m",
+  capabilities: {
+    contextHint: true,
+    adaptiveThinking: true,
+    effort: true,
+  },
+} as const;
+
+const baseInput = () => ({
+  maxTokens: 1,
+  messages: [{ role: "user", content: "ok" }],
+});
+
+function build(
+  input: unknown = baseInput(),
+  resolvedModel: unknown = model,
+  system: unknown = [],
+  metadata: unknown = {},
+) {
+  return buildCanonicalBody(input, resolvedModel, system, metadata);
+}
+
+function expectWireCode(action: () => unknown, code: ClaudeCodeWireErrorCode) {
+  try {
+    action();
+  } catch (error: unknown) {
+    expect(error).toBeInstanceOf(ClaudeCodeWireError);
+    if (!(error instanceof ClaudeCodeWireError)) throw error;
+    expect(error.code).toBe(code);
+    return error;
+  }
+  throw new Error(`Expected ClaudeCodeWireError ${code}`);
+}
+
+function expectTypeError(action: () => unknown, message: string) {
+  try {
+    action();
+  } catch (error: unknown) {
+    expect(error).toBeInstanceOf(TypeError);
+    if (!(error instanceof TypeError)) throw error;
+    expect(error.message).toBe(message);
+    return;
+  }
+  throw new Error(`Expected TypeError: ${message}`);
+}
+
+function nestedValue(depth: number): unknown {
+  let value: unknown = "leaf";
+  for (let index = 0; index < depth; index += 1) value = { child: value };
+  return value;
+}
+
+function capabilities(
+  overrides: Partial<{
+    contextHint: boolean;
+    adaptiveThinking: boolean;
+    effort: boolean;
+    interleavedThinking: boolean;
+  }> = {},
+) {
+  return {
+    contextHint: false,
+    adaptiveThinking: false,
+    effort: false,
+    interleavedThinking: false,
+    ...overrides,
+  };
+}
+
+describe("request body inspection mutation boundaries", () => {
+  it.each([
+    ["nul", "\u0000"],
+    ["backspace boundary", "\u0008"],
+    ["vertical tab", "\u000b"],
+    ["form feed", "\u000c"],
+    ["shift out boundary", "\u000e"],
+    ["unit separator boundary", "\u001f"],
+    ["delete", "\u007f"],
+  ])("rejects the %s control character", (_name, content) => {
+    expectWireCode(
+      () => build({ maxTokens: 1, messages: [{ role: "user", content }] }),
+      "INVALID_INPUT",
+    );
+  });
+
+  it.each(["\u0009", "\u000a", "\u000d", "\u0020", "\u007e"])(
+    "accepts the control-character boundary %j",
+    (content) => {
+      expect(
+        build({ maxTokens: 1, messages: [{ role: "user", content }] }),
+      ).toMatchObject({ messages: [{ role: "user", content }] });
+    },
+  );
+
+  it.each([
+    ["high surrogate lower boundary", "\ud800"],
+    ["high surrogate upper boundary", "\udbff"],
+    ["low surrogate lower boundary", "\udc00"],
+    ["low surrogate upper boundary", "\udfff"],
+    ["high surrogate followed by a non-low surrogate", "\ud800x"],
+  ])("rejects an unpaired %s", (_name, content) => {
+    expectWireCode(
+      () => build({ maxTokens: 1, messages: [{ role: "user", content }] }),
+      "INVALID_UNICODE",
+    );
+  });
+
+  it.each(["\ud800\udc00", "\ud800\udfff", "\udbff\udc00", "\udbff\udfff"])(
+    "accepts the paired-surrogate boundary %j",
+    (content) => {
+      expect(
+        build({ maxTokens: 1, messages: [{ role: "user", content }] }),
+      ).toMatchObject({ messages: [{ role: "user", content }] });
+    },
+  );
+
+  it("distinguishes the exact aggregate string-size limit from one over", () => {
+    const exactlyAtLimit = "x".repeat(999_919);
+    const oneOverLimit = "x".repeat(999_920);
+
+    expect(
+      build({
+        maxTokens: 1,
+        messages: [{ role: "user", content: exactlyAtLimit }],
+      }),
+    ).toMatchObject({ messages: [{ content: exactlyAtLimit }] });
+    expectWireCode(
+      () =>
+        build({
+          maxTokens: 1,
+          messages: [{ role: "user", content: oneOverLimit }],
+        }),
+      "INPUT_TOO_LARGE",
+    );
+  });
+
+  it("distinguishes the exact nesting limit from one over", () => {
+    expect(build(baseInput(), model, [], nestedValue(100))).toHaveProperty(
+      "metadata",
+    );
+    expectWireCode(
+      () => build(baseInput(), model, [], nestedValue(101)),
+      "INPUT_TOO_DEEP",
+    );
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "rejects non-finite number %s",
+    (value) => {
+      expectWireCode(
+        () => build(baseInput(), model, [], { value }),
+        "INVALID_INPUT",
+      );
+    },
+  );
+
+  it("rejects cyclic input with the specific cyclic-input code", () => {
+    const metadata: { self?: unknown } = {};
+    metadata.self = metadata;
+    expectWireCode(
+      () => build(baseInput(), model, [], metadata),
+      "CYCLIC_INPUT",
+    );
+  });
+
+  it("rejects a sparse array rather than silently canonicalizing its hole", () => {
+    const messages = new Array<unknown>(1);
+    expectWireCode(() => build({ maxTokens: 1, messages }), "INVALID_INPUT");
+  });
+
+  it("rejects objects with custom prototypes", () => {
+    class CustomMetadata {
+      readonly value = "own";
+    }
+    const metadata = new CustomMetadata();
+    expectWireCode(
+      () => build(baseInput(), model, [], metadata),
+      "INVALID_INPUT",
+    );
+  });
+
+  it.each(["__proto__", "prototype", "constructor"])(
+    "rejects the own forbidden key %s",
+    (key) => {
+      const metadata = {};
+      Object.defineProperty(metadata, key, {
+        enumerable: true,
+        value: "unsafe",
+      });
+      expectWireCode(
+        () => build(baseInput(), model, [], metadata),
+        "INVALID_INPUT",
+      );
+    },
+  );
+
+  it("rejects accessor properties without invoking them", () => {
+    let invoked = false;
+    const metadata = {};
+    Object.defineProperty(metadata, "secret", {
+      enumerable: true,
+      get() {
+        invoked = true;
+        return "leak";
+      },
+    });
+    expectWireCode(
+      () => build(baseInput(), model, [], metadata),
+      "INVALID_INPUT",
+    );
+    expect(invoked).toBe(false);
+  });
+});
+
+describe("request body canonicalization mutation boundaries", () => {
+  it("sorts nested JSON keys and preserves every JSON primitive exactly", () => {
+    const result = build(baseInput(), model, [], {
+      z: true,
+      a: null,
+      nested: { z: "last", a: 7, middle: false },
+      list: [null, "text", 3, true, false],
+    });
+    const metadata = result["metadata"];
+    expect(metadata).toEqual({
+      a: null,
+      list: [null, "text", 3, true, false],
+      nested: { a: 7, middle: false, z: "last" },
+      z: true,
+    });
+    expect(Object.keys(metadata as object)).toEqual([
+      "a",
+      "list",
+      "nested",
+      "z",
+    ]);
+    expect(
+      Object.keys((metadata as Record<string, unknown>)["nested"] as object),
+    ).toEqual(["a", "middle", "z"]);
+  });
+
+  it.each(["5m", "1h"])("preserves the accepted cache ttl %s", (ttl) => {
+    const result = build({
+      maxTokens: 1,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "cached",
+              cache_control: { type: "ephemeral", ttl },
+            },
+          ],
+        },
+      ],
+    });
+    expect(result["messages"]).toEqual([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "cached",
+            cache_control: { type: "ephemeral", ttl },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it.each(["", "5M", "30m"])("rejects the invalid cache ttl %j", (ttl) => {
+    expectWireCode(
+      () =>
+        build({
+          maxTokens: 1,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "cached",
+                  cache_control: { type: "ephemeral", ttl },
+                },
+              ],
+            },
+          ],
+        }),
+      "INVALID_INPUT",
+    );
+  });
+
+  it("rejects a non-tool-result block instead of parsing it as one", () => {
+    expectWireCode(
+      () =>
+        build({
+          maxTokens: 1,
+          messages: [
+            { role: "user", content: [{ type: "unknown", content: "x" }] },
+          ],
+        }),
+      "INVALID_INPUT",
+    );
+  });
+
+  it("rejects duplicate tool-use ids", () => {
+    const toolUse = { type: "tool_use", id: "same", name: "tool", input: {} };
+    expectWireCode(
+      () =>
+        build({
+          maxTokens: 1,
+          messages: [{ role: "assistant", content: [toolUse, toolUse] }],
+        }),
+      "INVALID_INPUT",
+    );
+  });
+
+  it("parses a tool result and verifies its tool-use relationship", () => {
+    const input = {
+      maxTokens: 1,
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "call-1",
+              name: "tool",
+              input: { z: 1, a: 2 },
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call-1",
+              content: "done",
+              is_error: false,
+            },
+          ],
+        },
+      ],
+    };
+    expect(build(input)["messages"]).toEqual(
+      input.messages.map((message) =>
+        message.role === "assistant"
+          ? {
+              ...message,
+              content: [{ ...message.content[0], input: { a: 2, z: 1 } }],
+            }
+          : message,
+      ),
+    );
+  });
+
+  it.each([
+    [
+      { contextHint: "yes", adaptiveThinking: true, effort: true },
+      "contextHint",
+    ],
+    [
+      { contextHint: true, adaptiveThinking: "yes", effort: true },
+      "adaptiveThinking",
+    ],
+  ])("rejects a non-boolean model capability (%s)", (badCapabilities) => {
+    expectWireCode(
+      () => build(baseInput(), { id: "m", capabilities: badCapabilities }),
+      "INVALID_INPUT",
+    );
+  });
+
+  it("rejects a deliberately mismatched input and resolved model", () => {
+    expectWireCode(
+      () => build({ ...baseInput(), model: "different" }, model),
+      "UNSUPPORTED_MODEL",
+    );
+  });
+});
+
+describe("request body capability and freeze behavior", () => {
+  it("enables context hints only when request, model, and profile all enable it", () => {
+    const requested = { ...baseInput(), capabilities: { contextHint: true } };
+    const enabled = buildCanonicalBody(
+      requested,
+      model,
+      [],
+      {},
+      CLAUDE_CODE_2_1_195_PROFILE,
+    );
+    expect(enabled["context_hint"]).toEqual({ enabled: true });
+
+    expect(
+      buildCanonicalBody(
+        baseInput(),
+        model,
+        [],
+        {},
+        CLAUDE_CODE_2_1_195_PROFILE,
+      ),
+    ).not.toHaveProperty("context_hint");
+    expect(
+      buildCanonicalBody(
+        requested,
+        {
+          ...model,
+          capabilities: { ...model.capabilities, contextHint: false },
+        },
+        [],
+        {},
+        CLAUDE_CODE_2_1_195_PROFILE,
+      ),
+    ).not.toHaveProperty("context_hint");
+    expect(build(requested)).not.toHaveProperty("context_hint");
+  });
+
+  it("does not mistake malformed or false context-hint requests for true", () => {
+    for (const requested of [false, "true", 1, null, {}]) {
+      const input = {
+        ...baseInput(),
+        capabilities: { contextHint: requested },
+      };
+      const result = buildCanonicalBody(
+        input,
+        model,
+        [],
+        {},
+        CLAUDE_CODE_2_1_195_PROFILE,
+      );
+      expect(result).not.toHaveProperty("context_hint");
+    }
+    const result = buildCanonicalBody(
+      { ...baseInput(), capabilities: null },
+      model,
+      [],
+      {},
+      CLAUDE_CODE_2_1_195_PROFILE,
+    );
+    expect(result).not.toHaveProperty("context_hint");
+  });
+
+  it("inspects a supplied profile and rejects cycles inside it", () => {
+    const cycle: unknown[] = [];
+    cycle.push(cycle);
+    const profile = { ...CLAUDE_CODE_2_1_195_PROFILE, cycle };
+    expectWireCode(
+      () => buildCanonicalBody(baseInput(), model, [], {}, profile),
+      "CYCLIC_INPUT",
+    );
+  });
+
+  it("distinguishes enabled and adaptive thinking and effort output", () => {
+    const enabled = build({
+      ...baseInput(),
+      thinking: { type: "enabled", budgetTokens: 256 },
+      effort: "high",
+    });
+    expect(enabled["thinking"]).toEqual({
+      type: "enabled",
+      budget_tokens: 256,
+    });
+    expect(enabled).not.toHaveProperty("temperature");
+    expect(enabled).not.toHaveProperty("output_config");
+
+    const adaptive = build({
+      ...baseInput(),
+      thinking: { type: "adaptive" },
+      effort: "high",
+    });
+    expect(adaptive["thinking"]).toEqual({ type: "adaptive" });
+    expect(adaptive["output_config"]).toEqual({ effort: "high" });
+    expect(adaptive).not.toHaveProperty("temperature");
+  });
+
+  it("rejects adaptive thinking when the model lacks the capability", () => {
+    expectWireCode(
+      () =>
+        build(
+          { ...baseInput(), thinking: { type: "adaptive" } },
+          {
+            ...model,
+            capabilities: { ...model.capabilities, adaptiveThinking: false },
+          },
+        ),
+      "INVALID_THINKING",
+    );
+  });
+
+  it("deep-freezes the full canonical result without treating primitives as objects", () => {
+    const result = build(
+      {
+        ...baseInput(),
+        tools: [
+          { name: "tool", input_schema: { z: [1, { nested: true }], a: null } },
+        ],
+      },
+      model,
+      ["system"],
+      { nested: { array: [1, "two", false] } },
+    );
+    const metadata = result["metadata"] as Record<string, unknown>;
+    const nested = metadata["nested"] as Record<string, unknown>;
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(Object.isFrozen(result["messages"])).toBe(true);
+    expect(Object.isFrozen(result["tools"])).toBe(true);
+    expect(Object.isFrozen(metadata)).toBe(true);
+    expect(Object.isFrozen(nested)).toBe(true);
+    expect(Object.isFrozen(nested["array"])).toBe(true);
+  });
+});
+
+describe("beta composition mutants", () => {
+  const alwaysEnabled = [
+    "oauth-2025-04-20",
+    "claude-code-20250219",
+    "prompt-caching-scope-2026-01-05",
+    "extended-cache-ttl-2025-04-11",
+    "context-management-2025-06-27",
+    "web-search-2025-03-05",
+    "advisor-tool-2026-03-01",
+    "redact-thinking-2026-02-12",
+    "thinking-token-count-2026-05-13",
+  ];
+
+  it("returns the exact ordered defaults without context hint", () => {
+    expect(
+      composeBetas({ capabilities: capabilities(), effortRequested: false }),
+    ).toEqual(alwaysEnabled);
+  });
+
+  it("places effort immediately after context management when requested", () => {
+    const result = composeBetas({
+      capabilities: capabilities({ effort: true }),
+      effortRequested: true,
+    });
+    expect(result).toEqual([
+      ...alwaysEnabled.slice(0, 5),
+      "effort-2025-11-24",
+      ...alwaysEnabled.slice(5),
+    ]);
+  });
+
+  it("returns exact ordered optional betas for all capabilities", () => {
+    const result = composeBetas({
+      capabilities: capabilities({
+        contextHint: true,
+        effort: true,
+        interleavedThinking: true,
+      }),
+      effortRequested: true,
+      contextHintRequested: true,
+    });
+    expect(result).toEqual([
+      ...alwaysEnabled.slice(0, 2),
+      "interleaved-thinking-2025-05-14",
+      ...alwaysEnabled.slice(2, 5),
+      "effort-2025-11-24",
+      ...alwaysEnabled.slice(5, 7),
+      "context-hint-2026-04-09",
+      ...alwaysEnabled.slice(7),
+    ]);
+  });
+
+  it("rejects malformed context-hint requests with exact safe details", () => {
+    const input = {
+      capabilities: capabilities({ contextHint: true }),
+      effortRequested: false,
+      contextHintRequested: false,
+    };
+    Object.defineProperty(input, "contextHintRequested", { value: "yes" });
+    const error = expectWireCode(
+      () => composeBetas(input),
+      "UNSUPPORTED_CAPABILITY",
+    );
+    expect(error.safeDetails).toEqual({ capability: "contextHint" });
+  });
+
+  it.each([
+    ["effort", { capabilities: capabilities(), effortRequested: true }],
+    [
+      "contextHint",
+      {
+        capabilities: capabilities(),
+        effortRequested: false,
+        contextHintRequested: true,
+      },
+    ],
+  ])("reports the exact unsupported capability %s", (capability, input) => {
+    const error = expectWireCode(
+      () => composeBetas(input),
+      "UNSUPPORTED_CAPABILITY",
+    );
+    expect(error.safeDetails).toEqual({ capability });
+  });
+});
+
+describe("model and error-contract mutants", () => {
+  it("includes the rejected model in unsupported-model safe details", () => {
+    const error = expectWireCode(
+      () => resolveModel("definitely-not-a-model"),
+      "UNSUPPORTED_MODEL",
+    );
+    expect(error.safeDetails).toEqual({ model: "definitely-not-a-model" });
+    expect(error.toJSON()).toEqual({
+      name: "ClaudeCodeWireError",
+      code: "UNSUPPORTED_MODEL",
+      safeDetails: { model: "definitely-not-a-model" },
+    });
+  });
+
+  it("rejects symbol safe-detail keys with the exact contract message", () => {
+    const details: Record<string, string> = {};
+    Object.defineProperty(details, Symbol("secret"), {
+      enumerable: true,
+      value: "hidden",
+    });
+    expectTypeError(
+      () => new ClaudeCodeWireError("INVALID_INPUT", details),
+      "safeDetails contains a forbidden key.",
+    );
+  });
+
+  it.each(["__proto__", "prototype", "constructor"])(
+    "rejects the forbidden safe-detail key %s with the exact contract message",
+    (key) => {
+      const details: Record<string, string> = {};
+      Object.defineProperty(details, key, {
+        enumerable: true,
+        value: "hidden",
+      });
+      expectTypeError(
+        () => new ClaudeCodeWireError("INVALID_INPUT", details),
+        "safeDetails contains a forbidden key.",
+      );
+    },
+  );
+
+  it("rejects non-primitive safe-detail values with the exact contract message", () => {
+    const details: Record<string, string> = { value: "initially safe" };
+    Object.defineProperty(details, "value", { value: { nested: true } });
+    expectTypeError(
+      () => new ClaudeCodeWireError("INVALID_INPUT", details),
+      "safeDetails values must be primitive-safe.",
+    );
+  });
+
+  it("copies and freezes primitive-safe details", () => {
+    const details = { text: "safe", count: 2, enabled: true };
+    const error = new ClaudeCodeWireError("INVALID_INPUT", details);
+    details.text = "changed";
+    expect(error.safeDetails).toEqual({
+      text: "safe",
+      count: 2,
+      enabled: true,
+    });
+    expect(Object.isFrozen(error.safeDetails)).toBe(true);
+  });
+});
