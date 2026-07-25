@@ -36,18 +36,35 @@ export async function createBillingFingerprint(
   const material = `${FINGERPRINT_PREFIX}${firstUserText[4] ?? "0"}${firstUserText[7] ?? "0"}${firstUserText[20] ?? "0"}${cliVersion}`;
   const bytes = new TextEncoder().encode(material);
 
-  let digest: ArrayBuffer;
   try {
-    digest = await cryptoProvider.subtle.digest("SHA-256", bytes);
+    const digest: unknown = await cryptoProvider.subtle.digest(
+      "SHA-256",
+      bytes,
+    );
+
+    let digestBytes: Uint8Array;
+    if (digest instanceof ArrayBuffer) {
+      digestBytes = new Uint8Array(digest);
+    } else if (ArrayBuffer.isView(digest)) {
+      digestBytes = new Uint8Array(
+        digest.buffer,
+        digest.byteOffset,
+        digest.byteLength,
+      );
+    } else {
+      // Unvalidated digests silently corrupt billing fingerprints as "" or "000".
+      throw new ClaudeCodeWireError("CRYPTO_UNAVAILABLE");
+    }
+    if (digestBytes.byteLength !== 32) {
+      throw new ClaudeCodeWireError("CRYPTO_UNAVAILABLE");
+    }
+
+    return Array.from(digestBytes, (byte) => byte.toString(16).padStart(2, "0"))
+      .join("")
+      .slice(0, 3);
   } catch {
     throw new ClaudeCodeWireError("CRYPTO_UNAVAILABLE");
   }
-
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  )
-    .join("")
-    .slice(0, 3);
 }
 
 export async function createBillingBlock(
