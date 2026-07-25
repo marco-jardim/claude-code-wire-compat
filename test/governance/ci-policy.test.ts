@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -46,5 +47,23 @@ describe("CI policy", () => {
     expect(publish).toContain("npm publish --access public");
     expect(publish).toContain("--tag beta");
     expect(publish).toContain("--tag latest");
+  });
+
+  it("pins every GitHub Action to an immutable commit SHA", () => {
+    for (const workflow of [ci, publish]) {
+      const refs = [...workflow.matchAll(/uses:\s*(\S+)/gu)].map(
+        (match) => match[1],
+      );
+      expect(refs.length).toBeGreaterThan(0);
+      for (const ref of refs) {
+        expect(ref).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/u);
+      }
+    }
+  });
+
+  it("verifies the secret scanner download against a pinned checksum", () => {
+    expect(ci).toMatch(/GITLEAKS_SHA256:\s*[0-9a-f]{64}/u);
+    expect(ci).toContain("sha256sum -c -");
+    expect(ci).not.toContain("gitleaks-action");
   });
 });
