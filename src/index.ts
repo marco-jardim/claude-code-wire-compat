@@ -4,10 +4,8 @@
  * Public entry point for the Claude Code wire compatibility package.
  *
  * Only the surfaces listed below are public. The Wave 2 implementation
- * modules — fingerprint, metadata, models, betas, headers, system prompt,
- * request body, redaction and the request orchestrator — are intentionally
- * NOT exported yet: they do not exist, and exporting an absent module would
- * break the build and publish a contract the package cannot honour.
+ * Internal protocol modules remain private; only the documented builder and
+ * parser are exported here.
  *
  * Importing this module has no side effects. It reads no environment, opens
  * no network connection, touches no clock or random source, and holds no
@@ -35,5 +33,10 @@ export type {
 } from "./contracts.js";
 
 export { ClaudeCodeWireError } from "./contracts.js";
+
+export {
+  buildClaudeCodeRequest,
+  parseBuiltClaudeCodeRequest,
+} from "./build-request.js";
 
 export { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
