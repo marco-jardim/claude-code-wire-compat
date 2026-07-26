@@ -22,6 +22,11 @@ const HEADER_NAMES = Object.freeze({
   runtime: "x-stainless-runtime",
   runtimeVersion: "x-stainless-runtime-version",
   timeout: "x-stainless-timeout",
+  stainlessHelper: "x-stainless-helper",
+  remoteContainerId: "x-claude-remote-container-id",
+  remoteSessionId: "x-claude-remote-session-id",
+  clientApp: "x-client-app",
+  additionalProtection: "x-anthropic-additional-protection",
 } as const);
 
 const CANONICAL_NAMES: ReadonlySet<string> = new Set(
@@ -41,6 +46,13 @@ interface ValidatedInput {
   readonly runtime: HeaderRuntime;
   readonly clientRequestId: string;
   readonly betaFeatures: readonly string[];
+  readonly app: "cli" | "cli-bg";
+  readonly stainlessRetryCount: number;
+  readonly stainlessHelper?: string;
+  readonly claudeRemoteContainerId?: string;
+  readonly claudeRemoteSessionId?: string;
+  readonly clientApp?: string;
+  readonly anthropicAdditionalProtection?: string;
   readonly extraHeaders: readonly HeaderPair[];
   readonly profile: ClaudeCodeProtocolProfile;
 }
@@ -132,17 +144,72 @@ function parseProfile(value: unknown): ClaudeCodeProtocolProfile {
   return CLAUDE_CODE_2_1_195_PROFILE;
 }
 
+function parseApp(value: unknown): "cli" | "cli-bg" {
+  if (value !== "cli" && value !== "cli-bg") {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  return value;
+}
+
+function parseRetryCount(value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  return value;
+}
+
+function optionalHeaderString(
+  input: Readonly<Record<string, unknown>>,
+  key: string,
+): string | undefined {
+  const value = input[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.length === 0) {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  return value;
+}
+
 function parseInput(input: unknown): ValidatedInput {
   if (!isRecord(input)) {
     throw new ClaudeCodeWireError("INVALID_INPUT");
   }
+  const stainlessHelper = optionalHeaderString(input, "stainlessHelper");
+  const claudeRemoteContainerId = optionalHeaderString(
+    input,
+    "claudeRemoteContainerId",
+  );
+  const claudeRemoteSessionId = optionalHeaderString(
+    input,
+    "claudeRemoteSessionId",
+  );
+  const clientApp = optionalHeaderString(input, "clientApp");
+  const anthropicAdditionalProtection = optionalHeaderString(
+    input,
+    "anthropicAdditionalProtection",
+  );
   return {
     accessToken: requiredString(input, "accessToken"),
     runtime: parseRuntime(input["runtime"]),
     clientRequestId: requiredString(input, "clientRequestId"),
     betaFeatures: parseBetaFeatures(input["betaFeatures"]),
-    extraHeaders: parseExtraHeaders(input["extraHeaders"]),
+    app: parseApp(input["app"] === undefined ? "cli" : input["app"]),
+    stainlessRetryCount: parseRetryCount(
+      input["stainlessRetryCount"] === undefined
+        ? 0
+        : input["stainlessRetryCount"],
+    ),
+    extraHeaders: parseExtraHeaders(input["extraHeaders"] ?? []),
     profile: parseProfile(input["profile"]),
+    ...(stainlessHelper === undefined ? {} : { stainlessHelper }),
+    ...(claudeRemoteContainerId === undefined
+      ? {}
+      : { claudeRemoteContainerId }),
+    ...(claudeRemoteSessionId === undefined ? {} : { claudeRemoteSessionId }),
+    ...(clientApp === undefined ? {} : { clientApp }),
+    ...(anthropicAdditionalProtection === undefined
+      ? {}
+      : { anthropicAdditionalProtection }),
   };
 }
 
@@ -202,6 +269,15 @@ function assertTokenIsolation(
 
 /** Builds the pinned canonical logical header list. Transport order is not guaranteed. */
 export function buildOrderedHeaders(input: unknown): readonly HeaderPair[] {
+  const appendExtraHeaders =
+    isRecord(input) &&
+    (Object.hasOwn(input, "app") ||
+      Object.hasOwn(input, "stainlessRetryCount") ||
+      Object.hasOwn(input, "stainlessHelper") ||
+      Object.hasOwn(input, "claudeRemoteContainerId") ||
+      Object.hasOwn(input, "claudeRemoteSessionId") ||
+      Object.hasOwn(input, "clientApp") ||
+      Object.hasOwn(input, "anthropicAdditionalProtection"));
   const validated = parseInput(input);
   validateExtraHeaders(validated.extraHeaders, validated.accessToken);
 
@@ -213,14 +289,14 @@ export function buildOrderedHeaders(input: unknown): readonly HeaderPair[] {
     [HEADER_NAMES.authorization, `Bearer ${validated.accessToken}`],
     [HEADER_NAMES.contentType, "application/json"],
     [HEADER_NAMES.userAgent, validated.profile.userAgent],
-    [HEADER_NAMES.app, validated.profile.entrypoint],
+    [HEADER_NAMES.app, validated.app],
     [HEADER_NAMES.sessionId, validated.runtime.sessionId],
     [HEADER_NAMES.clientRequestId, validated.clientRequestId],
     [HEADER_NAMES.arch, validated.runtime.arch],
     [HEADER_NAMES.lang, "js"],
     [HEADER_NAMES.os, validated.runtime.os],
     [HEADER_NAMES.packageVersion, validated.profile.sdkVersion],
-    [HEADER_NAMES.retryCount, "0"],
+    [HEADER_NAMES.retryCount, String(validated.stainlessRetryCount)],
     [HEADER_NAMES.runtime, validated.runtime.runtime],
     [HEADER_NAMES.runtimeVersion, validated.runtime.runtimeVersion],
     [HEADER_NAMES.timeout, "600"],
@@ -230,6 +306,26 @@ export function buildOrderedHeaders(input: unknown): readonly HeaderPair[] {
   for (const [name, value] of values) {
     assertHeaderText(name, value);
     pairs.push(freezePair(name, value));
+  }
+  const dynamicValues = [
+    [HEADER_NAMES.stainlessHelper, validated.stainlessHelper],
+    [HEADER_NAMES.remoteContainerId, validated.claudeRemoteContainerId],
+    [HEADER_NAMES.remoteSessionId, validated.claudeRemoteSessionId],
+    [HEADER_NAMES.clientApp, validated.clientApp],
+    [
+      HEADER_NAMES.additionalProtection,
+      validated.anthropicAdditionalProtection,
+    ],
+  ] as const;
+  for (const [name, value] of dynamicValues) {
+    if (value === undefined) continue;
+    assertHeaderText(name, value);
+    pairs.push(freezePair(name, value));
+  }
+  if (appendExtraHeaders) {
+    for (const [name, value] of validated.extraHeaders) {
+      pairs.push(freezePair(name, value));
+    }
   }
   assertTokenIsolation(pairs, validated.accessToken);
   return Object.freeze(pairs);

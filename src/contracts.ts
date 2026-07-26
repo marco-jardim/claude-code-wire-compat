@@ -643,6 +643,22 @@ export interface ClaudeCodeRequestInput {
   readonly temperature?: number;
   /** Supplies the `x-client-request-id` header. */
   readonly clientRequestId: string;
+  /** Selects the foreground or background Claude Code entrypoint header. */
+  readonly app?: "cli" | "cli-bg";
+  /** Supplies the Stainless retry-count header. */
+  readonly stainlessRetryCount?: number;
+  /** Supplies the Stainless helper header. */
+  readonly stainlessHelper?: string;
+  /** Supplies the Claude remote-container identifier header. */
+  readonly claudeRemoteContainerId?: string;
+  /** Supplies the Claude remote-session identifier header. */
+  readonly claudeRemoteSessionId?: string;
+  /** Supplies the client-application header. */
+  readonly clientApp?: string;
+  /** Supplies the Anthropic additional-protection header. */
+  readonly anthropicAdditionalProtection?: string;
+  /** Appends validated non-canonical headers in caller order. */
+  readonly extraHeaders?: readonly HeaderPair[];
   /** Injects the Web Crypto provider used to hash the request body. */
   readonly crypto?: Pick<Crypto, "subtle">;
 }

@@ -53,6 +53,14 @@ const INPUT_KEYS = new Set([
   "stream",
   "temperature",
   "clientRequestId",
+  "app",
+  "stainlessRetryCount",
+  "stainlessHelper",
+  "claudeRemoteContainerId",
+  "claudeRemoteSessionId",
+  "clientApp",
+  "anthropicAdditionalProtection",
+  "extraHeaders",
   "crypto",
 ]);
 const BUILT_KEYS = new Set(["url", "method", "headers", "body", "evidence"]);
@@ -445,6 +453,35 @@ function headerValue(headers: readonly HeaderPair[], name: string): string {
   return match[1];
 }
 
+function splitDynamicAndExtraHeaders(headers: readonly HeaderPair[]): {
+  readonly stainlessHelper: string | undefined;
+  readonly claudeRemoteContainerId: string | undefined;
+  readonly claudeRemoteSessionId: string | undefined;
+  readonly clientApp: string | undefined;
+  readonly anthropicAdditionalProtection: string | undefined;
+  readonly extraHeaders: readonly HeaderPair[];
+} {
+  const timeoutIndex = headers.findIndex(
+    ([name]) => name === "x-stainless-timeout",
+  );
+  if (timeoutIndex < 0) fail();
+  let cursor = timeoutIndex + 1;
+  function consume(name: string): string | undefined {
+    const pair = headers[cursor];
+    if (pair?.[0] !== name) return undefined;
+    cursor += 1;
+    return pair[1];
+  }
+  return {
+    stainlessHelper: consume("x-stainless-helper"),
+    claudeRemoteContainerId: consume("x-claude-remote-container-id"),
+    claudeRemoteSessionId: consume("x-claude-remote-session-id"),
+    clientApp: consume("x-client-app"),
+    anthropicAdditionalProtection: consume("x-anthropic-additional-protection"),
+    extraHeaders: headers.slice(cursor),
+  };
+}
+
 function evidenceRequest(
   input: ClaudeCodeRequestInput,
   canonicalModelId: string,
@@ -571,7 +608,15 @@ export async function buildClaudeCodeRequest(
       runtime: identity,
       clientRequestId: validated.clientRequestId,
       betaFeatures: betas,
-      extraHeaders: [],
+      app: validated.source.app ?? pinnedProfile.entrypoint,
+      stainlessRetryCount: validated.source.stainlessRetryCount ?? 0,
+      stainlessHelper: validated.source.stainlessHelper,
+      claudeRemoteContainerId: validated.source.claudeRemoteContainerId,
+      claudeRemoteSessionId: validated.source.claudeRemoteSessionId,
+      clientApp: validated.source.clientApp,
+      anthropicAdditionalProtection:
+        validated.source.anthropicAdditionalProtection,
+      extraHeaders: validated.source.extraHeaders ?? [],
       profile: pinnedProfile,
     });
     const body = JSON.stringify(canonicalBody);
@@ -628,6 +673,7 @@ export function parseBuiltClaudeCodeRequest(
     const headers = parseHeaders(ownValue(value, "headers"));
     const evidence = parseEvidence(ownValue(value, "evidence"));
     const sessionId = headerValue(headers, "x-claude-code-session-id");
+    const additionalHeaders = splitDynamicAndExtraHeaders(headers);
     const expectedHeaders = buildOrderedHeaders({
       accessToken: headerValue(headers, "authorization").replace(
         /^Bearer /u,
@@ -642,7 +688,17 @@ export function parseBuiltClaudeCodeRequest(
       },
       clientRequestId: headerValue(headers, "x-client-request-id"),
       betaFeatures: evidence.betaFeatures,
-      extraHeaders: [],
+      app: headerValue(headers, "x-app"),
+      stainlessRetryCount: Number(
+        headerValue(headers, "x-stainless-retry-count"),
+      ),
+      stainlessHelper: additionalHeaders.stainlessHelper,
+      claudeRemoteContainerId: additionalHeaders.claudeRemoteContainerId,
+      claudeRemoteSessionId: additionalHeaders.claudeRemoteSessionId,
+      clientApp: additionalHeaders.clientApp,
+      anthropicAdditionalProtection:
+        additionalHeaders.anthropicAdditionalProtection,
+      extraHeaders: additionalHeaders.extraHeaders,
       profile: pinnedProfile,
     });
     if (JSON.stringify(headers) !== JSON.stringify(expectedHeaders)) fail();
