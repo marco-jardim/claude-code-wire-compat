@@ -52,49 +52,65 @@ describe("models (Wave 1 RED specification)", () => {
     }
     expect(
       Object.keys(CLAUDE_CODE_2_1_195_PROFILE.supportedModels),
-    ).toHaveLength(16);
+    ).toHaveLength(18);
   });
 
   it.each([
-    "claude-3-7-sonnet",
-    "claude-3-5-sonnet",
-    "claude-3-5-haiku",
-    "claude-3-haiku",
-    "claude-3-opus",
-    "claude-fable-5",
-    "claude-mythos-5",
-  ])("resolves new canonical model %s", async (id) => {
-    const resolveModel = await loadWave2Function<ResolveModel>(
-      "models",
-      "resolveModel",
-    );
+    [["claude-opus-5", "opus", true, false, true, true] as const],
+    [["claude-opus-4-5", "opus", true, false, true, true] as const],
+    [["claude-opus-4-5-20251101", "opus", true, false, true, true] as const],
+    [["claude-opus-4-1-20250805", "opus", true, false, false, true] as const],
+    [["claude-sonnet-5", "sonnet", true, false, true, true] as const],
+    [
+      [
+        "claude-sonnet-4-5-20250929",
+        "sonnet",
+        true,
+        false,
+        false,
+        true,
+      ] as const,
+    ],
+    [["claude-haiku-4-5-20251001", "haiku", true, false, false, true] as const],
+  ])(
+    "resolves newly added model %s",
+    async ([
+      id,
+      family,
+      contextHint,
+      adaptiveThinking,
+      effort,
+      interleavedThinking,
+    ]) => {
+      const resolveModel = await loadWave2Function<ResolveModel>(
+        "models",
+        "resolveModel",
+      );
 
-    expect(resolveModel(id).id).toBe(id);
-  });
+      expect(resolveModel(id)).toEqual({
+        id,
+        family,
+        capabilities: {
+          contextHint,
+          adaptiveThinking,
+          effort,
+          interleavedThinking,
+        },
+      });
+    },
+  );
 
-  it.each([
-    ["claude-3.7-sonnet", "claude-3-7-sonnet"],
-    ["claude-3-7-sonnet-20250219", "claude-3-7-sonnet"],
-    ["claude-3.5-sonnet", "claude-3-5-sonnet"],
-    ["claude-3.5-sonnet-v2", "claude-3-5-sonnet"],
-    ["claude-3-5-sonnet-20241022", "claude-3-5-sonnet"],
-    ["claude-3.5-haiku", "claude-3-5-haiku"],
-    ["claude-3-5-haiku-latest", "claude-3-5-haiku"],
-    ["claude-3-5-haiku-20241022", "claude-3-5-haiku"],
-    ["claude-3-5-haiku@20241022", "claude-3-5-haiku"],
-    ["claude-3-haiku-20240307", "claude-3-haiku"],
-    ["anthropic/claude-fable-5", "claude-fable-5"],
-    ["claude-fable-5-experimental", "claude-fable-5"],
-    ["fable_5-preview", "claude-fable-5"],
-    ["mythos.5-preview", "claude-mythos-5"],
-  ])("resolves new alias %s to %s", async (alias, id) => {
-    const resolveModel = await loadWave2Function<ResolveModel>(
-      "models",
-      "resolveModel",
-    );
+  it.each([["anthropic/claude-fable-5", "claude-fable-5"]])(
+    "resolves new alias %s to %s",
+    async (alias, id) => {
+      const resolveModel = await loadWave2Function<ResolveModel>(
+        "models",
+        "resolveModel",
+      );
 
-    expect(resolveModel(alias).id).toBe(id);
-  });
+      expect(resolveModel(alias).id).toBe(id);
+    },
+  );
 
   it("resolves every profile alias to its canonical id", async () => {
     const resolveModel = await loadWave2Function<ResolveModel>(
@@ -121,6 +137,8 @@ describe("models (Wave 1 RED specification)", () => {
     "claude-opus",
     "",
     "evil-claude-opus-4-8-evil",
+    "claude-3-opus",
+    "claude-3-5-haiku-latest",
   ])("fails closed for unsupported model %j", async (model) => {
     const resolveModel = await loadWave2Function<ResolveModel>(
       "models",

@@ -200,16 +200,15 @@ describe("protocol profile override", () => {
     ).rejects.toMatchObject({ code: "INVALID_INPUT" });
   });
 
-  it("omits interleaved thinking for Claude 3 while retaining it for supported models", async () => {
-    const claude3 = await buildClaudeCodeRequest({
-      ...base,
-      model: "claude-3-5-haiku",
-    });
+  it("rejects Claude 3 while retaining interleaved thinking for supported models", async () => {
     const existing = await buildClaudeCodeRequest(base);
 
-    expect(headerValue(claude3.headers, "anthropic-beta")).not.toContain(
-      "interleaved-thinking-2025-05-14",
-    );
+    await expect(
+      buildClaudeCodeRequest({
+        ...base,
+        model: "claude-3-5-haiku",
+      }),
+    ).rejects.toMatchObject({ code: "UNSUPPORTED_MODEL" });
     expect(headerValue(existing.headers, "anthropic-beta")).toContain(
       "interleaved-thinking-2025-05-14",
     );

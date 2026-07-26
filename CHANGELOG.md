@@ -2,7 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.7] - Unreleased
+## [0.1.0-rc.8] - Unreleased
+
+### Fixed
+
+- The five `claude-3` entries added in `0.1.0-rc.7` are removed. They were wrong twice over. Their
+  canonical keys were invented spellings rather than real wire identifiers, and because
+  `resolveModel` rewrites the outgoing `model` field to the canonical key, a caller sending
+  `claude-3-5-haiku-latest` would have had that field silently replaced with `claude-3-5-haiku`,
+  discarding the snapshot it named. Independently of that, the pinned endpoint does not serve any
+  `claude-3` identifier at all: those models are reachable only through gateway and cloud providers,
+  each of which prefixes the identifier differently, and those endpoints are out of scope for this
+  profile. `claude-3` identifiers therefore fail closed with `UNSUPPORTED_MODEL` again.
+- The `claude-fable-5` aliases `claude-fable-5-experimental` and `fable_5-preview`, and the
+  `claude-mythos-5` alias `mythos.5-preview`, are removed. No evidence establishes that they name the
+  same model as the identifier they canonicalised onto, and canonicalisation would have rerouted them
+  silently.
+
+### Added
+
+- Seven first-party model identifiers join the pinned allowlist, taking it from sixteen entries to
+  eighteen: `claude-opus-5`, `claude-opus-4-5`, `claude-opus-4-5-20251101`,
+  `claude-opus-4-1-20250805`, `claude-sonnet-5`, `claude-sonnet-4-5-20250929` and
+  `claude-haiku-4-5-20251001`. The allowlist now covers every model the pinned endpoint advertises.
+  Four of them declare `effort` without `adaptiveThinking`, a combination no earlier entry carried;
+  the two upstream predicates are independent.
+- Every canonical key is a real wire identifier and every alias is a non-wire spelling that
+  canonicalises onto one. That invariant is now stated in the profile, because `resolveModel` rewrites
+  the outgoing `model` field to the canonical key and an alias that names a distinct model would
+  silently reroute the request.
+
+## [0.1.0-rc.7] - 2026-07-26
 
 ### Added
 

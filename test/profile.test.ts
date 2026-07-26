@@ -20,6 +20,16 @@ const EXPECTED_BETAS = [
 ] as const;
 
 const EXPECTED_MODELS = {
+  "claude-opus-5": {
+    family: "opus",
+    aliases: ["opus-5"],
+    capabilities: {
+      contextHint: true,
+      adaptiveThinking: false,
+      effort: true,
+      interleavedThinking: true,
+    },
+  },
   "claude-opus-4-8": {
     family: "opus",
     aliases: ["opus-4-8", "claude-opus-4.8", "opus-4.8"],
@@ -50,9 +60,39 @@ const EXPECTED_MODELS = {
       interleavedThinking: true,
     },
   },
+  "claude-opus-4-5": {
+    family: "opus",
+    aliases: ["opus-4-5", "claude-opus-4.5", "opus-4.5"],
+    capabilities: {
+      contextHint: true,
+      adaptiveThinking: false,
+      effort: true,
+      interleavedThinking: true,
+    },
+  },
+  "claude-opus-4-5-20251101": {
+    family: "opus",
+    aliases: [],
+    capabilities: {
+      contextHint: true,
+      adaptiveThinking: false,
+      effort: true,
+      interleavedThinking: true,
+    },
+  },
   "claude-opus-4-1": {
     family: "opus",
     aliases: ["opus-4-1", "claude-opus-4.1", "opus-4.1"],
+    capabilities: {
+      contextHint: true,
+      adaptiveThinking: false,
+      effort: false,
+      interleavedThinking: true,
+    },
+  },
+  "claude-opus-4-1-20250805": {
+    family: "opus",
+    aliases: [],
     capabilities: {
       contextHint: true,
       adaptiveThinking: false,
@@ -70,6 +110,16 @@ const EXPECTED_MODELS = {
       interleavedThinking: true,
     },
   },
+  "claude-sonnet-5": {
+    family: "sonnet",
+    aliases: ["sonnet-5"],
+    capabilities: {
+      contextHint: true,
+      adaptiveThinking: false,
+      effort: true,
+      interleavedThinking: true,
+    },
+  },
   "claude-sonnet-4-6": {
     family: "sonnet",
     aliases: ["sonnet-4-6", "claude-sonnet-4.6", "sonnet-4.6"],
@@ -83,6 +133,16 @@ const EXPECTED_MODELS = {
   "claude-sonnet-4-5": {
     family: "sonnet",
     aliases: ["sonnet-4-5", "claude-sonnet-4.5", "sonnet-4.5"],
+    capabilities: {
+      contextHint: true,
+      adaptiveThinking: false,
+      effort: false,
+      interleavedThinking: true,
+    },
+  },
+  "claude-sonnet-4-5-20250929": {
+    family: "sonnet",
+    aliases: [],
     capabilities: {
       contextHint: true,
       adaptiveThinking: false,
@@ -110,72 +170,19 @@ const EXPECTED_MODELS = {
       interleavedThinking: true,
     },
   },
-  "claude-3-7-sonnet": {
-    family: "sonnet",
-    aliases: ["claude-3.7-sonnet", "claude-3-7-sonnet-20250219"],
-    capabilities: {
-      contextHint: false,
-      adaptiveThinking: false,
-      effort: false,
-      interleavedThinking: false,
-    },
-  },
-  "claude-3-5-sonnet": {
-    family: "sonnet",
-    aliases: [
-      "claude-3.5-sonnet",
-      "claude-3.5-sonnet-v2",
-      "claude-3-5-sonnet-20241022",
-    ],
-    capabilities: {
-      contextHint: false,
-      adaptiveThinking: false,
-      effort: false,
-      interleavedThinking: false,
-    },
-  },
-  "claude-3-5-haiku": {
+  "claude-haiku-4-5-20251001": {
     family: "haiku",
-    aliases: [
-      "claude-3.5-haiku",
-      "claude-3-5-haiku-latest",
-      "claude-3-5-haiku-20241022",
-      "claude-3-5-haiku@20241022",
-    ],
-    capabilities: {
-      contextHint: false,
-      adaptiveThinking: false,
-      effort: false,
-      interleavedThinking: false,
-    },
-  },
-  "claude-3-haiku": {
-    family: "haiku",
-    aliases: ["claude-3-haiku-20240307"],
-    capabilities: {
-      contextHint: false,
-      adaptiveThinking: false,
-      effort: false,
-      interleavedThinking: false,
-    },
-  },
-  "claude-3-opus": {
-    family: "opus",
     aliases: [],
     capabilities: {
-      contextHint: false,
+      contextHint: true,
       adaptiveThinking: false,
       effort: false,
-      interleavedThinking: false,
+      interleavedThinking: true,
     },
   },
   "claude-fable-5": {
     family: "fable",
-    aliases: [
-      "anthropic/claude-fable-5",
-      "claude-fable-5-experimental",
-      "fable_5-preview",
-    ],
+    aliases: ["anthropic/claude-fable-5"],
     capabilities: {
       contextHint: true,
       adaptiveThinking: true,
@@ -185,7 +192,7 @@ const EXPECTED_MODELS = {
   },
   "claude-mythos-5": {
     family: "mythos",
-    aliases: ["mythos.5-preview"],
+    aliases: [],
     capabilities: {
       contextHint: true,
       adaptiveThinking: true,
