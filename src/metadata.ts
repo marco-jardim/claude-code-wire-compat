@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { ClaudeCodeWireError } from "./contracts.js";
-import type { ClaudeCodeRuntimeIdentity, JsonPrimitive } from "./contracts.js";
+import type { ClaudeCodeRuntimeIdentity, JsonValue } from "./contracts.js";
 import { classifySurrogateAt } from "./unicode.js";
 
 const MAX_TEXT_LENGTH = 8_192;
@@ -137,7 +137,7 @@ function validateMetadataKey(key: PropertyKey): string {
   return key;
 }
 
-function validateMetadataValue(value: unknown, key: string): JsonPrimitive {
+function validateMetadataValue(value: unknown, key: string): JsonValue {
   if (typeof value === "string") {
     if (hasInvalidUtf16(value)) {
       throw new ClaudeCodeWireError("INVALID_UNICODE", { field: key });
@@ -192,15 +192,15 @@ function validateMetadataObject(metadata: unknown): object {
 
 export function buildCorrelatedMetadata(
   identity: ClaudeCodeRuntimeIdentity,
-  suppliedMetadata?: Readonly<Record<string, JsonPrimitive>>,
-): Readonly<Record<string, JsonPrimitive>> {
+  suppliedMetadata?: Readonly<Record<string, JsonValue>>,
+): Readonly<Record<string, JsonValue>> {
   const validatedIdentity = validateRuntimeIdentity(identity);
   const userId = JSON.stringify({
     device_id: validatedIdentity.deviceId,
     account_uuid: validatedIdentity.accountUuid,
     session_id: validatedIdentity.sessionId,
   });
-  const entries: [string, JsonPrimitive][] = [["user_id", userId]];
+  const entries: [string, JsonValue][] = [["user_id", userId]];
 
   if (suppliedMetadata === undefined) return Object.freeze({ user_id: userId });
   const metadataObject = validateMetadataObject(suppliedMetadata);

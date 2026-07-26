@@ -991,7 +991,11 @@ function modelResolution(value: unknown): ModelResolution {
 
 function metadata(value: unknown): Readonly<Record<string, JsonValue>> {
   const record = requireRecord(value);
-  if (hasOwn(record, "user_id") && typeof record["user_id"] !== "string") {
+  if (
+    hasOwn(record, "user_id") &&
+    record["user_id"] !== null &&
+    typeof record["user_id"] !== "string"
+  ) {
     fail("INVALID_INPUT");
   }
   // validatedJsonObject returns a record by construction.

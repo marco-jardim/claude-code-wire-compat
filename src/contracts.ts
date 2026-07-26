@@ -629,7 +629,8 @@ export interface ClaudeCodeRequestInput {
     readonly budgetTokens?: number;
   };
   readonly effort?: "low" | "medium" | "high" | "max";
-  readonly metadata?: Readonly<Record<string, JsonPrimitive>>;
+  /** Supplies validated JSON metadata values in caller insertion order. */
+  readonly metadata?: Readonly<Record<string, JsonValue>>;
   readonly contextManagement?: ContextManagementConfig | null;
   readonly outputConfig?: OutputConfigInput;
   readonly speed?: "standard" | "fast" | null;
