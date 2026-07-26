@@ -30,6 +30,252 @@ const CONTEXT_HINT_BETA = "context-hint-2026-04-09";
 const TASK_BUDGET_BETA = "task-budgets-2026-03-13";
 const FAST_MODE_BETA = "fast-mode-2026-02-01";
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+const MESSAGE_KEYS = new Set(["role", "content"]);
+const CACHE_CONTROL_KEYS = new Set(["type", "ttl"]);
+const LEGACY_TEXT_CACHE_CONTROL_KEYS = new Set(["type", "ttl", "scope"]);
+const CITATIONS_CONFIG_KEYS = new Set(["enabled"]);
+const TEXT_KEYS = new Set(["text", "type", "cache_control", "citations"]);
+const TOOL_USE_KEYS = new Set([
+  "id",
+  "input",
+  "name",
+  "type",
+  "cache_control",
+  "caller",
+]);
+const TOOL_RESULT_KEYS = new Set([
+  "tool_use_id",
+  "type",
+  "cache_control",
+  "content",
+  "is_error",
+]);
+const THINKING_BLOCK_KEYS = new Set(["signature", "thinking", "type"]);
+const REDACTED_THINKING_BLOCK_KEYS = new Set(["data", "type"]);
+const IMAGE_BLOCK_KEYS = new Set(["source", "type", "cache_control"]);
+const BASE64_IMAGE_SOURCE_KEYS = new Set(["data", "media_type", "type"]);
+const FILE_IMAGE_SOURCE_KEYS = new Set(["file_id", "type"]);
+const URL_IMAGE_SOURCE_KEYS = new Set(["type", "url"]);
+const DOCUMENT_BLOCK_KEYS = new Set([
+  "source",
+  "type",
+  "cache_control",
+  "citations",
+  "context",
+  "title",
+]);
+const BASE64_PDF_SOURCE_KEYS = new Set(["data", "media_type", "type"]);
+const CONTENT_BLOCK_SOURCE_KEYS = new Set(["content", "type"]);
+const FILE_DOCUMENT_SOURCE_KEYS = new Set(["file_id", "type"]);
+const PLAIN_TEXT_SOURCE_KEYS = new Set(["data", "media_type", "type"]);
+const URL_PDF_SOURCE_KEYS = new Set(["type", "url"]);
+const SEARCH_RESULT_KEYS = new Set([
+  "content",
+  "source",
+  "title",
+  "type",
+  "cache_control",
+  "citations",
+]);
+const TOOL_REFERENCE_KEYS = new Set(["tool_name", "type", "cache_control"]);
+const DIRECT_CALLER_KEYS = new Set(["type"]);
+const SERVER_TOOL_CALLER_KEYS = new Set(["tool_id", "type"]);
+const CITATION_CHAR_KEYS = new Set([
+  "cited_text",
+  "document_index",
+  "document_title",
+  "end_char_index",
+  "start_char_index",
+  "type",
+]);
+const CITATION_CONTENT_BLOCK_KEYS = new Set([
+  "cited_text",
+  "document_index",
+  "document_title",
+  "end_block_index",
+  "start_block_index",
+  "type",
+]);
+const CITATION_PAGE_KEYS = new Set([
+  "cited_text",
+  "document_index",
+  "document_title",
+  "end_page_number",
+  "start_page_number",
+  "type",
+]);
+const CITATION_SEARCH_RESULT_KEYS = new Set([
+  "cited_text",
+  "end_block_index",
+  "search_result_index",
+  "source",
+  "start_block_index",
+  "title",
+  "type",
+]);
+const CITATION_WEB_SEARCH_KEYS = new Set([
+  "cited_text",
+  "encrypted_index",
+  "title",
+  "type",
+  "url",
+]);
+const CUSTOM_TOOL_KEYS = new Set([
+  "input_schema",
+  "name",
+  "allowed_callers",
+  "cache_control",
+  "defer_loading",
+  "description",
+  "eager_input_streaming",
+  "input_examples",
+  "strict",
+]);
+const BASH_TOOL_KEYS = new Set([
+  "name",
+  "type",
+  "allowed_callers",
+  "cache_control",
+  "defer_loading",
+  "input_examples",
+  "strict",
+]);
+const CODE_EXECUTION_TOOL_KEYS = new Set([
+  "name",
+  "type",
+  "allowed_callers",
+  "cache_control",
+  "defer_loading",
+  "strict",
+]);
+const COMPUTER_TOOL_KEYS = new Set([
+  "display_height_px",
+  "display_width_px",
+  "name",
+  "type",
+  "allowed_callers",
+  "cache_control",
+  "defer_loading",
+  "display_number",
+  "input_examples",
+  "strict",
+]);
+const COMPUTER_ZOOM_TOOL_KEYS = new Set([...COMPUTER_TOOL_KEYS, "enable_zoom"]);
+const MEMORY_TOOL_KEYS = new Set([
+  "name",
+  "type",
+  "allowed_callers",
+  "cache_control",
+  "defer_loading",
+  "input_examples",
+  "strict",
+]);
+const TEXT_EDITOR_TOOL_KEYS = new Set([
+  "name",
+  "type",
+  "allowed_callers",
+  "cache_control",
+  "defer_loading",
+  "input_examples",
+  "strict",
+]);
+const TEXT_EDITOR_MAX_TOOL_KEYS = new Set([
+  ...TEXT_EDITOR_TOOL_KEYS,
+  "max_characters",
+]);
+const WEB_SEARCH_TOOL_KEYS = new Set([
+  "name",
+  "type",
+  "allowed_callers",
+  "allowed_domains",
+  "blocked_domains",
+  "cache_control",
+  "defer_loading",
+  "max_uses",
+  "strict",
+  "user_location",
+]);
+const USER_LOCATION_KEYS = new Set([
+  "type",
+  "city",
+  "country",
+  "region",
+  "timezone",
+]);
+const WEB_FETCH_TOOL_KEYS = new Set([
+  "name",
+  "type",
+  "allowed_callers",
+  "allowed_domains",
+  "blocked_domains",
+  "cache_control",
+  "citations",
+  "defer_loading",
+  "max_content_tokens",
+  "max_uses",
+  "strict",
+]);
+const WEB_FETCH_CACHE_TOOL_KEYS = new Set([
+  ...WEB_FETCH_TOOL_KEYS,
+  "use_cache",
+]);
+const ADVISOR_TOOL_KEYS = new Set([
+  "model",
+  "name",
+  "type",
+  "allowed_callers",
+  "cache_control",
+  "caching",
+  "defer_loading",
+  "max_uses",
+  "strict",
+]);
+const TOOL_SEARCH_KEYS = new Set([
+  "name",
+  "type",
+  "allowed_callers",
+  "cache_control",
+  "defer_loading",
+  "strict",
+]);
+const MCP_TOOLSET_KEYS = new Set([
+  "mcp_server_name",
+  "type",
+  "cache_control",
+  "configs",
+  "default_config",
+]);
+const MCP_TOOL_CONFIG_KEYS = new Set(["defer_loading", "enabled"]);
+const CONTEXT_CONFIG_KEYS = new Set(["edits"]);
+const CLEAR_THINKING_KEYS = new Set(["type", "keep"]);
+const ALL_THINKING_KEYS = new Set(["type"]);
+const TYPED_NUMBER_KEYS = new Set(["type", "value"]);
+const CLEAR_TOOL_USES_KEYS = new Set([
+  "type",
+  "clear_at_least",
+  "clear_tool_inputs",
+  "exclude_tools",
+  "keep",
+  "trigger",
+]);
+const COMPACT_KEYS = new Set([
+  "type",
+  "instructions",
+  "pause_after_compaction",
+  "trigger",
+]);
+const OUTPUT_CONFIG_KEYS = new Set(["effort", "maxOutputTokens"]);
+const JSON_OUTPUT_FORMAT_KEYS = new Set(["schema", "type"]);
+const TOOL_CHOICE_PARALLEL_KEYS = new Set([
+  "type",
+  "disable_parallel_tool_use",
+]);
+const TOOL_CHOICE_NONE_KEYS = new Set(["type"]);
+const TOOL_CHOICE_NAMED_KEYS = new Set([
+  "name",
+  "type",
+  "disable_parallel_tool_use",
+]);
 const INPUT_KEYS = [
   "accessToken",
   "model",
@@ -55,6 +301,7 @@ const INPUT_KEYS = [
   "stream",
   "temperature",
 ] as const;
+const INPUT_KEY_SET = new Set(INPUT_KEYS);
 
 interface InspectionState {
   readonly active: WeakSet<object>;
@@ -178,6 +425,15 @@ function requireRecord(value: unknown): Record<string, unknown> {
   return value;
 }
 
+function assertExactKeys(
+  value: Readonly<Record<string, unknown>>,
+  allowed: ReadonlySet<string>,
+): void {
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string" || !allowed.has(key)) fail("INVALID_INPUT");
+  }
+}
+
 function requireString(value: unknown): string {
   if (typeof value !== "string") fail("INVALID_INPUT");
   return value;
@@ -227,13 +483,8 @@ function requireBoolean(value: unknown): boolean {
 
 function requireKeys(
   record: Record<string, unknown>,
-  allowed: readonly string[],
   required: readonly string[],
 ): void {
-  const allowedKeys = new Set(allowed);
-  for (const key of Object.keys(record)) {
-    if (!allowedKeys.has(key)) fail("INVALID_INPUT");
-  }
   for (const key of required) {
     if (!hasOwn(record, key)) fail("INVALID_INPUT");
   }
@@ -248,9 +499,11 @@ function cacheControl(
   allowScope = false,
 ): CacheControlEphemeral {
   const record = requireRecord(value);
-  requireKeys(record, allowScope ? ["type", "ttl", "scope"] : ["type", "ttl"], [
-    "type",
-  ]);
+  assertExactKeys(
+    record,
+    allowScope ? LEGACY_TEXT_CACHE_CONTROL_KEYS : CACHE_CONTROL_KEYS,
+  );
+  requireKeys(record, ["type"]);
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
     const item = record[key];
@@ -270,7 +523,8 @@ function cacheControl(
 
 function citationsConfig(value: unknown): CitationsConfigParam {
   const record = requireRecord(value);
-  requireKeys(record, ["enabled"], []);
+  assertExactKeys(record, CITATIONS_CONFIG_KEYS);
+  requireKeys(record, []);
   return Object.fromEntries(
     Object.keys(record).map((key) => [key, requireBoolean(record[key])]),
   );
@@ -279,35 +533,34 @@ function citationsConfig(value: unknown): CitationsConfigParam {
 function textCitation(value: unknown): TextCitationParam {
   const record = requireRecord(value);
   const type = record["type"];
-  const common = ["cited_text", "type"];
-  let strings: readonly string[];
+  let allowed: ReadonlySet<string>;
   let numbers: readonly string[];
   let nullableStrings: readonly string[];
   if (type === "char_location") {
-    strings = ["cited_text"];
+    allowed = CITATION_CHAR_KEYS;
     numbers = ["document_index", "end_char_index", "start_char_index"];
     nullableStrings = ["document_title"];
   } else if (type === "content_block_location") {
-    strings = ["cited_text"];
+    allowed = CITATION_CONTENT_BLOCK_KEYS;
     numbers = ["document_index", "end_block_index", "start_block_index"];
     nullableStrings = ["document_title"];
   } else if (type === "page_location") {
-    strings = ["cited_text"];
+    allowed = CITATION_PAGE_KEYS;
     numbers = ["document_index", "end_page_number", "start_page_number"];
     nullableStrings = ["document_title"];
   } else if (type === "search_result_location") {
-    strings = ["cited_text", "source"];
+    allowed = CITATION_SEARCH_RESULT_KEYS;
     numbers = ["end_block_index", "search_result_index", "start_block_index"];
     nullableStrings = ["title"];
   } else if (type === "web_search_result_location") {
-    strings = ["cited_text", "encrypted_index", "url"];
+    allowed = CITATION_WEB_SEARCH_KEYS;
     numbers = [];
     nullableStrings = ["title"];
   } else {
     return fail("INVALID_INPUT");
   }
-  const allowed = [...common, ...strings, ...numbers, ...nullableStrings];
-  requireKeys(record, allowed, allowed);
+  assertExactKeys(record, allowed);
+  requireKeys(record, [...allowed]);
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
     const item = record[key];
@@ -322,11 +575,8 @@ function textCitation(value: unknown): TextCitationParam {
 
 function textBlock(value: unknown): TextBlock {
   const record = requireRecord(value);
-  requireKeys(
-    record,
-    ["text", "type", "cache_control", "citations"],
-    ["text", "type"],
-  );
+  assertExactKeys(record, TEXT_KEYS);
+  requireKeys(record, ["text", "type"]);
   if (record["type"] !== "text") fail("INVALID_INPUT");
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
@@ -348,7 +598,8 @@ function textBlock(value: unknown): TextBlock {
 
 function imageBlock(value: unknown): ImageBlock {
   const record = requireRecord(value);
-  requireKeys(record, ["source", "type", "cache_control"], ["source", "type"]);
+  assertExactKeys(record, IMAGE_BLOCK_KEYS);
+  requireKeys(record, ["source", "type"]);
   if (record["type"] !== "image") fail("INVALID_INPUT");
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
@@ -366,13 +617,14 @@ function imageSource(value: unknown): ImageBlock["source"] {
   const type = record["type"];
   const allowed =
     type === "base64"
-      ? ["data", "media_type", "type"]
+      ? BASE64_IMAGE_SOURCE_KEYS
       : type === "file"
-        ? ["file_id", "type"]
+        ? FILE_IMAGE_SOURCE_KEYS
         : type === "url"
-          ? ["type", "url"]
+          ? URL_IMAGE_SOURCE_KEYS
           : fail("INVALID_INPUT");
-  requireKeys(record, allowed, allowed);
+  assertExactKeys(record, allowed);
+  requireKeys(record, [...allowed]);
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
     const item = record[key];
@@ -393,11 +645,8 @@ function imageSource(value: unknown): ImageBlock["source"] {
 
 function documentBlock(value: unknown): DocumentBlock {
   const record = requireRecord(value);
-  requireKeys(
-    record,
-    ["source", "type", "cache_control", "citations", "context", "title"],
-    ["source", "type"],
-  );
+  assertExactKeys(record, DOCUMENT_BLOCK_KEYS);
+  requireKeys(record, ["source", "type"]);
   if (record["type"] !== "document") fail("INVALID_INPUT");
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
@@ -416,14 +665,15 @@ function documentBlock(value: unknown): DocumentBlock {
 function documentSource(value: unknown): DocumentBlock["source"] {
   const record = requireRecord(value);
   const type = record["type"];
-  let allowed: readonly string[];
-  if (type === "base64" || type === "text")
-    allowed = ["data", "media_type", "type"];
-  else if (type === "content") allowed = ["content", "type"];
-  else if (type === "url") allowed = ["type", "url"];
-  else if (type === "file") allowed = ["file_id", "type"];
+  let allowed: ReadonlySet<string>;
+  if (type === "base64") allowed = BASE64_PDF_SOURCE_KEYS;
+  else if (type === "text") allowed = PLAIN_TEXT_SOURCE_KEYS;
+  else if (type === "content") allowed = CONTENT_BLOCK_SOURCE_KEYS;
+  else if (type === "url") allowed = URL_PDF_SOURCE_KEYS;
+  else if (type === "file") allowed = FILE_DOCUMENT_SOURCE_KEYS;
   else return fail("INVALID_INPUT");
-  requireKeys(record, allowed, allowed);
+  assertExactKeys(record, allowed);
+  requireKeys(record, [...allowed]);
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
     const item = record[key];
@@ -456,11 +706,8 @@ function documentSource(value: unknown): DocumentBlock["source"] {
 
 function thinkingBlock(value: unknown): ThinkingBlock {
   const record = requireRecord(value);
-  requireKeys(
-    record,
-    ["signature", "thinking", "type"],
-    ["signature", "thinking", "type"],
-  );
+  assertExactKeys(record, THINKING_BLOCK_KEYS);
+  requireKeys(record, ["signature", "thinking", "type"]);
   if (record["type"] !== "thinking") fail("INVALID_INPUT");
   return Object.fromEntries(
     Object.keys(record).map((key) => [
@@ -472,7 +719,8 @@ function thinkingBlock(value: unknown): ThinkingBlock {
 
 function redactedThinkingBlock(value: unknown): RedactedThinkingBlock {
   const record = requireRecord(value);
-  requireKeys(record, ["data", "type"], ["data", "type"]);
+  assertExactKeys(record, REDACTED_THINKING_BLOCK_KEYS);
+  requireKeys(record, ["data", "type"]);
   if (record["type"] !== "redacted_thinking") fail("INVALID_INPUT");
   return Object.fromEntries(
     Object.keys(record).map((key) => [
@@ -484,11 +732,8 @@ function redactedThinkingBlock(value: unknown): RedactedThinkingBlock {
 
 function searchResultBlock(value: unknown): SearchResultBlock {
   const record = requireRecord(value);
-  requireKeys(
-    record,
-    ["content", "source", "title", "type", "cache_control", "citations"],
-    ["content", "source", "title", "type"],
-  );
+  assertExactKeys(record, SEARCH_RESULT_KEYS);
+  requireKeys(record, ["content", "source", "title", "type"]);
   if (record["type"] !== "search_result") fail("INVALID_INPUT");
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
@@ -508,11 +753,8 @@ function searchResultBlock(value: unknown): SearchResultBlock {
 
 function toolReferenceBlock(value: unknown): ToolReferenceBlock {
   const record = requireRecord(value);
-  requireKeys(
-    record,
-    ["tool_name", "type", "cache_control"],
-    ["tool_name", "type"],
-  );
+  assertExactKeys(record, TOOL_REFERENCE_KEYS);
+  requireKeys(record, ["tool_name", "type"]);
   if (record["type"] !== "tool_reference") fail("INVALID_INPUT");
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
@@ -526,11 +768,8 @@ function toolReferenceBlock(value: unknown): ToolReferenceBlock {
 
 function toolUseBlock(value: unknown): ToolUseBlock {
   const record = requireRecord(value);
-  requireKeys(
-    record,
-    ["id", "input", "name", "type", "cache_control", "caller"],
-    ["id", "input", "name", "type"],
-  );
+  assertExactKeys(record, TOOL_USE_KEYS);
+  requireKeys(record, ["id", "input", "name", "type"]);
   if (record["type"] !== "tool_use") fail("INVALID_INPUT");
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
@@ -550,12 +789,14 @@ function toolCaller(value: unknown): ToolUseBlock["caller"] {
   const record = requireRecord(value);
   const type = record["type"];
   if (type === "direct") {
-    requireKeys(record, ["type"], ["type"]);
+    assertExactKeys(record, DIRECT_CALLER_KEYS);
+    requireKeys(record, ["type"]);
     return { type };
   }
   if (type !== "code_execution_20250825" && type !== "code_execution_20260120")
     return fail("INVALID_INPUT");
-  requireKeys(record, ["tool_id", "type"], ["tool_id", "type"]);
+  assertExactKeys(record, SERVER_TOOL_CALLER_KEYS);
+  requireKeys(record, ["tool_id", "type"]);
   return Object.fromEntries(
     Object.keys(record).map((key) => [
       key,
@@ -576,11 +817,8 @@ function toolResultContentBlock(value: unknown): ToolResultContentBlock {
 
 function toolResultBlock(value: unknown): ToolResultBlock {
   const record = requireRecord(value);
-  requireKeys(
-    record,
-    ["tool_use_id", "type", "cache_control", "content", "is_error"],
-    ["tool_use_id", "type"],
-  );
+  assertExactKeys(record, TOOL_RESULT_KEYS);
+  requireKeys(record, ["tool_use_id", "type"]);
   if (record["type"] !== "tool_result") fail("INVALID_INPUT");
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
@@ -618,6 +856,7 @@ function messages(value: unknown): readonly Message[] {
   const resultIds: string[] = [];
   const result = value.map((item): Message => {
     const record = requireRecord(item);
+    assertExactKeys(record, MESSAGE_KEYS);
     const role = record["role"];
     if (role !== "user" && role !== "assistant") fail("INVALID_INPUT");
     const rawContent = record["content"];
@@ -697,11 +936,8 @@ function toolInputSchema(value: unknown): Readonly<Record<string, JsonValue>> {
 
 function userLocation(value: unknown): Readonly<Record<string, unknown>> {
   const record = requireRecord(value);
-  requireKeys(
-    record,
-    ["type", "city", "country", "region", "timezone"],
-    ["type"],
-  );
+  assertExactKeys(record, USER_LOCATION_KEYS);
+  requireKeys(record, ["type"]);
   if (record["type"] !== "approximate") fail("INVALID_INPUT");
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
@@ -715,7 +951,8 @@ function userLocation(value: unknown): Readonly<Record<string, unknown>> {
 
 function mcpToolConfig(value: unknown): Readonly<Record<string, boolean>> {
   const record = requireRecord(value);
-  requireKeys(record, ["defer_loading", "enabled"], []);
+  assertExactKeys(record, MCP_TOOL_CONFIG_KEYS);
+  requireKeys(record, []);
   return Object.fromEntries(
     Object.keys(record).map((key) => [key, requireBoolean(record[key])]),
   );
@@ -732,24 +969,15 @@ function mcpConfigs(
 
 interface BuiltInToolSpec {
   readonly name?: string;
-  readonly allowed: readonly string[];
+  readonly allowed: ReadonlySet<string>;
   readonly required: readonly string[];
 }
-
-const COMMON_TOOL_KEYS = [
-  "name",
-  "type",
-  "allowed_callers",
-  "cache_control",
-  "defer_loading",
-  "strict",
-] as const;
 
 function builtInToolSpec(type: unknown): BuiltInToolSpec {
   if (type === "bash_20241022" || type === "bash_20250124") {
     return {
       name: "bash",
-      allowed: [...COMMON_TOOL_KEYS, "input_examples"],
+      allowed: BASH_TOOL_KEYS,
       required: ["name", "type"],
     };
   }
@@ -760,7 +988,7 @@ function builtInToolSpec(type: unknown): BuiltInToolSpec {
   ) {
     return {
       name: "code_execution",
-      allowed: COMMON_TOOL_KEYS,
+      allowed: CODE_EXECUTION_TOOL_KEYS,
       required: ["name", "type"],
     };
   }
@@ -771,21 +999,17 @@ function builtInToolSpec(type: unknown): BuiltInToolSpec {
   ) {
     return {
       name: "computer",
-      allowed: [
-        ...COMMON_TOOL_KEYS,
-        "display_height_px",
-        "display_width_px",
-        "display_number",
-        "input_examples",
-        ...(type === "computer_20251124" ? ["enable_zoom"] : []),
-      ],
+      allowed:
+        type === "computer_20251124"
+          ? COMPUTER_ZOOM_TOOL_KEYS
+          : COMPUTER_TOOL_KEYS,
       required: ["display_height_px", "display_width_px", "name", "type"],
     };
   }
   if (type === "memory_20250818") {
     return {
       name: "memory",
-      allowed: [...COMMON_TOOL_KEYS, "input_examples"],
+      allowed: MEMORY_TOOL_KEYS,
       required: ["name", "type"],
     };
   }
@@ -800,24 +1024,17 @@ function builtInToolSpec(type: unknown): BuiltInToolSpec {
         type === "text_editor_20241022" || type === "text_editor_20250124"
           ? "str_replace_editor"
           : "str_replace_based_edit_tool",
-      allowed: [
-        ...COMMON_TOOL_KEYS,
-        "input_examples",
-        ...(type === "text_editor_20250728" ? ["max_characters"] : []),
-      ],
+      allowed:
+        type === "text_editor_20250728"
+          ? TEXT_EDITOR_MAX_TOOL_KEYS
+          : TEXT_EDITOR_TOOL_KEYS,
       required: ["name", "type"],
     };
   }
   if (type === "web_search_20250305" || type === "web_search_20260209") {
     return {
       name: "web_search",
-      allowed: [
-        ...COMMON_TOOL_KEYS,
-        "allowed_domains",
-        "blocked_domains",
-        "max_uses",
-        "user_location",
-      ],
+      allowed: WEB_SEARCH_TOOL_KEYS,
       required: ["name", "type"],
     };
   }
@@ -828,22 +1045,17 @@ function builtInToolSpec(type: unknown): BuiltInToolSpec {
   ) {
     return {
       name: "web_fetch",
-      allowed: [
-        ...COMMON_TOOL_KEYS,
-        "allowed_domains",
-        "blocked_domains",
-        "citations",
-        "max_content_tokens",
-        "max_uses",
-        ...(type === "web_fetch_20260309" ? ["use_cache"] : []),
-      ],
+      allowed:
+        type === "web_fetch_20260309"
+          ? WEB_FETCH_CACHE_TOOL_KEYS
+          : WEB_FETCH_TOOL_KEYS,
       required: ["name", "type"],
     };
   }
   if (type === "advisor_20260301") {
     return {
       name: "advisor",
-      allowed: [...COMMON_TOOL_KEYS, "model", "caching", "max_uses"],
+      allowed: ADVISOR_TOOL_KEYS,
       required: ["model", "name", "type"],
     };
   }
@@ -853,7 +1065,7 @@ function builtInToolSpec(type: unknown): BuiltInToolSpec {
   ) {
     return {
       name: "tool_search_tool_bm25",
-      allowed: COMMON_TOOL_KEYS,
+      allowed: TOOL_SEARCH_KEYS,
       required: ["name", "type"],
     };
   }
@@ -863,19 +1075,13 @@ function builtInToolSpec(type: unknown): BuiltInToolSpec {
   ) {
     return {
       name: "tool_search_tool_regex",
-      allowed: COMMON_TOOL_KEYS,
+      allowed: TOOL_SEARCH_KEYS,
       required: ["name", "type"],
     };
   }
   if (type === "mcp_toolset") {
     return {
-      allowed: [
-        "mcp_server_name",
-        "type",
-        "cache_control",
-        "configs",
-        "default_config",
-      ],
+      allowed: MCP_TOOLSET_KEYS,
       required: ["mcp_server_name", "type"],
     };
   }
@@ -883,21 +1089,8 @@ function builtInToolSpec(type: unknown): BuiltInToolSpec {
 }
 
 function customToolDefinition(record: Record<string, unknown>): ToolDefinition {
-  requireKeys(
-    record,
-    [
-      "input_schema",
-      "name",
-      "allowed_callers",
-      "cache_control",
-      "defer_loading",
-      "description",
-      "eager_input_streaming",
-      "input_examples",
-      "strict",
-    ],
-    ["input_schema", "name"],
-  );
+  assertExactKeys(record, CUSTOM_TOOL_KEYS);
+  requireKeys(record, ["input_schema", "name"]);
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
     const item = record[key];
@@ -922,7 +1115,8 @@ function builtInToolDefinition(
 ): ToolDefinition {
   const type = record["type"];
   const spec = builtInToolSpec(type);
-  requireKeys(record, spec.allowed, spec.required);
+  assertExactKeys(record, spec.allowed);
+  requireKeys(record, spec.required);
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
     const item = record[key];
@@ -1021,7 +1215,8 @@ function typedNumberObject(
   allowedTypes: readonly string[],
 ): Readonly<Record<string, unknown>> {
   const record = requireRecord(value);
-  requireKeys(record, ["type", "value"], ["type", "value"]);
+  assertExactKeys(record, TYPED_NUMBER_KEYS);
+  requireKeys(record, ["type", "value"]);
   const type = record["type"];
   if (typeof type !== "string" || !allowedTypes.includes(type))
     fail("INVALID_INPUT");
@@ -1036,7 +1231,8 @@ function clearThinkingKeep(value: unknown): unknown {
   if (value === "all") return value;
   const record = requireRecord(value);
   if (record["type"] === "all") {
-    requireKeys(record, ["type"], ["type"]);
+    assertExactKeys(record, ALL_THINKING_KEYS);
+    requireKeys(record, ["type"]);
     return { type: "all" };
   }
   return typedNumberObject(record, ["thinking_turns"]);
@@ -1047,24 +1243,18 @@ function contextManagementEdit(
 ): Readonly<Record<string, unknown>> {
   const record = requireRecord(value);
   const type = record["type"];
-  let allowed: readonly string[];
+  let allowed: ReadonlySet<string>;
   if (type === "clear_thinking_20251015") {
-    allowed = ["type", "keep"];
+    allowed = CLEAR_THINKING_KEYS;
   } else if (type === "clear_tool_uses_20250919") {
-    allowed = [
-      "type",
-      "clear_at_least",
-      "clear_tool_inputs",
-      "exclude_tools",
-      "keep",
-      "trigger",
-    ];
+    allowed = CLEAR_TOOL_USES_KEYS;
   } else if (type === "compact_20260112") {
-    allowed = ["type", "instructions", "pause_after_compaction", "trigger"];
+    allowed = COMPACT_KEYS;
   } else {
     return fail("INVALID_INPUT");
   }
-  requireKeys(record, allowed, ["type"]);
+  assertExactKeys(record, allowed);
+  requireKeys(record, ["type"]);
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
     const item = record[key];
@@ -1108,7 +1298,8 @@ function contextManagementEdit(
 
 function contextManagement(value: unknown): Readonly<Record<string, unknown>> {
   const record = requireRecord(value);
-  requireKeys(record, ["edits"], []);
+  assertExactKeys(record, CONTEXT_CONFIG_KEYS);
+  requireKeys(record, []);
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
     const item = record[key];
@@ -1120,7 +1311,8 @@ function contextManagement(value: unknown): Readonly<Record<string, unknown>> {
 
 function outputFormat(value: unknown): Readonly<Record<string, unknown>> {
   const record = requireRecord(value);
-  requireKeys(record, ["schema", "type"], ["schema", "type"]);
+  assertExactKeys(record, JSON_OUTPUT_FORMAT_KEYS);
+  requireKeys(record, ["schema", "type"]);
   if (record["type"] !== "json_schema") fail("INVALID_INPUT");
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
@@ -1137,13 +1329,14 @@ function toolChoice(value: unknown): Readonly<Record<string, unknown>> {
   const type = record["type"];
   const allowed =
     type === "none"
-      ? ["type"]
+      ? TOOL_CHOICE_NONE_KEYS
       : type === "auto" || type === "any"
-        ? ["type", "disable_parallel_tool_use"]
+        ? TOOL_CHOICE_PARALLEL_KEYS
         : type === "tool"
-          ? ["name", "type", "disable_parallel_tool_use"]
+          ? TOOL_CHOICE_NAMED_KEYS
           : fail("INVALID_INPUT");
-  requireKeys(record, allowed, type === "tool" ? ["name", "type"] : ["type"]);
+  assertExactKeys(record, allowed);
+  requireKeys(record, type === "tool" ? ["name", "type"] : ["type"]);
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
     if (key === "type") entries.push([key, type]);
@@ -1167,7 +1360,8 @@ function outputConfig(
   adapterEffortActive: boolean,
 ): Readonly<Record<string, unknown>> {
   const record = requireRecord(value);
-  requireKeys(record, ["effort", "maxOutputTokens"], []);
+  assertExactKeys(record, OUTPUT_CONFIG_KEYS);
+  requireKeys(record, []);
   if (
     hasOwn(record, "effort") &&
     adapterEffort !== undefined &&
@@ -1245,7 +1439,8 @@ export function buildCanonicalBody(
   ]);
 
   const input = requireRecord(rawInput);
-  requireKeys(input, INPUT_KEYS, ["maxTokens", "messages"]);
+  assertExactKeys(input, INPUT_KEY_SET);
+  requireKeys(input, ["maxTokens", "messages"]);
   const resolvedModel = modelResolution(rawResolvedModel);
   if (hasOwn(input, "model") && input["model"] !== resolvedModel.id) {
     fail("UNSUPPORTED_MODEL");

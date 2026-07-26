@@ -108,9 +108,12 @@ function present<T>(value: T | undefined): T {
   return value;
 }
 
-function assertExactKeys(value: object, allowed: ReadonlySet<string>): void {
+function assertExactKeys(
+  value: Readonly<Record<string, unknown>>,
+  allowed: ReadonlySet<string>,
+): void {
   for (const key of Reflect.ownKeys(value)) {
-    if (typeof key !== "string" || !allowed.has(key)) fail();
+    if (typeof key !== "string" || !allowed.has(key)) fail("INVALID_INPUT");
   }
 }
 
