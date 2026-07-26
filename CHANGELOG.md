@@ -2,7 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.5] - Unreleased
+## [0.1.0-rc.6] - Unreleased
+
+### Fixed
+
+- Restored the pinned cache marker on the Claude Code identity system block when a
+  caller supplies `cacheControl`. The caller-directed placement introduced in
+  `0.1.0-rc.5` removed that marker, which changed the static prefix cache boundary of
+  every built request. The identity marker is protocol identity owned by this package
+  and is now emitted unconditionally, independently of caller-directed breakpoints.
+
+## [0.1.0-rc.5] - 2026-07-26
 
 ### Changed
 
