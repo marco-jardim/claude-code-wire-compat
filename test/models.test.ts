@@ -21,7 +21,7 @@ import {
 
 interface ResolvedModel {
   readonly id: string;
-  readonly family: "haiku" | "sonnet" | "opus";
+  readonly family: "haiku" | "sonnet" | "opus" | "fable" | "mythos";
   readonly capabilities: ClaudeCodeCapabilities;
 }
 
@@ -35,7 +35,7 @@ describe("models (Wave 1 RED specification)", () => {
     expect(await expectModuleUnimplemented("models")).toBe(false);
   });
 
-  it("resolves all nine canonical model ids from the real profile", async () => {
+  it("resolves every canonical model id from the real profile", async () => {
     const resolveModel = await loadWave2Function<ResolveModel>(
       "models",
       "resolveModel",
@@ -52,7 +52,48 @@ describe("models (Wave 1 RED specification)", () => {
     }
     expect(
       Object.keys(CLAUDE_CODE_2_1_195_PROFILE.supportedModels),
-    ).toHaveLength(9);
+    ).toHaveLength(16);
+  });
+
+  it.each([
+    "claude-3-7-sonnet",
+    "claude-3-5-sonnet",
+    "claude-3-5-haiku",
+    "claude-3-haiku",
+    "claude-3-opus",
+    "claude-fable-5",
+    "claude-mythos-5",
+  ])("resolves new canonical model %s", async (id) => {
+    const resolveModel = await loadWave2Function<ResolveModel>(
+      "models",
+      "resolveModel",
+    );
+
+    expect(resolveModel(id).id).toBe(id);
+  });
+
+  it.each([
+    ["claude-3.7-sonnet", "claude-3-7-sonnet"],
+    ["claude-3-7-sonnet-20250219", "claude-3-7-sonnet"],
+    ["claude-3.5-sonnet", "claude-3-5-sonnet"],
+    ["claude-3.5-sonnet-v2", "claude-3-5-sonnet"],
+    ["claude-3-5-sonnet-20241022", "claude-3-5-sonnet"],
+    ["claude-3.5-haiku", "claude-3-5-haiku"],
+    ["claude-3-5-haiku-latest", "claude-3-5-haiku"],
+    ["claude-3-5-haiku-20241022", "claude-3-5-haiku"],
+    ["claude-3-5-haiku@20241022", "claude-3-5-haiku"],
+    ["claude-3-haiku-20240307", "claude-3-haiku"],
+    ["anthropic/claude-fable-5", "claude-fable-5"],
+    ["claude-fable-5-experimental", "claude-fable-5"],
+    ["fable_5-preview", "claude-fable-5"],
+    ["mythos.5-preview", "claude-mythos-5"],
+  ])("resolves new alias %s to %s", async (alias, id) => {
+    const resolveModel = await loadWave2Function<ResolveModel>(
+      "models",
+      "resolveModel",
+    );
+
+    expect(resolveModel(alias).id).toBe(id);
   });
 
   it("resolves every profile alias to its canonical id", async () => {
@@ -76,9 +117,6 @@ describe("models (Wave 1 RED specification)", () => {
 
   it.each([
     "claude-opus-4-9",
-    "claude-3-opus",
-    "claude-fable-5",
-    "claude-mythos-5",
     "opus",
     "claude-opus",
     "",

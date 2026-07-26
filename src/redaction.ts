@@ -2,6 +2,7 @@
 
 import type {
   ClaudeCodeCapabilities,
+  ClaudeCodeModelFamily,
   ClaudeCodeProtocolProfile,
   ClaudeCodeRequestInput,
   HeaderPair,
@@ -21,7 +22,7 @@ export interface BuildRedactedEvidenceInput {
   /** Supplies the validated effective profile when an override is active. */
   readonly effectiveProfile?: ClaudeCodeProtocolProfile;
   readonly request: NormalizedRequestInput;
-  readonly modelFamily: "haiku" | "sonnet" | "opus";
+  readonly modelFamily: ClaudeCodeModelFamily;
   readonly logicalHeaders: readonly HeaderPair[];
   readonly betaFeatures: readonly string[];
   readonly body: string;
@@ -264,7 +265,9 @@ function assertEvidenceSources(value: unknown): void {
   if (
     modelFamily !== "haiku" &&
     modelFamily !== "sonnet" &&
-    modelFamily !== "opus"
+    modelFamily !== "opus" &&
+    modelFamily !== "fable" &&
+    modelFamily !== "mythos"
   ) {
     throw wireError("INVALID_INPUT");
   }

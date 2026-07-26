@@ -36,9 +36,13 @@ function expectInvalidInput(input: unknown): void {
 }
 
 describe("buildOrderedHeaders input validation", () => {
-  it.each([null, [], "headers"])("rejects a non-record input", (input) => {
-    expectInvalidInput(input);
-  });
+  // Wrap each case so Vitest passes array values as one callback argument.
+  it.each([[null], [[]], ["headers"]])(
+    "rejects a non-record input",
+    (input) => {
+      expectInvalidInput(input);
+    },
+  );
 
   it.each([undefined, 7, ""])("rejects accessToken %j", (accessToken) => {
     expectInvalidInput(withField("accessToken", accessToken));

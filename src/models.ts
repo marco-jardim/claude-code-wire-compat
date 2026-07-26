@@ -2,6 +2,7 @@
 
 import type {
   ClaudeCodeCapabilities,
+  ClaudeCodeModelFamily,
   ClaudeCodeProtocolProfile,
 } from "./contracts.js";
 import { ClaudeCodeWireError } from "./contracts.js";
@@ -9,7 +10,7 @@ import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
 export interface ResolvedClaudeCodeModel {
   readonly id: string;
-  readonly family: "haiku" | "sonnet" | "opus";
+  readonly family: ClaudeCodeModelFamily;
   readonly capabilities: ClaudeCodeCapabilities;
 }
 

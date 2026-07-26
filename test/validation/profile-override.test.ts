@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildClaudeCodeRequest } from "../../src/index.js";
+import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
 
 const base = {
   accessToken: "sentinel-token-profile-override-91f2",
@@ -99,7 +100,7 @@ describe("protocol profile override", () => {
     },
   );
 
-  it.each([null, [], "2.1.196", new Date()])(
+  it.each([[null], [[]], ["2.1.196"], [new Date()]])(
     "rejects a non-record override %#",
     async (profileOverride) => {
       await expect(buildWithOverride(profileOverride)).rejects.toMatchObject({
@@ -122,7 +123,11 @@ describe("protocol profile override", () => {
     });
   });
 
-  it.each([[], ["beta-one", "beta-one"]])(
+  // Each case is wrapped in its own array because `it.each` SPREADS array
+  // elements as arguments: a bare `[]` supplies zero arguments and a bare
+  // `["beta-one", "beta-one"]` supplies two, so neither reaches the callback
+  // as the array value under test.
+  it.each([[[]], [["beta-one", "beta-one"]]])(
     "rejects an invalid ordered beta list %#",
     async (orderedBetas) => {
       await expect(buildWithOverride({ orderedBetas })).rejects.toMatchObject({
@@ -159,6 +164,57 @@ describe("protocol profile override", () => {
     expect(JSON.parse(result.body)).toMatchObject({ model });
   });
 
+  it("accepts the pinned profile's own model table as an override", async () => {
+    const pinned = await buildClaudeCodeRequest(base);
+    const overridden = await buildClaudeCodeRequest({
+      ...base,
+      profileOverride: {
+        supportedModels: CLAUDE_CODE_2_1_195_PROFILE.supportedModels,
+      },
+    });
+
+    expect(overridden.body).toBe(pinned.body);
+    expect(overridden.headers).toEqual(pinned.headers);
+  });
+
+  it.each([
+    ["a non-array", "override-model"],
+    ["duplicate entries", ["override-model", "override-model"]],
+    ["an empty string", [""]],
+  ])("rejects aliases containing %s", async (_description, aliases) => {
+    await expect(
+      buildWithOverride({
+        supportedModels: {
+          [base.model]: {
+            family: "opus",
+            aliases,
+            capabilities: {
+              contextHint: true,
+              adaptiveThinking: true,
+              effort: true,
+              interleavedThinking: true,
+            },
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+
+  it("omits interleaved thinking for Claude 3 while retaining it for supported models", async () => {
+    const claude3 = await buildClaudeCodeRequest({
+      ...base,
+      model: "claude-3-5-haiku",
+    });
+    const existing = await buildClaudeCodeRequest(base);
+
+    expect(headerValue(claude3.headers, "anthropic-beta")).not.toContain(
+      "interleaved-thinking-2025-05-14",
+    );
+    expect(headerValue(existing.headers, "anthropic-beta")).toContain(
+      "interleaved-thinking-2025-05-14",
+    );
+  });
+
   it("applies an SDK version override to the package-version header", async () => {
     const result = await buildWithOverride({ sdkVersion: "0.95.1" });
     expect(headerValue(result.headers, "x-stainless-package-version")).toBe(
@@ -186,7 +242,7 @@ describe("protocol profile override", () => {
     },
   );
 
-  it.each([null, 0, "false", [], {}])(
+  it.each([[null], [0], ["false"], [[]], [{}]])(
     "rejects non-boolean attributionHeaderEnabled %#",
     async (attributionHeaderEnabled) => {
       await expect(
@@ -253,7 +309,7 @@ describe("protocol profile override", () => {
     },
   );
 
-  it.each(["haiku", "sonnet", "opus"] as const)(
+  it.each(["haiku", "sonnet", "opus", "fable", "mythos"] as const)(
     "accepts the exact supported-model family %s",
     async (family) => {
       const model = `claude-override-${family}`;
@@ -279,6 +335,25 @@ describe("protocol profile override", () => {
       expect(result.evidence.modelFamily).toBe(family);
     },
   );
+
+  it("rejects an unrecognised supported-model family", async () => {
+    await expect(
+      buildWithOverride({
+        supportedModels: {
+          "claude-override-falcon": {
+            family: "falcon",
+            aliases: ["override-falcon"],
+            capabilities: {
+              contextHint: true,
+              adaptiveThinking: true,
+              effort: true,
+              interleavedThinking: true,
+            },
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
 
   it.each([
     null,
@@ -312,7 +387,7 @@ describe("protocol profile override", () => {
     {
       model: {
         family: "opus",
-        aliases: [],
+        aliases: [""],
         capabilities: {
           contextHint: true,
           adaptiveThinking: true,
@@ -411,7 +486,7 @@ describe("protocol profile override", () => {
     });
   });
 
-  it.each([null, "beta", [""], [7], ["beta", "beta"]])(
+  it.each([[null], ["beta"], [[""]], [[7]], [["beta", "beta"]]])(
     "rejects malformed ordered betas %#",
     async (orderedBetas) => {
       await expect(buildWithOverride({ orderedBetas })).rejects.toMatchObject({

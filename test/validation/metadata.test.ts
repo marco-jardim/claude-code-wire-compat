@@ -82,12 +82,16 @@ describe("metadata validation paths", () => {
     );
   });
 
-  it.each([17, null, []])("rejects a non-record identity: %j", (identity) => {
-    expectWireError(
-      () => validateRuntimeIdentity(identity),
-      "INVALID_IDENTITY",
-    );
-  });
+  // Wrap each case so Vitest passes array values as one callback argument.
+  it.each([[17], [null], [[]]])(
+    "rejects a non-record identity: %j",
+    (identity) => {
+      expectWireError(
+        () => validateRuntimeIdentity(identity),
+        "INVALID_IDENTITY",
+      );
+    },
+  );
 
   it("rejects symbol and forbidden own identity keys", () => {
     const withSymbol = { ...IDENTITY, [Symbol("invalid")]: "synthetic" };
@@ -261,7 +265,7 @@ describe("metadata validation paths", () => {
     );
   });
 
-  it.each([17, null, []])(
+  it.each([[17], [null], [[]]])(
     "rejects non-record supplied metadata: %j",
     (value) => {
       // This cast deliberately passes an invalid-input fixture through the public type.

@@ -110,6 +110,89 @@ const EXPECTED_MODELS = {
       interleavedThinking: true,
     },
   },
+  "claude-3-7-sonnet": {
+    family: "sonnet",
+    aliases: ["claude-3.7-sonnet", "claude-3-7-sonnet-20250219"],
+    capabilities: {
+      contextHint: false,
+      adaptiveThinking: false,
+      effort: false,
+      interleavedThinking: false,
+    },
+  },
+  "claude-3-5-sonnet": {
+    family: "sonnet",
+    aliases: [
+      "claude-3.5-sonnet",
+      "claude-3.5-sonnet-v2",
+      "claude-3-5-sonnet-20241022",
+    ],
+    capabilities: {
+      contextHint: false,
+      adaptiveThinking: false,
+      effort: false,
+      interleavedThinking: false,
+    },
+  },
+  "claude-3-5-haiku": {
+    family: "haiku",
+    aliases: [
+      "claude-3.5-haiku",
+      "claude-3-5-haiku-latest",
+      "claude-3-5-haiku-20241022",
+      "claude-3-5-haiku@20241022",
+    ],
+    capabilities: {
+      contextHint: false,
+      adaptiveThinking: false,
+      effort: false,
+      interleavedThinking: false,
+    },
+  },
+  "claude-3-haiku": {
+    family: "haiku",
+    aliases: ["claude-3-haiku-20240307"],
+    capabilities: {
+      contextHint: false,
+      adaptiveThinking: false,
+      effort: false,
+      interleavedThinking: false,
+    },
+  },
+  "claude-3-opus": {
+    family: "opus",
+    aliases: [],
+    capabilities: {
+      contextHint: false,
+      adaptiveThinking: false,
+      effort: false,
+      interleavedThinking: false,
+    },
+  },
+  "claude-fable-5": {
+    family: "fable",
+    aliases: [
+      "anthropic/claude-fable-5",
+      "claude-fable-5-experimental",
+      "fable_5-preview",
+    ],
+    capabilities: {
+      contextHint: true,
+      adaptiveThinking: true,
+      effort: true,
+      interleavedThinking: true,
+    },
+  },
+  "claude-mythos-5": {
+    family: "mythos",
+    aliases: ["mythos.5-preview"],
+    capabilities: {
+      contextHint: true,
+      adaptiveThinking: true,
+      effort: true,
+      interleavedThinking: true,
+    },
+  },
 } as const;
 
 describe("CLAUDE_CODE_2_1_195_PROFILE", () => {

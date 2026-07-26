@@ -206,7 +206,7 @@ describe("redaction input validation", () => {
     );
   });
 
-  it.each(["haiku", "sonnet"] as const)(
+  it.each(["haiku", "sonnet", "fable", "mythos"] as const)(
     "accepts the %s model family",
     async (modelFamily) => {
       const evidence = await buildRedactedEvidence(
@@ -233,7 +233,8 @@ describe("redaction input validation", () => {
     await expectInvalid(invalidInput({ ...input(), ...override }));
   });
 
-  it.each([[], ["name"], ["name", "value", "extra"], "not-a-pair"])(
+  // Wrap each case so Vitest passes array values as one callback argument.
+  it.each([[[]], [["name"]], [["name", "value", "extra"]], ["not-a-pair"]])(
     "rejects a header that is not a two-element array",
     async (header) => {
       await expectInvalid(

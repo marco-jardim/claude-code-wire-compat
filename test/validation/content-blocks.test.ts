@@ -260,7 +260,8 @@ describe("message content blocks", () => {
     expect(build(messages)).toEqual(messages);
   });
 
-  it.each(["scalar", [1, true], { z: 1 }, null])(
+  // Wrap each case so Vitest passes array values as one callback argument.
+  it.each([["scalar"], [[1, true]], [{ z: 1 }], [null]])(
     "accepts JSON tool-use input %#",
     (input) => {
       const block = {

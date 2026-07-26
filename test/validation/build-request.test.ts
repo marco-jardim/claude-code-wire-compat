@@ -236,7 +236,8 @@ describe("buildClaudeCodeRequest input validation", () => {
     );
   });
 
-  it.each([null, [], "request"])(
+  // Wrap each case so Vitest passes array values as one callback argument.
+  it.each([[null], [[]], ["request"]])(
     "rejects non-record input %j",
     async (input) => {
       await expectBuildCode(invalidInput(input), "INVALID_INPUT");
@@ -443,8 +444,27 @@ describe("parseBuiltClaudeCodeRequest validation", () => {
     expectParseInvalid(cloneBuilt(built, { headers: {} }));
   });
 
-  it("rejects an invalid evidence model family", async () => {
+  it("accepts recognized evidence model families and rejects an invalid one", async () => {
     const built = await buildClaudeCodeRequest(validInput());
+
+    expect(parseBuiltClaudeCodeRequest(built)).toEqual(built);
+
+    for (const modelFamily of [
+      "haiku",
+      "sonnet",
+      "opus",
+      "fable",
+      "mythos",
+    ] as const) {
+      expect(
+        parseBuiltClaudeCodeRequest(
+          cloneBuilt(built, {
+            evidence: { ...built.evidence, modelFamily },
+          }),
+        ).evidence.modelFamily,
+      ).toBe(modelFamily);
+    }
+
     expectParseInvalid(
       cloneBuilt(built, {
         evidence: { ...built.evidence, modelFamily: "synthetic" },
@@ -452,7 +472,7 @@ describe("parseBuiltClaudeCodeRequest validation", () => {
     );
   });
 
-  it.each([{}, ["name"], ["name", 7]])(
+  it.each([[{}], [["name"]], [["name", 7]]])(
     "rejects malformed header entry %j",
     async (entry) => {
       const built = await buildClaudeCodeRequest(validInput());

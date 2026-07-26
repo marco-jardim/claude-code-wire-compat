@@ -245,6 +245,13 @@ function parseNonEmptyUniqueStrings(value: unknown): readonly string[] {
   return Object.freeze(result);
 }
 
+function parseUniqueStrings(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) fail();
+  const result = value.map(requireNonEmptyString);
+  if (new Set(result).size !== result.length) fail();
+  return Object.freeze(result);
+}
+
 function parseSupportedModels(
   value: unknown,
 ): ClaudeCodeProtocolProfile["supportedModels"] {
@@ -259,10 +266,17 @@ function parseSupportedModels(
     if (!isRecord(model)) fail();
     assertExactKeys(model, MODEL_KEYS);
     const family = ownValue(model, "family");
-    if (family !== "haiku" && family !== "sonnet" && family !== "opus") fail();
+    if (
+      family !== "haiku" &&
+      family !== "sonnet" &&
+      family !== "opus" &&
+      family !== "fable" &&
+      family !== "mythos"
+    )
+      fail();
     result[key] = Object.freeze({
       family,
-      aliases: parseNonEmptyUniqueStrings(ownValue(model, "aliases")),
+      aliases: parseUniqueStrings(ownValue(model, "aliases")),
       capabilities: parseCapabilities(ownValue(model, "capabilities")),
     });
   }
@@ -553,7 +567,9 @@ function parseEvidence(value: unknown): RedactedRequestEvidence {
   if (
     modelFamily !== "haiku" &&
     modelFamily !== "sonnet" &&
-    modelFamily !== "opus"
+    modelFamily !== "opus" &&
+    modelFamily !== "fable" &&
+    modelFamily !== "mythos"
   ) {
     fail();
   }

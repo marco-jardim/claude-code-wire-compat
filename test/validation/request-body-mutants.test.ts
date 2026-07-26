@@ -225,7 +225,8 @@ describe("request body inspection mutation boundaries", () => {
 });
 
 describe("request body canonicalization mutation boundaries", () => {
-  it.each([null, [], "not-an-object"])(
+  // Wrap each case so Vitest passes array values as one callback argument.
+  it.each([[null], [[]], ["not-an-object"]])(
     "rejects a non-record experimental body envelope %#",
     (experimentalBodyFields) => {
       expectWireCode(

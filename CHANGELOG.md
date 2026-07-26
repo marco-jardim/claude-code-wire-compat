@@ -2,7 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.6] - Unreleased
+## [0.1.0-rc.7] - Unreleased
+
+### Added
+
+- Seven model identifiers join the pinned allowlist, taking it from nine entries to sixteen:
+  `claude-3-7-sonnet`, `claude-3-5-sonnet`, `claude-3-5-haiku`, `claude-3-haiku`, `claude-3-opus`,
+  `claude-fable-5` and `claude-mythos-5`, together with fourteen aliases covering the dotted, dated
+  and vendor-prefixed spellings observed in consumer code. The five `claude-3` entries declare every
+  capability as unsupported, because upstream gates interleaved thinking and the context hint on a
+  non-`claude-3` predicate; `claude-fable-5` and `claude-mythos-5` declare adaptive thinking and
+  effort, matching the upstream predicates that accept them.
+- `ClaudeCodeModelFamily` is now an exported type. It names the model family union and gains two
+  members, `fable` and `mythos`. The family is evidence-only: it reaches
+  `RedactedRequestEvidence.modelFamily` and never any header, body field or body hash.
+
+### Changed
+
+- The four declaration sites that repeated the inline `"haiku" | "sonnet" | "opus"` union now refer
+  to `ClaudeCodeModelFamily`, and the three runtime validators that guard it accept the two new
+  members.
+
+### Fixed
+
+- A model entry may now declare an empty `aliases` array. Non-empty was enforced, which made the
+  pinned profile fail its own validation when a consumer passed `supportedModels` back through
+  `profileOverride` — the documented way to widen the allowlist, because an override replaces the
+  model map rather than merging into it. The non-empty rule still applies to `orderedBetas`.
+
+## [0.1.0-rc.6] - 2026-07-26
 
 ### Fixed
 

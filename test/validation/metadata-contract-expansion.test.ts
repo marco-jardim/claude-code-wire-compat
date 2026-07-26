@@ -113,7 +113,8 @@ describe("metadata contract expansion", () => {
     expect(build({ user_id: null })["metadata"]).toEqual({ user_id: null });
   });
 
-  it.each([0, false, [], {}, ["not-a-user-id"]])(
+  // Wrap each case so Vitest passes array values as one callback argument.
+  it.each([[0], [false], [[]], [{}], [["not-a-user-id"]]])(
     "rejects non-string, non-null user_id value %#",
     (user_id) => {
       expect(() => build({ user_id })).toThrow(

@@ -18,13 +18,10 @@ function deepFreeze<T>(value: T): T {
 function capabilities(
   adaptiveThinking: boolean,
   effort: boolean,
+  interleavedThinking = true,
+  contextHint = true,
 ): ClaudeCodeCapabilities {
-  return {
-    contextHint: true,
-    adaptiveThinking,
-    effort,
-    interleavedThinking: true,
-  };
+  return { contextHint, adaptiveThinking, effort, interleavedThinking };
 }
 
 export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
@@ -81,11 +78,14 @@ export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
      *   (`lib/mimicry/headers.mjs:269-283`), but the profile-level default is
      *   false because enabling it returned HTTP 400.
      *
-     * DIVERGENCE: upstream recognises models with UNANCHORED REGEX PREDICATES
-     * and has no finite table. This package deliberately pins an exhaustive
-     * allowlist so unknown or future model IDs FAIL CLOSED with
-     * `UNSUPPORTED_MODEL`, per plan §3.3. `claude-3-*`, `claude-fable-5`, and
-     * `claude-mythos-5` are intentionally OUT OF SCOPE for v0.1.0.
+     * DIVERGENCE: upstream recognises models with unanchored regex predicates
+     * and has no finite table. This package still pins an exhaustive allowlist
+     * so unknown IDs FAIL CLOSED with `UNSUPPORTED_MODEL`. The `claude-3-*`,
+     * `fable`, and `mythos` entries enumerate only identifiers OBSERVED in
+     * consumer code, so identifiers matching upstream's regexes but absent
+     * from this table are still rejected: a deliberate, accepted residual
+     * gap. All `claude-3-*` capabilities are false because upstream gates
+     * `interleavedThinking` and `contextHint` on a non-`claude-3` predicate.
      */
     supportedModels: {
       "claude-opus-4-8": {
@@ -132,6 +132,54 @@ export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
         family: "haiku",
         aliases: ["haiku-4-5", "claude-haiku-4.5", "haiku-4.5"],
         capabilities: capabilities(false, false),
+      },
+      "claude-3-7-sonnet": {
+        family: "sonnet",
+        aliases: ["claude-3.7-sonnet", "claude-3-7-sonnet-20250219"],
+        capabilities: capabilities(false, false, false, false),
+      },
+      "claude-3-5-sonnet": {
+        family: "sonnet",
+        aliases: [
+          "claude-3.5-sonnet",
+          "claude-3.5-sonnet-v2",
+          "claude-3-5-sonnet-20241022",
+        ],
+        capabilities: capabilities(false, false, false, false),
+      },
+      "claude-3-5-haiku": {
+        family: "haiku",
+        aliases: [
+          "claude-3.5-haiku",
+          "claude-3-5-haiku-latest",
+          "claude-3-5-haiku-20241022",
+          "claude-3-5-haiku@20241022",
+        ],
+        capabilities: capabilities(false, false, false, false),
+      },
+      "claude-3-haiku": {
+        family: "haiku",
+        aliases: ["claude-3-haiku-20240307"],
+        capabilities: capabilities(false, false, false, false),
+      },
+      "claude-3-opus": {
+        family: "opus",
+        aliases: [],
+        capabilities: capabilities(false, false, false, false),
+      },
+      "claude-fable-5": {
+        family: "fable",
+        aliases: [
+          "anthropic/claude-fable-5",
+          "claude-fable-5-experimental",
+          "fable_5-preview",
+        ],
+        capabilities: capabilities(true, true),
+      },
+      "claude-mythos-5": {
+        family: "mythos",
+        aliases: ["mythos.5-preview"],
+        capabilities: capabilities(true, true),
       },
     },
   });

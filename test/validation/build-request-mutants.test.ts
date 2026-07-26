@@ -614,7 +614,8 @@ describe("build-request surviving input-validation mutants", () => {
     await expectBuildError(requestInput(missingDescriptor), "INVALID_INPUT");
   });
 
-  it.each([null, [], "input", 42, true])(
+  // Wrap each case so Vitest passes array values as one callback argument.
+  it.each([[null], [[]], ["input"], [42], [true]])(
     "rejects non-record top-level input %j",
     async (value) => {
       await expectBuildError(requestInput(value), "INVALID_INPUT");
@@ -904,7 +905,7 @@ describe("build-request surviving parser mutants", () => {
     );
   });
 
-  it.each([null, [], "built", 1, true])(
+  it.each([[null], [[]], ["built"], [1], [true]])(
     "rejects non-record built request %j",
     (value) => {
       expectParseError(value);

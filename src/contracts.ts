@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+/**
+ * Model families used only in redacted evidence, never on the wire. `fable`
+ * and `mythos` are consumer-observed identifiers matched upstream by
+ * unanchored regex predicates.
+ */
+export type ClaudeCodeModelFamily =
+  "haiku" | "sonnet" | "opus" | "fable" | "mythos";
+
 export type HeaderPair = readonly [name: string, value: string];
 
 export type JsonPrimitive = string | number | boolean | null;
@@ -732,7 +740,7 @@ export interface ClaudeCodeProtocolProfile {
     Record<
       string,
       Readonly<{
-        family: "haiku" | "sonnet" | "opus";
+        family: ClaudeCodeModelFamily;
         aliases: readonly string[];
         capabilities: ClaudeCodeCapabilities;
       }>
@@ -763,7 +771,7 @@ export interface RedactedRequestEvidence {
   readonly profileId: string;
   readonly url: ClaudeCodeProtocolProfile["endpoint"];
   readonly method: "POST";
-  readonly modelFamily: "haiku" | "sonnet" | "opus";
+  readonly modelFamily: ClaudeCodeModelFamily;
   readonly logicalHeaderNames: readonly string[];
   readonly betaFeatures: readonly string[];
   readonly bodySha256: string;

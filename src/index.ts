@@ -15,6 +15,7 @@
 export type {
   BuiltClaudeCodeRequest,
   ClaudeCodeCapabilities,
+  ClaudeCodeModelFamily,
   ClaudeCodeProtocolProfile,
   ClaudeCodeRequestInput,
   ClaudeCodeRuntimeIdentity,
