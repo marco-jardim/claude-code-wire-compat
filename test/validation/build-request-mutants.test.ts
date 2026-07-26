@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type {
   BuiltClaudeCodeRequest,
@@ -18,9 +18,38 @@ import {
   parseBuiltClaudeCodeRequest,
 } from "../../src/index.js";
 
+/**
+ * `Reflect.get` is declared to return `any`. Narrowing it to `unknown` at the
+ * single point of use keeps proxy traps free of unsafe returns.
+ */
+const reflectGet: (
+  target: object,
+  key: PropertyKey,
+  receiver?: unknown,
+) => unknown = Reflect.get;
+
 const TOKEN = "mutation-token-4d30e8";
 const SESSION_ID = "10000000-0000-4000-8000-000000000001";
 const CLIENT_REQUEST_ID = "10000000-0000-4000-8000-000000000002";
+let freshBuildRequestSequence = 0;
+
+interface BuildRequestModule {
+  readonly buildClaudeCodeRequest: typeof buildClaudeCodeRequest;
+}
+
+async function freshBuildRequestModule(): Promise<BuildRequestModule> {
+  freshBuildRequestSequence += 1;
+  const loaded: unknown = await import(
+    /* @vite-ignore */ `../../src/build-request.js?mutation-test=${String(freshBuildRequestSequence)}`
+  );
+  if (
+    !isRecord(loaded) ||
+    typeof loaded["buildClaudeCodeRequest"] !== "function"
+  ) {
+    throw new TypeError("Invalid build-request module.");
+  }
+  return { buildClaudeCodeRequest: loaded["buildClaudeCodeRequest"] };
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -113,6 +142,34 @@ function bodyRecord(body: string): Record<string, unknown> {
   return parsed;
 }
 
+function graphSize(value: unknown): number {
+  if (typeof value === "string")
+    return new TextEncoder().encode(value).byteLength;
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "number"
+  ) {
+    return 1;
+  }
+  if (typeof value !== "object") {
+    throw new TypeError("Unsupported graph-size fixture value.");
+  }
+  let size = Reflect.ownKeys(value).length;
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") {
+      throw new TypeError("Unsupported graph-size fixture key.");
+    }
+    size += new TextEncoder().encode(key).byteLength;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !("value" in descriptor)) {
+      throw new TypeError("Unsupported graph-size fixture descriptor.");
+    }
+    size += graphSize(descriptor.value);
+  }
+  return size;
+}
+
 function cloneBuilt(
   built: BuiltClaudeCodeRequest,
   changes: Readonly<Record<string, unknown>>,
@@ -145,6 +202,77 @@ function coherentBodyVariant(
 }
 
 describe("build-request surviving input-validation mutants", () => {
+  it("accepts every mutation-sensitive public input and override key", async () => {
+    const fresh = await freshBuildRequestModule();
+    const supportedModel = "claude-fresh-override-opus";
+    const input = requestInput({
+      ...validInput(),
+      model: supportedModel,
+      outputFormat: {
+        type: "json_schema",
+        schema: { type: "object", properties: {} },
+      },
+      profileOverride: {
+        id: "fresh-profile-id",
+        cliVersion: "2.1.196",
+        sdkVersion: "0.95.1",
+        entrypoint: "cli",
+        userAgent: "claude-cli/2.1.196 (external, cli)",
+        buildTime: "2026-02-03T04:05:06.000Z",
+        gitSha: "fresh-profile-sha",
+        attributionHeaderEnabled: false,
+        defaultCapabilities: {
+          contextHint: false,
+          adaptiveThinking: false,
+          effort: false,
+          interleavedThinking: false,
+        },
+        supportedModels: {
+          [supportedModel]: {
+            family: "opus",
+            aliases: ["fresh-override-opus"],
+            capabilities: {
+              contextHint: true,
+              adaptiveThinking: true,
+              effort: true,
+              interleavedThinking: true,
+            },
+          },
+        },
+        orderedBetas: ["fresh-beta"],
+      },
+    });
+
+    const built = await fresh.buildClaudeCodeRequest(input);
+    expect(built.evidence.profileId).toBe("fresh-profile-id");
+    expect(built.evidence.modelFamily).toBe("opus");
+    expect(built.evidence.capabilityDecisions).toEqual({
+      contextHint: false,
+      adaptiveThinking: false,
+      effort: false,
+      interleavedThinking: false,
+    });
+    expect(bodyRecord(built.body)["output_format"]).toEqual({
+      type: "json_schema",
+      schema: { type: "object", properties: {} },
+    });
+  });
+
+  it.each([
+    "contextManagement",
+    "outputConfig",
+    "speed",
+    "serviceTier",
+    "outputFormat",
+    "toolChoice",
+    "topP",
+    "topK",
+    "stopSequences",
+    "stream",
+    "temperature",
+  ])("rejects explicitly undefined optional field %s", async (field) => {
+    await expectBuildError(withField(field, undefined), "INVALID_INPUT");
+  });
   it.each([
     ["NUL", "\u0000"],
     ["unit separator", "\u001f"],
@@ -171,6 +299,28 @@ describe("build-request surviving input-validation mutants", () => {
       ]);
     },
   );
+
+  it("does not inspect a string beyond its final UTF-16 code unit", async () => {
+    const marker = "char-code-boundary-marker";
+    // Spy WITHOUT mockImplementation: Vitest calls through to the real method,
+    // so validation still behaves normally and no reference to the unbound
+    // prototype method is needed.
+    const spy = vi.spyOn(String.prototype, "charCodeAt");
+    const inspectedIndexes = (): readonly number[] =>
+      spy.mock.calls
+        // Modules are strict mode, so the recorded receiver is a primitive.
+        .filter((_call, callIndex) => spy.mock.instances[callIndex] === marker)
+        .map(([index]) => index);
+    try {
+      await expect(
+        buildClaudeCodeRequest(withField("clientRequestId", marker)),
+      ).resolves.toMatchObject({ method: "POST" });
+      expect(inspectedIndexes()).toContain(marker.length - 1);
+      expect(inspectedIndexes()).not.toContain(marker.length);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
 
   it.each(["\ud800", "\ud800\u0020", "\udbff\ue000", "\udc00", "\udfff"])(
     "rejects transient invalid Unicode %j before later consumers see valid text",
@@ -235,6 +385,10 @@ describe("build-request surviving input-validation mutants", () => {
       await expectBuildError(withField("metadata", { value }), "INVALID_INPUT");
     },
   );
+
+  it("rejects top-level undefined metadata before it can be omitted", async () => {
+    await expectBuildError(withField("metadata", undefined), "INVALID_INPUT");
+  });
 
   it.each([new Date(0), new Map(), /value/u])(
     "rejects non-plain graph object %#",
@@ -339,6 +493,38 @@ describe("build-request surviving input-validation mutants", () => {
       withField("messages", [{ role: "user", content: "x".repeat(1_000_001) }]),
       "INPUT_TOO_LARGE",
     );
+  });
+
+  it("accepts exactly the graph size limit before later consumers see small metadata", async () => {
+    const candidate = { ...validInput(), metadata: { padding: "" } };
+    const paddingLength = 1_000_000 - graphSize(candidate);
+    expect(paddingLength).toBeGreaterThan(0);
+    const oversizedDuringInspection = {
+      padding: "x".repeat(paddingLength),
+    };
+    expect(
+      graphSize({ ...validInput(), metadata: oversizedDuringInspection }),
+    ).toBe(1_000_000);
+
+    const target = { ...validInput(), metadata: { source: "small" } };
+    let metadataDescriptors = 0;
+    const input = new Proxy(target, {
+      getOwnPropertyDescriptor: (value, key) => {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (key !== "metadata" || descriptor === undefined) return descriptor;
+        metadataDescriptors += 1;
+        return {
+          ...descriptor,
+          value:
+            metadataDescriptors === 1
+              ? oversizedDuringInspection
+              : target.metadata,
+        };
+      },
+    });
+    await expect(
+      buildClaudeCodeRequest(requestInput(input)),
+    ).resolves.toMatchObject({ method: "POST" });
   });
 
   it("rejects transient oversized messages before later consumers see a small value", async () => {
@@ -526,6 +712,45 @@ describe("build-request surviving input-validation mutants", () => {
       withField("crypto", { subtle: digestAccessor }),
       "CRYPTO_UNAVAILABLE",
     );
+  });
+
+  it("rejects a crypto provider whose invalid subtle descriptor later reads valid", async () => {
+    const target = {};
+    Object.defineProperty(target, "subtle", {
+      configurable: true,
+      value: null,
+    });
+    const crypto = new Proxy(target, {
+      get: (_candidate, key) =>
+        key === "subtle" ? { digest: cryptoDigest } : undefined,
+    });
+    await expectBuildError(withField("crypto", crypto), "CRYPTO_UNAVAILABLE");
+  });
+
+  it("rejects a crypto provider whose invalid digest descriptor later reads callable", async () => {
+    const subtleTarget = {};
+    Object.defineProperty(subtleTarget, "digest", {
+      configurable: true,
+      value: "not callable",
+    });
+    const subtle = new Proxy(subtleTarget, {
+      get: (_candidate, key) => (key === "digest" ? cryptoDigest : undefined),
+    });
+    await expectBuildError(
+      withField("crypto", { subtle }),
+      "CRYPTO_UNAVAILABLE",
+    );
+  });
+
+  it("does not graph-inspect the validated crypto provider", async () => {
+    const subtle = Object.create({ inherited: true }) as object;
+    Object.defineProperty(subtle, "digest", {
+      configurable: true,
+      enumerable: true,
+      value: cryptoDigest,
+    });
+    const built = await buildClaudeCodeRequest(withField("crypto", { subtle }));
+    expect(built.method).toBe("POST");
   });
 
   it("rejects an unpinned profile and accepts the exported singleton", async () => {
@@ -750,6 +975,28 @@ describe("build-request surviving parser mutants", () => {
     expectParseError(cloneBuilt(built, { headers }));
   });
 
+  it.each([0, 1] as const)(
+    "rejects a transient non-string header member at index %i",
+    async (memberIndex) => {
+      const built = await buildClaudeCodeRequest(validInput());
+      let reads = 0;
+      const headers = built.headers.map(([name, value], index) => {
+        if (index !== 0) return [name, value] as const;
+        return new Proxy([name, value], {
+          get: (target, key, receiver) => {
+            if (key === String(memberIndex)) {
+              reads += 1;
+              if (reads === 1) return 7;
+            }
+            return reflectGet(target, key, receiver);
+          },
+        });
+      });
+      expectParseError(cloneBuilt(built, { headers }));
+      expect(reads).toBe(1);
+    },
+  );
+
   it("rejects non-arrays even when a hidden map operation is canonical", async () => {
     const built = await buildClaudeCodeRequest(validInput());
     const canonicalMap = new Proxy(
@@ -793,6 +1040,14 @@ describe("build-request surviving parser mutants", () => {
     for (const headers of [withoutSession, duplicateSession, reordered]) {
       expectParseError(cloneBuilt(built, { headers }));
     }
+  });
+
+  it("rejects a header list without the required timeout marker", async () => {
+    const built = await buildClaudeCodeRequest(validInput());
+    const headers = built.headers.filter(
+      ([name]) => name !== "x-stainless-timeout",
+    );
+    expectParseError(cloneBuilt(built, { headers }));
   });
 
   it.each([

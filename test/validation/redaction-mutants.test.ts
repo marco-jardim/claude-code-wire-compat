@@ -197,6 +197,13 @@ function shortDigest(): Promise<ArrayBuffer> {
   return Promise.resolve(new Uint8Array(31).buffer);
 }
 
+function incompatibleDigest(): Promise<ArrayBuffer> {
+  const target = new ArrayBuffer(32);
+  const { proxy, revoke } = Proxy.revocable(target, {});
+  revoke();
+  return Promise.resolve(proxy);
+}
+
 function nullPrototypeRecord(): object {
   const value: unknown = Object.setPrototypeOf({ safe: "value" }, null);
   if (typeof value !== "object" || value === null) {
@@ -258,6 +265,51 @@ function depthInput(depth: number): BuildRedactedEvidenceInput {
 }
 
 describe("redaction mutation boundaries", () => {
+  it.each([null, "input", 7, true])(
+    "rejects a primitive top-level evidence source %#",
+    async (value) => {
+      await expectWireRejection(
+        () =>
+          buildRedactedEvidence(value as unknown as BuildRedactedEvidenceInput),
+        "INVALID_INPUT",
+      );
+    },
+  );
+
+  it("accepts a fully valid effective profile and reports its exact id", async () => {
+    const input = redactionInput();
+    addOwnValue(input, "effectiveProfile", {
+      ...profile(),
+      id: "effective-profile-id",
+    });
+    const evidence = await buildRedactedEvidence(input);
+    expect(evidence.profileId).toBe("effective-profile-id");
+  });
+
+  it.each([
+    ["id", 7],
+    ["id", ""],
+    ["endpoint", "https://invalid.example/v1/messages"],
+    ["provider", "bedrock"],
+    ["anthropicVersion", "2024-01-01"],
+  ] as const)("rejects invalid effective-profile %s=%j", async (key, value) => {
+    const input = redactionInput();
+    addOwnValue(input, "effectiveProfile", { ...profile(), [key]: value });
+    await expectWireRejection(
+      () => buildRedactedEvidence(input),
+      "INVALID_INPUT",
+    );
+  });
+
+  it("reports byte-conversion failures with exact safe details", async () => {
+    const input = redactionInput();
+    await expectWireRejection(
+      () => buildRedactedEvidence(input, cryptoWithDigest(incompatibleDigest)),
+      "REDACTION_FAILURE",
+      { bodyByteLength: 34, messageCount: 1, systemBlockCount: 1 },
+    );
+  });
+
   it("reports an invalid digest length with exact safe details", async () => {
     const input = redactionInput();
     const bodyByteLength = new TextEncoder().encode(input.body).byteLength;

@@ -158,4 +158,274 @@ describe("protocol profile override", () => {
 
     expect(JSON.parse(result.body)).toMatchObject({ model });
   });
+
+  it("applies an SDK version override to the package-version header", async () => {
+    const result = await buildWithOverride({ sdkVersion: "0.95.1" });
+    expect(headerValue(result.headers, "x-stainless-package-version")).toBe(
+      "0.95.1",
+    );
+  });
+
+  it("accepts and preserves every remaining scalar override", async () => {
+    const result = await buildWithOverride({
+      buildTime: "2026-02-03T04:05:06.000Z",
+      gitSha: "profile-override-sha",
+      attributionHeaderEnabled: false,
+    });
+
+    expect(result.method).toBe("POST");
+    expect(Object.isFrozen(result)).toBe(true);
+  });
+
+  it.each([true, false])(
+    "accepts boolean attributionHeaderEnabled=%s",
+    async (attributionHeaderEnabled) => {
+      await expect(
+        buildWithOverride({ attributionHeaderEnabled }),
+      ).resolves.toMatchObject({ method: "POST" });
+    },
+  );
+
+  it.each([null, 0, "false", [], {}])(
+    "rejects non-boolean attributionHeaderEnabled %#",
+    async (attributionHeaderEnabled) => {
+      await expect(
+        buildWithOverride({ attributionHeaderEnabled }),
+      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    },
+  );
+
+  it("uses a complete default-capability override", async () => {
+    const defaultCapabilities = {
+      contextHint: false,
+      adaptiveThinking: false,
+      effort: false,
+      interleavedThinking: false,
+    } as const;
+    const result = await buildWithOverride({ defaultCapabilities });
+
+    expect(result.evidence.capabilityDecisions).toEqual(defaultCapabilities);
+    expect(Object.isFrozen(result.evidence.capabilityDecisions)).toBe(true);
+  });
+
+  it.each([
+    null,
+    [],
+    {},
+    { contextHint: false },
+    {
+      contextHint: false,
+      adaptiveThinking: false,
+      effort: false,
+      interleavedThinking: false,
+      unexpected: false,
+    },
+    {
+      contextHint: "false",
+      adaptiveThinking: false,
+      effort: false,
+      interleavedThinking: false,
+    },
+    {
+      contextHint: false,
+      adaptiveThinking: 0,
+      effort: false,
+      interleavedThinking: false,
+    },
+    {
+      contextHint: false,
+      adaptiveThinking: false,
+      effort: null,
+      interleavedThinking: false,
+    },
+    {
+      contextHint: false,
+      adaptiveThinking: false,
+      effort: false,
+      interleavedThinking: "false",
+    },
+  ])(
+    "rejects malformed default capabilities %#",
+    async (defaultCapabilities) => {
+      await expect(
+        buildWithOverride({ defaultCapabilities }),
+      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    },
+  );
+
+  it.each(["haiku", "sonnet", "opus"] as const)(
+    "accepts the exact supported-model family %s",
+    async (family) => {
+      const model = `claude-override-${family}`;
+      const result = await buildClaudeCodeRequest({
+        ...base,
+        model,
+        profileOverride: {
+          supportedModels: {
+            [model]: {
+              family,
+              aliases: [`override-${family}`],
+              capabilities: {
+                contextHint: true,
+                adaptiveThinking: true,
+                effort: true,
+                interleavedThinking: true,
+              },
+            },
+          },
+        },
+      });
+
+      expect(result.evidence.modelFamily).toBe(family);
+    },
+  );
+
+  it.each([
+    null,
+    [],
+    {},
+    { model: null },
+    {
+      model: {
+        family: "invalid",
+        aliases: ["model"],
+        capabilities: {
+          contextHint: true,
+          adaptiveThinking: true,
+          effort: true,
+          interleavedThinking: true,
+        },
+      },
+    },
+    {
+      model: {
+        family: 7,
+        aliases: ["model"],
+        capabilities: {
+          contextHint: true,
+          adaptiveThinking: true,
+          effort: true,
+          interleavedThinking: true,
+        },
+      },
+    },
+    {
+      model: {
+        family: "opus",
+        aliases: [],
+        capabilities: {
+          contextHint: true,
+          adaptiveThinking: true,
+          effort: true,
+          interleavedThinking: true,
+        },
+      },
+    },
+    {
+      model: {
+        family: "opus",
+        aliases: ["same", "same"],
+        capabilities: {
+          contextHint: true,
+          adaptiveThinking: true,
+          effort: true,
+          interleavedThinking: true,
+        },
+      },
+    },
+  ])(
+    "rejects a malformed supported-model table %#",
+    async (supportedModels) => {
+      await expect(
+        buildWithOverride({ supportedModels }),
+      ).rejects.toMatchObject({
+        code: "INVALID_INPUT",
+      });
+    },
+  );
+
+  it("rejects empty and symbol supported-model keys", async () => {
+    const validModel = {
+      family: "opus",
+      aliases: ["override-model"],
+      capabilities: {
+        contextHint: true,
+        adaptiveThinking: true,
+        effort: true,
+        interleavedThinking: true,
+      },
+    } as const;
+    await expect(
+      buildWithOverride({ supportedModels: { "": validModel } }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+
+    const supportedModels = { model: validModel };
+    Object.defineProperty(supportedModels, Symbol("model"), {
+      enumerable: true,
+      value: validModel,
+    });
+    await expect(buildWithOverride({ supportedModels })).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
+  });
+
+  it("rejects an empty supported-model key beside the requested model", async () => {
+    const validModel = {
+      family: "opus",
+      aliases: ["override-model"],
+      capabilities: {
+        contextHint: true,
+        adaptiveThinking: true,
+        effort: true,
+        interleavedThinking: true,
+      },
+    } as const;
+    await expect(
+      buildWithOverride({
+        supportedModels: {
+          "": validModel,
+          [base.model]: validModel,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+
+  it("rejects a symbol supported-model key beside the requested model", async () => {
+    const validModel = {
+      family: "opus",
+      aliases: ["override-model"],
+      capabilities: {
+        contextHint: true,
+        adaptiveThinking: true,
+        effort: true,
+        interleavedThinking: true,
+      },
+    } as const;
+    const supportedModels = { [base.model]: validModel };
+    Object.defineProperty(supportedModels, Symbol("model"), {
+      enumerable: true,
+      value: validModel,
+    });
+    await expect(buildWithOverride({ supportedModels })).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
+  });
+
+  it.each([null, "beta", [""], [7], ["beta", "beta"]])(
+    "rejects malformed ordered betas %#",
+    async (orderedBetas) => {
+      await expect(buildWithOverride({ orderedBetas })).rejects.toMatchObject({
+        code: "INVALID_INPUT",
+      });
+    },
+  );
+
+  it("preserves a valid ordered beta override", async () => {
+    const result = await buildWithOverride({
+      orderedBetas: ["override-beta-one", "override-beta-two"],
+    });
+
+    expect(result.method).toBe("POST");
+    expect(Object.isFrozen(result)).toBe(true);
+  });
 });
