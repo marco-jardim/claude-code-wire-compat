@@ -2,7 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.3] - Unreleased
+## [0.1.0-rc.4] - Unreleased
+
+### Added
+
+- A fail-closed protocol profile override. The new optional `profileOverride` member on
+  `ClaudeCodeRequestInput` accepts a `ClaudeCodeProfileOverride` whose eleven optional members
+  (`id`, `cliVersion`, `sdkVersion`, `entrypoint`, `userAgent`, `buildTime`, `gitSha`,
+  `attributionHeaderEnabled`, `defaultCapabilities`, `supportedModels`, `orderedBetas`) replace the
+  pinned profile field by field. It lets a consumer ship an emergency protocol update for a new
+  Claude Code release without waiting for a package release.
+
+### Security
+
+- The request destination is not overridable. `endpoint`, `provider` and `anthropicVersion` are
+  absent from `ClaudeCodeProfileOverride` by construction, so supplying any of them is rejected with
+  `INVALID_INPUT` rather than silently ignored. An override that changes `cliVersion` or `sdkVersion`
+  without a matching `userAgent` is rejected, because a body and a user agent announcing different
+  versions is a detectable client inconsistency.
+
+### Changed
+
+- `RedactedRequestEvidence.profileId` is now `string` rather than the pinned literal type, and
+  reports the effective profile identifier, so evidence cannot attribute a request to the pinned
+  profile when an override built it.
+
+## [0.1.0-rc.3] - 2026-07-25
 
 ### Added
 
