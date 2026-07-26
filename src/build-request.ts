@@ -41,6 +41,7 @@ const INPUT_KEYS = new Set([
   "thinking",
   "effort",
   "metadata",
+  "experimentalBodyFields",
   "contextManagement",
   "outputConfig",
   "speed",
@@ -498,6 +499,9 @@ function evidenceRequest(
     thinking?: NonNullable<ClaudeCodeRequestInput["thinking"]>;
     effort?: NonNullable<ClaudeCodeRequestInput["effort"]>;
     metadata?: NonNullable<ClaudeCodeRequestInput["metadata"]>;
+    experimentalBodyFields?: NonNullable<
+      ClaudeCodeRequestInput["experimentalBodyFields"]
+    >;
     contextManagement?: Exclude<
       ClaudeCodeRequestInput["contextManagement"],
       undefined
@@ -526,6 +530,8 @@ function evidenceRequest(
   if (input.thinking !== undefined) request.thinking = input.thinking;
   if (input.effort !== undefined) request.effort = input.effort;
   if (input.metadata !== undefined) request.metadata = input.metadata;
+  if (input.experimentalBodyFields !== undefined)
+    request.experimentalBodyFields = input.experimentalBodyFields;
   if (Object.hasOwn(input, "contextManagement"))
     request.contextManagement = present(input.contextManagement);
   if (Object.hasOwn(input, "outputConfig"))

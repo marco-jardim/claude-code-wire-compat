@@ -631,6 +631,8 @@ export interface ClaudeCodeRequestInput {
   readonly effort?: "low" | "medium" | "high" | "max";
   /** Supplies validated JSON metadata values in caller insertion order. */
   readonly metadata?: Readonly<Record<string, JsonValue>>;
+  /** Appends validated, collision-safe beta fields to the request body. */
+  readonly experimentalBodyFields?: Readonly<Record<string, JsonValue>>;
   readonly contextManagement?: ContextManagementConfig | null;
   readonly outputConfig?: OutputConfigInput;
   readonly speed?: "standard" | "fast" | null;

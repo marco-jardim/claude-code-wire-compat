@@ -225,6 +225,49 @@ describe("request body inspection mutation boundaries", () => {
 });
 
 describe("request body canonicalization mutation boundaries", () => {
+  it.each([null, [], "not-an-object"])(
+    "rejects a non-record experimental body envelope %#",
+    (experimentalBodyFields) => {
+      expectWireCode(
+        () => build({ ...baseInput(), experimentalBodyFields }),
+        "INVALID_INPUT",
+      );
+    },
+  );
+
+  it("clones extension values before appending and freezing them", () => {
+    const nested = { second: 2, first: [1, { z: true, a: false }] };
+    const result = build({
+      ...baseInput(),
+      experimentalBodyFields: { future_field: nested },
+    });
+    const emitted = result["future_field"] as Record<string, unknown>;
+
+    expect(emitted).toEqual(nested);
+    expect(emitted).not.toBe(nested);
+    expect(Object.keys(emitted)).toEqual(["second", "first"]);
+    expect(Object.isFrozen(emitted)).toBe(true);
+    expect(Object.isFrozen(nested)).toBe(false);
+  });
+
+  it("allows a known wire name only while that field is not emitted", () => {
+    expect(
+      build({
+        ...baseInput(),
+        experimentalBodyFields: { tools: [{ future: true }] },
+      })["tools"],
+    ).toEqual([{ future: true }]);
+    expectWireCode(
+      () =>
+        build({
+          ...baseInput(),
+          tools: [{ name: "known", input_schema: {} }],
+          experimentalBodyFields: { tools: [] },
+        }),
+      "INVALID_INPUT",
+    );
+  });
+
   it("preserves nested JSON key insertion order", () => {
     const result = build(
       {

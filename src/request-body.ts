@@ -42,6 +42,7 @@ const INPUT_KEYS = [
   "thinking",
   "effort",
   "metadata",
+  "experimentalBodyFields",
   "contextManagement",
   "outputConfig",
   "speed",
@@ -1331,5 +1332,14 @@ export function buildCanonicalBody(
     result["context_hint"] = { enabled: true };
   }
   result["metadata"] = metadata(rawMetadata);
+  if (hasOwn(input, "experimentalBodyFields")) {
+    const experimentalBodyFields = validatedJsonObject(
+      input["experimentalBodyFields"],
+    );
+    for (const key of Object.keys(experimentalBodyFields)) {
+      if (hasOwn(result, key)) fail("INVALID_INPUT");
+      result[key] = experimentalBodyFields[key];
+    }
+  }
   return deepFreeze(result);
 }
