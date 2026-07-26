@@ -605,6 +605,31 @@ export interface ClaudeCodeCapabilities {
   readonly interleavedThinking: boolean;
 }
 
+/**
+ * Substitutes protocol-identity fields of the pinned profile.
+ *
+ * The destination (`endpoint`), `provider` and `anthropicVersion` are the
+ * immutable security core and cannot be expressed here. Supplying any key
+ * outside this contract fails with `INVALID_INPUT` rather than being ignored.
+ *
+ * Each supplied field REPLACES the pinned field wholesale. There is no deep
+ * merge, because a merged model table or beta list would describe no real
+ * client version.
+ */
+export interface ClaudeCodeProfileOverride {
+  readonly id?: string;
+  readonly cliVersion?: string;
+  readonly sdkVersion?: string;
+  readonly entrypoint?: string;
+  readonly userAgent?: string;
+  readonly buildTime?: string;
+  readonly gitSha?: string;
+  readonly attributionHeaderEnabled?: boolean;
+  readonly defaultCapabilities?: ClaudeCodeCapabilities;
+  readonly supportedModels?: ClaudeCodeProtocolProfile["supportedModels"];
+  readonly orderedBetas?: readonly string[];
+}
+
 export interface ClaudeCodeRuntimeIdentity {
   readonly sessionId: string;
   readonly deviceId: string;
@@ -624,6 +649,8 @@ export interface ClaudeCodeRequestInput {
   readonly tools?: readonly ToolDefinition[];
   readonly runtime: ClaudeCodeRuntimeIdentity;
   readonly capabilities?: Partial<ClaudeCodeCapabilities>;
+  /** Substitutes protocol-identity fields of the pinned profile. */
+  readonly profileOverride?: ClaudeCodeProfileOverride;
   readonly thinking?: {
     readonly type: "enabled" | "adaptive";
     readonly budgetTokens?: number;
@@ -667,14 +694,14 @@ export interface ClaudeCodeRequestInput {
 }
 
 export interface ClaudeCodeProtocolProfile {
-  readonly id: "claude-code-2.1.195-sdk-0.94.0";
-  readonly cliVersion: "2.1.195";
-  readonly sdkVersion: "0.94.0";
+  readonly id: string;
+  readonly cliVersion: string;
+  readonly sdkVersion: string;
   readonly endpoint: "https://api.anthropic.com/v1/messages?beta=true";
   /** Replaces upstream `CLAUDE_CODE_ENTRYPOINT`. */
-  readonly entrypoint: "cli";
+  readonly entrypoint: string;
   /** Replaces upstream `buildExtendedUserAgent` (`lib/request-headers.mjs:288-295`). */
-  readonly userAgent: `claude-cli/${string} (external, ${string})`;
+  readonly userAgent: string;
   /** Replaces upstream `CLAUDE_CODE_BUILD_TIME`. */
   readonly buildTime: string;
   /** Replaces upstream `CLAUDE_CODE_GIT_SHA`. */
@@ -722,7 +749,8 @@ export type ClaudeCodeWireErrorCode =
   | "REDACTION_FAILURE";
 
 export interface RedactedRequestEvidence {
-  readonly profileId: ClaudeCodeProtocolProfile["id"];
+  /** Reports the effective profile id, which differs when overridden. */
+  readonly profileId: string;
   readonly url: ClaudeCodeProtocolProfile["endpoint"];
   readonly method: "POST";
   readonly modelFamily: "haiku" | "sonnet" | "opus";

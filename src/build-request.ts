@@ -4,6 +4,7 @@ import { composeBetas } from "./betas.js";
 import type {
   BuiltClaudeCodeRequest,
   ClaudeCodeCapabilities,
+  ClaudeCodeProfileOverride,
   ClaudeCodeProtocolProfile,
   ClaudeCodeRequestInput,
   HeaderPair,
@@ -38,6 +39,7 @@ const INPUT_KEYS = new Set([
   "tools",
   "runtime",
   "capabilities",
+  "profileOverride",
   "thinking",
   "effort",
   "metadata",
@@ -84,6 +86,21 @@ const CAPABILITY_KEYS = [
   "effort",
   "interleavedThinking",
 ] as const;
+const CAPABILITY_KEY_SET = new Set(CAPABILITY_KEYS);
+const OVERRIDE_KEYS = new Set([
+  "id",
+  "cliVersion",
+  "sdkVersion",
+  "entrypoint",
+  "userAgent",
+  "buildTime",
+  "gitSha",
+  "attributionHeaderEnabled",
+  "defaultCapabilities",
+  "supportedModels",
+  "orderedBetas",
+]);
+const MODEL_KEYS = new Set(["family", "aliases", "capabilities"]);
 
 type UnknownRecord = Readonly<Record<string, unknown>>;
 
@@ -215,10 +232,148 @@ function validateCrypto(value: unknown): Pick<Crypto, "subtle"> | undefined {
   return value;
 }
 
+function requireNonEmptyString(value: unknown): string {
+  if (typeof value !== "string" || value.length === 0) fail();
+  return value;
+}
+
+function parseNonEmptyUniqueStrings(value: unknown): readonly string[] {
+  if (!Array.isArray(value) || value.length === 0) fail();
+  const result = value.map(requireNonEmptyString);
+  if (new Set(result).size !== result.length) fail();
+  return Object.freeze(result);
+}
+
+function parseSupportedModels(
+  value: unknown,
+): ClaudeCodeProtocolProfile["supportedModels"] {
+  if (!isRecord(value) || Reflect.ownKeys(value).length === 0) fail();
+  const result: Record<
+    string,
+    ClaudeCodeProtocolProfile["supportedModels"][string]
+  > = {};
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string" || key.length === 0) fail();
+    const model = ownValue(value, key);
+    if (!isRecord(model)) fail();
+    assertExactKeys(model, MODEL_KEYS);
+    const family = ownValue(model, "family");
+    if (family !== "haiku" && family !== "sonnet" && family !== "opus") fail();
+    result[key] = Object.freeze({
+      family,
+      aliases: parseNonEmptyUniqueStrings(ownValue(model, "aliases")),
+      capabilities: parseCapabilities(ownValue(model, "capabilities")),
+    });
+  }
+  return Object.freeze(result);
+}
+
+function validateProfileOverride(value: unknown): ClaudeCodeProfileOverride {
+  if (!isRecord(value)) fail();
+  assertExactKeys(value, OVERRIDE_KEYS);
+  if (Reflect.ownKeys(value).length === 0) fail();
+
+  const cliVersion = Object.hasOwn(value, "cliVersion")
+    ? requireNonEmptyString(ownValue(value, "cliVersion"))
+    : undefined;
+  const userAgent = Object.hasOwn(value, "userAgent")
+    ? requireNonEmptyString(ownValue(value, "userAgent"))
+    : undefined;
+  // `cc_version` in the billing header derives from `cliVersion` while the
+  // user agent is separate. Overriding one alone would emit a self-inconsistent
+  // client signature, precisely the fingerprint mismatch this package prevents.
+  if (cliVersion !== undefined && !userAgent?.includes(cliVersion)) {
+    fail();
+  }
+
+  const attributionHeaderEnabled = Object.hasOwn(
+    value,
+    "attributionHeaderEnabled",
+  )
+    ? ownValue(value, "attributionHeaderEnabled")
+    : undefined;
+  if (
+    attributionHeaderEnabled !== undefined &&
+    typeof attributionHeaderEnabled !== "boolean"
+  ) {
+    fail();
+  }
+
+  return Object.freeze({
+    ...(Object.hasOwn(value, "id")
+      ? { id: requireNonEmptyString(ownValue(value, "id")) }
+      : {}),
+    ...(cliVersion === undefined ? {} : { cliVersion }),
+    ...(Object.hasOwn(value, "sdkVersion")
+      ? { sdkVersion: requireNonEmptyString(ownValue(value, "sdkVersion")) }
+      : {}),
+    ...(Object.hasOwn(value, "entrypoint")
+      ? { entrypoint: requireNonEmptyString(ownValue(value, "entrypoint")) }
+      : {}),
+    ...(userAgent === undefined ? {} : { userAgent }),
+    ...(Object.hasOwn(value, "buildTime")
+      ? { buildTime: requireNonEmptyString(ownValue(value, "buildTime")) }
+      : {}),
+    ...(Object.hasOwn(value, "gitSha")
+      ? { gitSha: requireNonEmptyString(ownValue(value, "gitSha")) }
+      : {}),
+    ...(attributionHeaderEnabled === undefined
+      ? {}
+      : { attributionHeaderEnabled }),
+    ...(Object.hasOwn(value, "defaultCapabilities")
+      ? {
+          defaultCapabilities: parseCapabilities(
+            ownValue(value, "defaultCapabilities"),
+          ),
+        }
+      : {}),
+    ...(Object.hasOwn(value, "supportedModels")
+      ? {
+          supportedModels: parseSupportedModels(
+            ownValue(value, "supportedModels"),
+          ),
+        }
+      : {}),
+    ...(Object.hasOwn(value, "orderedBetas")
+      ? {
+          orderedBetas: parseNonEmptyUniqueStrings(
+            ownValue(value, "orderedBetas"),
+          ),
+        }
+      : {}),
+  });
+}
+
+function createEffectiveProfile(
+  pinnedProfile: ClaudeCodeProtocolProfile,
+  override: ClaudeCodeProfileOverride | undefined,
+): ClaudeCodeProtocolProfile {
+  if (override === undefined) return pinnedProfile;
+  return deepFreeze({ ...pinnedProfile, ...override });
+}
+
+function applyEffectiveProfileHeaders(
+  headers: readonly HeaderPair[],
+  profile: ClaudeCodeProtocolProfile,
+): readonly HeaderPair[] {
+  return Object.freeze(
+    headers.map(([name, value]): HeaderPair => {
+      if (name === "user-agent") {
+        return Object.freeze([name, profile.userAgent]);
+      }
+      if (name === "x-stainless-package-version") {
+        return Object.freeze([name, profile.sdkVersion]);
+      }
+      return Object.freeze([name, value]);
+    }),
+  );
+}
+
 function validateInput(input: ClaudeCodeRequestInput): {
   readonly source: ClaudeCodeRequestInput;
   readonly clientRequestId: string;
   readonly crypto: Pick<Crypto, "subtle"> | undefined;
+  readonly profileOverride: ClaudeCodeProfileOverride | undefined;
 } {
   if (!isRecord(input)) fail();
   assertExactKeys(input, INPUT_KEYS);
@@ -253,7 +408,15 @@ function validateInput(input: ClaudeCodeRequestInput): {
   const cryptoValue = Object.hasOwn(input, "crypto")
     ? validateCrypto(ownValue(input, "crypto"))
     : undefined;
-  return { source: input, clientRequestId, crypto: cryptoValue };
+  const profileOverride = Object.hasOwn(input, "profileOverride")
+    ? validateProfileOverride(ownValue(input, "profileOverride"))
+    : undefined;
+  return {
+    source: input,
+    clientRequestId,
+    crypto: cryptoValue,
+    profileOverride,
+  };
 }
 
 function requestedCapabilities(
@@ -264,7 +427,7 @@ function requestedCapabilities(
   const raw = input.capabilities;
   if (raw !== undefined) {
     if (!isRecord(raw)) fail("UNSUPPORTED_CAPABILITY");
-    assertExactKeys(raw, new Set(CAPABILITY_KEYS));
+    assertExactKeys(raw, CAPABILITY_KEY_SET);
   }
   const result: ClaudeCodeCapabilities = {
     contextHint: raw?.contextHint ?? profile.defaultCapabilities.contextHint,
@@ -358,7 +521,7 @@ function parseHeaders(value: unknown): readonly HeaderPair[] {
 
 function parseCapabilities(value: unknown): ClaudeCodeCapabilities {
   if (!isRecord(value)) fail();
-  assertExactKeys(value, new Set(CAPABILITY_KEYS));
+  assertExactKeys(value, CAPABILITY_KEY_SET);
   const result = Object.fromEntries(
     CAPABILITY_KEYS.map((key) => {
       const entry = ownValue(value, key);
@@ -572,12 +735,19 @@ export async function buildClaudeCodeRequest(
   try {
     const pinnedProfile = validateProfile(profile);
     const validated = validateInput(input);
+    const effectiveProfile = createEffectiveProfile(
+      pinnedProfile,
+      validated.profileOverride,
+    );
     const identity = validateRuntimeIdentity(validated.source.runtime);
-    const resolvedModel = resolveModel(validated.source.model, pinnedProfile);
+    const resolvedModel = resolveModel(
+      validated.source.model,
+      effectiveProfile,
+    );
     const capabilities = requestedCapabilities(
       validated.source,
       resolvedModel.capabilities,
-      pinnedProfile,
+      effectiveProfile,
     );
     const effectiveModel = Object.freeze({
       ...resolvedModel,
@@ -585,7 +755,7 @@ export async function buildClaudeCodeRequest(
     });
     const billing = await createBillingBlock(
       fingerprintText(validated.source),
-      pinnedProfile.cliVersion,
+      effectiveProfile.cliVersion,
       validated.crypto,
     );
     const metadata = buildCorrelatedMetadata(
@@ -602,7 +772,7 @@ export async function buildClaudeCodeRequest(
       effectiveModel,
       system,
       metadata,
-      pinnedProfile,
+      effectiveProfile,
     );
     const betas = composeBetas(
       {
@@ -610,28 +780,32 @@ export async function buildClaudeCodeRequest(
         effortRequested: validated.source.effort !== undefined,
         contextHintRequested: capabilities.contextHint,
       },
-      pinnedProfile,
+      effectiveProfile,
     );
-    const headers = buildOrderedHeaders({
-      accessToken: validated.source.accessToken,
-      runtime: identity,
-      clientRequestId: validated.clientRequestId,
-      betaFeatures: betas,
-      app: validated.source.app ?? pinnedProfile.entrypoint,
-      stainlessRetryCount: validated.source.stainlessRetryCount ?? 0,
-      stainlessHelper: validated.source.stainlessHelper,
-      claudeRemoteContainerId: validated.source.claudeRemoteContainerId,
-      claudeRemoteSessionId: validated.source.claudeRemoteSessionId,
-      clientApp: validated.source.clientApp,
-      anthropicAdditionalProtection:
-        validated.source.anthropicAdditionalProtection,
-      extraHeaders: validated.source.extraHeaders ?? [],
-      profile: pinnedProfile,
-    });
+    const headers = applyEffectiveProfileHeaders(
+      buildOrderedHeaders({
+        accessToken: validated.source.accessToken,
+        runtime: identity,
+        clientRequestId: validated.clientRequestId,
+        betaFeatures: betas,
+        app: validated.source.app ?? effectiveProfile.entrypoint,
+        stainlessRetryCount: validated.source.stainlessRetryCount ?? 0,
+        stainlessHelper: validated.source.stainlessHelper,
+        claudeRemoteContainerId: validated.source.claudeRemoteContainerId,
+        claudeRemoteSessionId: validated.source.claudeRemoteSessionId,
+        clientApp: validated.source.clientApp,
+        anthropicAdditionalProtection:
+          validated.source.anthropicAdditionalProtection,
+        extraHeaders: validated.source.extraHeaders ?? [],
+        profile: pinnedProfile,
+      }),
+      effectiveProfile,
+    );
     const body = JSON.stringify(canonicalBody);
     const evidence = await buildRedactedEvidence(
       {
         profile: pinnedProfile,
+        effectiveProfile,
         request: evidenceRequest(validated.source, resolvedModel.id),
         modelFamily: resolvedModel.family,
         logicalHeaders: headers,
@@ -641,7 +815,7 @@ export async function buildClaudeCodeRequest(
       validated.crypto,
     );
     return deepFreeze({
-      url: pinnedProfile.endpoint,
+      url: effectiveProfile.endpoint,
       method: METHOD,
       headers,
       body,

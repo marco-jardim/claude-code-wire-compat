@@ -10,14 +10,16 @@ import type {
 import { ClaudeCodeWireError } from "./contracts.js";
 import { classifySurrogateAt } from "./unicode.js";
 
-/** Excludes the id emitted as `x-client-request-id` and validation-time crypto seam. */
+/** Excludes values used only while validating and assembling the request. */
 export type NormalizedRequestInput = Omit<
   ClaudeCodeRequestInput,
-  "clientRequestId" | "crypto"
+  "clientRequestId" | "crypto" | "profileOverride"
 >;
 
 export interface BuildRedactedEvidenceInput {
   readonly profile: ClaudeCodeProtocolProfile;
+  /** Supplies the validated effective profile when an override is active. */
+  readonly effectiveProfile?: ClaudeCodeProtocolProfile;
   readonly request: NormalizedRequestInput;
   readonly modelFamily: "haiku" | "sonnet" | "opus";
   readonly logicalHeaders: readonly HeaderPair[];
@@ -27,7 +29,6 @@ export interface BuildRedactedEvidenceInput {
 
 const MAX_INPUT_DEPTH = 100;
 const MAX_INPUT_SIZE = 1_000_000;
-const PROFILE_ID = "claude-code-2.1.195-sdk-0.94.0";
 const ENDPOINT = "https://api.anthropic.com/v1/messages?beta=true";
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const SAFE_ERROR_CODES = new Set([
@@ -206,7 +207,9 @@ function toHex(bytes: Uint8Array): string {
 function capabilityDecisions(
   input: BuildRedactedEvidenceInput,
 ): Readonly<Record<keyof ClaudeCodeCapabilities, boolean>> {
-  const defaults = input.profile.defaultCapabilities;
+  const defaults =
+    input.effectiveProfile?.defaultCapabilities ??
+    input.profile.defaultCapabilities;
   const requested = input.request.capabilities;
   return Object.freeze({
     contextHint: requested?.contextHint ?? defaults.contextHint,
@@ -230,15 +233,33 @@ function readOwnValue(value: unknown, key: string): unknown {
 }
 
 function assertEvidenceSources(value: unknown): void {
+  if (typeof value !== "object" || value === null) {
+    throw wireError("INVALID_INPUT");
+  }
   const profile = readOwnValue(value, "profile");
   const profileId = readOwnValue(profile, "id");
   const endpoint = readOwnValue(profile, "endpoint");
+  const effectiveProfile = Object.hasOwn(value, "effectiveProfile")
+    ? readOwnValue(value, "effectiveProfile")
+    : undefined;
   const modelFamily = readOwnValue(value, "modelFamily");
   const logicalHeaders = readOwnValue(value, "logicalHeaders");
   const betaFeatures = readOwnValue(value, "betaFeatures");
 
-  if (profileId !== PROFILE_ID || endpoint !== ENDPOINT) {
+  if (profileId !== "claude-code-2.1.195-sdk-0.94.0" || endpoint !== ENDPOINT) {
     throw wireError("INVALID_INPUT");
+  }
+  if (effectiveProfile !== undefined) {
+    const effectiveId = readOwnValue(effectiveProfile, "id");
+    if (
+      typeof effectiveId !== "string" ||
+      effectiveId.length === 0 ||
+      readOwnValue(effectiveProfile, "endpoint") !== ENDPOINT ||
+      readOwnValue(effectiveProfile, "provider") !== "anthropic" ||
+      readOwnValue(effectiveProfile, "anthropicVersion") !== "2023-06-01"
+    ) {
+      throw wireError("INVALID_INPUT");
+    }
   }
   if (
     modelFamily !== "haiku" &&
@@ -395,7 +416,7 @@ export async function buildRedactedEvidence(
   const bodySha256 = toHex(digestBytes);
 
   const evidence: RedactedRequestEvidence = {
-    profileId: PROFILE_ID,
+    profileId: input.effectiveProfile?.id ?? input.profile.id,
     url: ENDPOINT,
     method: "POST",
     modelFamily: input.modelFamily,
