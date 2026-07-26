@@ -67,7 +67,6 @@ describe("experimental body fields", () => {
       "max_tokens",
       "system",
       "messages",
-      "temperature",
       "metadata",
       "scalar_beta",
       "nullable_beta",
@@ -92,23 +91,19 @@ describe("experimental body fields", () => {
     ).toEqual(["y", "x"]);
   });
 
-  it.each([
-    "model",
-    "max_tokens",
-    "system",
-    "messages",
-    "temperature",
-    "metadata",
-  ])("rejects collision with always-emitted body key %s", (key) => {
-    expectCode(
-      () =>
-        build({
-          ...BASE_INPUT,
-          experimentalBodyFields: { [key]: "collision" },
-        }),
-      "INVALID_INPUT",
-    );
-  });
+  it.each(["model", "max_tokens", "system", "messages", "metadata"])(
+    "rejects collision with always-emitted body key %s",
+    (key) => {
+      expectCode(
+        () =>
+          build({
+            ...BASE_INPUT,
+            experimentalBodyFields: { [key]: "collision" },
+          }),
+        "INVALID_INPUT",
+      );
+    },
+  );
 
   it("checks collisions against conditionally emitted wire keys", () => {
     const tool = { name: "inspect", input_schema: {} };

@@ -356,10 +356,15 @@ describe("redaction mutation boundaries", () => {
       messageCount: 1,
       systemBlockCount: 1,
       capabilityDecisions: {
-        contextHint: true,
-        adaptiveThinking: true,
-        effort: true,
-        interleavedThinking: true,
+        thinking: false,
+        adaptiveThinking: false,
+        interleavedThinking: false,
+        effort: false,
+        maxEffort: false,
+        xhighEffort: false,
+        contextManagement: false,
+        temperature: false,
+        rejectsDisabledThinking: false,
       },
     });
     expect(JSON.stringify(evidence)).not.toContain(TOKEN);

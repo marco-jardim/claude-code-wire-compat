@@ -77,14 +77,24 @@ describe("model identity", () => {
     expect(modelFamilyOf(normalizeModelId("gpt-4o"))).toBe("unknown");
   });
 
-  it("models claude-mythos-5 as a catalogue-less capability bearer (decision D-1)", () => {
+  it("guards product decision D-1: claude-mythos-5 is a catalogue-less capability bearer", () => {
     expect(normalizeModelId("claude-mythos-5")).toBe("claude-mythos-5");
     expect(() => resolveModel("claude-mythos-5")).not.toThrow();
     expect(resolveModel("claude-mythos-5")).toEqual({
       id: "claude-mythos-5",
       wireId: "claude-mythos-5",
       family: "mythos",
-      capabilities: CLAUDE_CODE_2_1_195_PROFILE.defaultCapabilities,
+      capabilities: {
+        thinking: true,
+        adaptiveThinking: true,
+        interleavedThinking: true,
+        effort: true,
+        maxEffort: true,
+        xhighEffort: true,
+        contextManagement: true,
+        temperature: false,
+        rejectsDisabledThinking: true,
+      },
     });
     expect(
       Object.hasOwn(
@@ -131,14 +141,23 @@ describe("model identity", () => {
       id: "gpt-4o",
       wireId: "gpt-4o",
       family: "unknown",
-      capabilities: CLAUDE_CODE_2_1_195_PROFILE.defaultCapabilities,
+      capabilities: {
+        thinking: true,
+        adaptiveThinking: true,
+        interleavedThinking: true,
+        effort: true,
+        maxEffort: true,
+        xhighEffort: true,
+        contextManagement: true,
+        temperature: false,
+        rejectsDisabledThinking: true,
+      },
     });
   });
 
   it("resolves a dated sonnet form with claude-sonnet-4-5 capabilities", () => {
     expect(resolveModel("claude-sonnet-4-5-20250929").capabilities).toEqual(
-      CLAUDE_CODE_2_1_195_PROFILE.supportedModels["claude-sonnet-4-5"]
-        ?.capabilities,
+      resolveModel("claude-sonnet-4-5").capabilities,
     );
   });
 

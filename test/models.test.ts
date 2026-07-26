@@ -49,7 +49,7 @@ describe("models (Wave 1 RED specification)", () => {
         id,
         wireId: id,
         family: definition.family,
-        capabilities: definition.capabilities,
+        capabilities: resolveModel(id).capabilities,
       });
     }
     expect(
@@ -58,23 +58,16 @@ describe("models (Wave 1 RED specification)", () => {
   });
 
   it.each([
-    [["claude-3-5-haiku", "haiku", false, false, false, false] as const],
-    [["claude-opus-4-5", "opus", true, false, false, true] as const],
-    [["claude-3-5-sonnet", "sonnet", false, false, false, false] as const],
-    [["claude-3-7-sonnet", "sonnet", false, false, false, false] as const],
-    [["claude-opus-4-8", "opus", true, true, true, true] as const],
-    [["claude-sonnet-4-0", "sonnet", true, false, false, true] as const],
-    [["claude-haiku-4-5", "haiku", true, false, false, true] as const],
+    [["claude-3-5-haiku", "haiku"] as const],
+    [["claude-opus-4-5", "opus"] as const],
+    [["claude-3-5-sonnet", "sonnet"] as const],
+    [["claude-3-7-sonnet", "sonnet"] as const],
+    [["claude-opus-4-8", "opus"] as const],
+    [["claude-sonnet-4-0", "sonnet"] as const],
+    [["claude-haiku-4-5", "haiku"] as const],
   ])(
     "resolves catalogue model %s to its exact family and capabilities",
-    async ([
-      id,
-      family,
-      contextHint,
-      adaptiveThinking,
-      effort,
-      interleavedThinking,
-    ]) => {
+    async ([id, family]) => {
       const resolveModel = await loadWave2Function<ResolveModel>(
         "models",
         "resolveModel",
@@ -84,15 +77,191 @@ describe("models (Wave 1 RED specification)", () => {
         id,
         wireId: id,
         family,
-        capabilities: {
-          contextHint,
-          adaptiveThinking,
-          effort,
-          interleavedThinking,
-        },
+        capabilities: resolveModel(id).capabilities,
       });
     },
   );
+
+  it.each([
+    [
+      "claude-3-5-haiku",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+    ],
+    [
+      "claude-haiku-4-5",
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+    ],
+    [
+      "claude-3-5-sonnet",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+    ],
+    [
+      "claude-3-7-sonnet",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+    ],
+    [
+      "claude-sonnet-4-0",
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+    ],
+    [
+      "claude-sonnet-4-5",
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+    ],
+    [
+      "claude-sonnet-4-6",
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+    ],
+    [
+      "claude-opus-4-0",
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+    ],
+    [
+      "claude-opus-4-1",
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+    ],
+    [
+      "claude-opus-4-5",
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+    ],
+    ["claude-opus-4-6", true, true, true, true, true, false, true, true, false],
+    ["claude-opus-4-7", true, true, true, true, true, true, true, false, false],
+    ["claude-opus-4-8", true, true, true, true, true, true, true, false, false],
+    ["claude-fable-5", true, true, true, true, true, true, true, false, true],
+    ["claude-mythos-5", true, true, true, true, true, true, true, false, true],
+    [
+      "not-a-real-model-x",
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+    ],
+  ] as const)(
+    "derives all nine capabilities for %s",
+    async (
+      id,
+      thinking,
+      adaptiveThinking,
+      interleavedThinking,
+      effort,
+      maxEffort,
+      xhighEffort,
+      contextManagement,
+      temperature,
+      rejectsDisabledThinking,
+    ) => {
+      const resolveModel = await loadWave2Function<ResolveModel>(
+        "models",
+        "resolveModel",
+      );
+      expect(resolveModel(id).capabilities).toEqual({
+        thinking,
+        adaptiveThinking,
+        interleavedThinking,
+        effort,
+        maxEffort,
+        xhighEffort,
+        contextManagement,
+        temperature,
+        rejectsDisabledThinking,
+      });
+    },
+  );
+
+  it("keeps the Opus 4.5 effort regression fixed", async () => {
+    const resolveModel = await loadWave2Function<ResolveModel>(
+      "models",
+      "resolveModel",
+    );
+    expect(resolveModel("claude-opus-4-5").capabilities).toMatchObject({
+      effort: true,
+      maxEffort: false,
+    });
+  });
 
   it.each([["anthropic/claude-fable-5", "claude-fable-5"]])(
     "normalizes unanchored model identity %s to %s without rewriting the wire id",

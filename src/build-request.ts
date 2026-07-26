@@ -82,10 +82,15 @@ const EVIDENCE_KEYS = new Set([
   "capabilityDecisions",
 ]);
 const CAPABILITY_KEYS = [
-  "contextHint",
+  "thinking",
   "adaptiveThinking",
-  "effort",
   "interleavedThinking",
+  "effort",
+  "maxEffort",
+  "xhighEffort",
+  "contextManagement",
+  "temperature",
+  "rejectsDisabledThinking",
 ] as const;
 const CAPABILITY_KEY_SET = new Set(CAPABILITY_KEYS);
 const OVERRIDE_KEYS = new Set([
@@ -97,11 +102,16 @@ const OVERRIDE_KEYS = new Set([
   "buildTime",
   "gitSha",
   "attributionHeaderEnabled",
-  "defaultCapabilities",
+  "contextHintEnabled",
   "supportedModels",
   "orderedBetas",
 ]);
-const MODEL_KEYS = new Set(["family", "capabilities"]);
+const MODEL_KEYS = new Set([
+  "family",
+  "context",
+  "capabilities",
+  "defaultEffort",
+]);
 
 type UnknownRecord = Readonly<Record<string, unknown>>;
 
@@ -245,6 +255,75 @@ function parseNonEmptyUniqueStrings(value: unknown): readonly string[] {
   return Object.freeze(result);
 }
 
+function parseCatalogueCapabilities(value: unknown): readonly string[] {
+  if (
+    !Array.isArray(value) ||
+    !value.every((item) => typeof item === "string")
+  ) {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  return Object.freeze([...value]);
+}
+
+function parseCatalogueContext(value: unknown): Readonly<{
+  readonly window: number;
+  readonly native1m?: boolean;
+  readonly supports1mBeta?: boolean;
+}> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.some(
+      (key) =>
+        typeof key !== "string" ||
+        (key !== "window" && key !== "native1m" && key !== "supports1mBeta"),
+    )
+  ) {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  const window: unknown = Reflect.get(value, "window");
+  const native1m: unknown = Reflect.get(value, "native1m");
+  const supports1mBeta: unknown = Reflect.get(value, "supports1mBeta");
+  if (
+    typeof window !== "number" ||
+    !Number.isFinite(window) ||
+    window <= 0 ||
+    (native1m !== undefined && typeof native1m !== "boolean") ||
+    (supports1mBeta !== undefined && typeof supports1mBeta !== "boolean")
+  ) {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  return Object.freeze({
+    window,
+    ...(native1m === undefined ? {} : { native1m }),
+    ...(supports1mBeta === undefined ? {} : { supports1mBeta }),
+  });
+}
+
+function parseDefaultEffort(
+  value: unknown,
+): "low" | "medium" | "high" | "xhigh" | "max" {
+  if (
+    value !== "low" &&
+    value !== "medium" &&
+    value !== "high" &&
+    value !== "xhigh" &&
+    value !== "max"
+  ) {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  return value;
+}
+
+function parseBoolean(value: unknown): boolean {
+  if (typeof value !== "boolean") {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  return value;
+}
+
 function parseSupportedModels(
   value: unknown,
 ): ClaudeCodeProtocolProfile["supportedModels"] {
@@ -270,7 +349,15 @@ function parseSupportedModels(
       fail();
     result[key] = Object.freeze({
       family,
-      capabilities: parseCapabilities(ownValue(model, "capabilities")),
+      ...(Object.hasOwn(model, "context")
+        ? { context: parseCatalogueContext(ownValue(model, "context")) }
+        : {}),
+      capabilities: parseCatalogueCapabilities(ownValue(model, "capabilities")),
+      ...(Object.hasOwn(model, "defaultEffort")
+        ? {
+            defaultEffort: parseDefaultEffort(ownValue(model, "defaultEffort")),
+          }
+        : {}),
     });
   }
   return Object.freeze(result);
@@ -328,10 +415,10 @@ function validateProfileOverride(value: unknown): ClaudeCodeProfileOverride {
     ...(attributionHeaderEnabled === undefined
       ? {}
       : { attributionHeaderEnabled }),
-    ...(Object.hasOwn(value, "defaultCapabilities")
+    ...(Object.hasOwn(value, "contextHintEnabled")
       ? {
-          defaultCapabilities: parseCapabilities(
-            ownValue(value, "defaultCapabilities"),
+          contextHintEnabled: parseBoolean(
+            ownValue(value, "contextHintEnabled"),
           ),
         }
       : {}),
@@ -430,7 +517,6 @@ function validateInput(input: ClaudeCodeRequestInput): {
 function requestedCapabilities(
   input: ClaudeCodeRequestInput,
   supported: ClaudeCodeCapabilities,
-  profile: ClaudeCodeProtocolProfile,
 ): ClaudeCodeCapabilities {
   const raw = input.capabilities;
   if (raw !== undefined) {
@@ -438,11 +524,17 @@ function requestedCapabilities(
     assertExactKeys(raw, CAPABILITY_KEY_SET);
   }
   const result: ClaudeCodeCapabilities = {
-    contextHint: raw?.contextHint ?? profile.defaultCapabilities.contextHint,
+    thinking: raw?.thinking ?? supported.thinking,
     adaptiveThinking: raw?.adaptiveThinking ?? supported.adaptiveThinking,
-    effort: raw?.effort ?? supported.effort,
     interleavedThinking:
       raw?.interleavedThinking ?? supported.interleavedThinking,
+    effort: raw?.effort ?? supported.effort,
+    maxEffort: raw?.maxEffort ?? supported.maxEffort,
+    xhighEffort: raw?.xhighEffort ?? supported.xhighEffort,
+    contextManagement: raw?.contextManagement ?? supported.contextManagement,
+    temperature: raw?.temperature ?? supported.temperature,
+    rejectsDisabledThinking:
+      raw?.rejectsDisabledThinking ?? supported.rejectsDisabledThinking,
   };
   for (const key of CAPABILITY_KEYS) {
     if (typeof result[key] !== "boolean") fail("UNSUPPORTED_CAPABILITY");
@@ -530,26 +622,25 @@ function parseHeaders(value: unknown): readonly HeaderPair[] {
 function parseCapabilities(value: unknown): ClaudeCodeCapabilities {
   if (!isRecord(value)) fail();
   assertExactKeys(value, CAPABILITY_KEY_SET);
-  const result = Object.fromEntries(
-    CAPABILITY_KEYS.map((key) => {
-      const entry = ownValue(value, key);
-      if (typeof entry !== "boolean") fail();
-      return [key, entry];
-    }),
-  );
-  if (
-    typeof result["contextHint"] !== "boolean" ||
-    typeof result["adaptiveThinking"] !== "boolean" ||
-    typeof result["effort"] !== "boolean" ||
-    typeof result["interleavedThinking"] !== "boolean"
-  ) {
-    fail();
-  }
+  // Read each key through a narrowing helper rather than building a record and
+  // re-checking it afterwards. The re-check was unreachable -- every value was
+  // already proven boolean -- which cost coverage and produced mutants that
+  // could not be killed.
+  const readBoolean = (key: string): boolean => {
+    const entry = ownValue(value, key);
+    if (typeof entry !== "boolean") fail();
+    return entry;
+  };
   return {
-    contextHint: result["contextHint"],
-    adaptiveThinking: result["adaptiveThinking"],
-    effort: result["effort"],
-    interleavedThinking: result["interleavedThinking"],
+    thinking: readBoolean("thinking"),
+    adaptiveThinking: readBoolean("adaptiveThinking"),
+    interleavedThinking: readBoolean("interleavedThinking"),
+    effort: readBoolean("effort"),
+    maxEffort: readBoolean("maxEffort"),
+    xhighEffort: readBoolean("xhighEffort"),
+    contextManagement: readBoolean("contextManagement"),
+    temperature: readBoolean("temperature"),
+    rejectsDisabledThinking: readBoolean("rejectsDisabledThinking"),
   };
 }
 
@@ -761,7 +852,6 @@ export async function buildClaudeCodeRequest(
     const capabilities = requestedCapabilities(
       validated.source,
       resolvedModel.capabilities,
-      effectiveProfile,
     );
     const effectiveModel = Object.freeze({
       ...resolvedModel,
@@ -792,7 +882,7 @@ export async function buildClaudeCodeRequest(
       {
         capabilities,
         effortRequested: validated.source.effort !== undefined,
-        contextHintRequested: capabilities.contextHint,
+        contextHintRequested: effectiveProfile.contextHintEnabled,
       },
       effectiveProfile,
     );

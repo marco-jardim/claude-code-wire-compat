@@ -125,7 +125,6 @@ describe("top-level request controls", () => {
     ["topK", "top_k", 32],
     ["stopSequences", "stop_sequences", ["done"]],
     ["stream", "stream", true],
-    ["temperature", "temperature", 0.3],
   ] as const)("maps %s to %s", (inputKey, wireKey, value) => {
     const result = buildField(inputKey, value);
     expect(result[wireKey]).toEqual(value);
@@ -149,7 +148,7 @@ describe("top-level request controls", () => {
       topP: 0.75,
       stopSequences: ["stop"],
     });
-    expect(Object.keys(result).slice(5)).toEqual([
+    expect(Object.keys(result).slice(4)).toEqual([
       "top_k",
       "service_tier",
       "top_p",
@@ -356,16 +355,16 @@ describe("output controls", () => {
     ).toThrow(expect.objectContaining({ code: "INVALID_INPUT" }));
   });
 
-  it("preserves caller temperature and retains the derived default when absent", () => {
-    expect(buildField("temperature", 0.125)["temperature"]).toBe(0.125);
-    expect(build(BASE_INPUT)["temperature"]).toBe(1);
+  it("discards temperature when the model does not support it", () => {
+    expect(buildField("temperature", 0.125)).not.toHaveProperty("temperature");
+    expect(build(BASE_INPUT)).not.toHaveProperty("temperature");
     expect(
       build({
         ...BASE_INPUT,
         thinking: { type: "adaptive" },
         temperature: 0.5,
-      })["temperature"],
-    ).toBe(0.5);
+      }),
+    ).not.toHaveProperty("temperature");
   });
 
   it("couples fast speed to the supported fast-mode beta", () => {

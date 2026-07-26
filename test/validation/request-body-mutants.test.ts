@@ -461,10 +461,7 @@ describe("request body canonicalization mutation boundaries", () => {
   });
 
   it.each([
-    [
-      { contextHint: "yes", adaptiveThinking: true, effort: true },
-      "contextHint",
-    ],
+    [{ thinking: "yes", adaptiveThinking: true, effort: true }, "thinking"],
     [
       { contextHint: true, adaptiveThinking: "yes", effort: true },
       "adaptiveThinking",
@@ -490,14 +487,14 @@ describe("request body canonicalization mutation boundaries", () => {
 });
 
 describe("request body capability and freeze behavior", () => {
-  it("enables context hints only when request, model, and profile all enable it", () => {
+  it("enables context hints only when request and profile enable it", () => {
     const requested = { ...baseInput(), capabilities: { contextHint: true } };
     const enabled = buildCanonicalBody(
       requested,
       model,
       [],
       {},
-      CLAUDE_CODE_2_1_195_PROFILE,
+      { ...CLAUDE_CODE_2_1_195_PROFILE, contextHintEnabled: true },
     );
     expect(enabled["context_hint"]).toEqual({ enabled: true });
 
@@ -519,9 +516,9 @@ describe("request body capability and freeze behavior", () => {
         },
         [],
         {},
-        CLAUDE_CODE_2_1_195_PROFILE,
+        { ...CLAUDE_CODE_2_1_195_PROFILE, contextHintEnabled: true },
       ),
-    ).not.toHaveProperty("context_hint");
+    ).toHaveProperty("context_hint", { enabled: true });
     expect(build(requested)).not.toHaveProperty("context_hint");
   });
 
@@ -667,7 +664,6 @@ describe("beta composition mutants", () => {
       ...alwaysEnabled.slice(2, 5),
       "effort-2025-11-24",
       ...alwaysEnabled.slice(5, 7),
-      "context-hint-2026-04-09",
       ...alwaysEnabled.slice(7),
     ]);
   });
@@ -689,19 +685,19 @@ describe("beta composition mutants", () => {
   it.each([
     ["effort", { capabilities: capabilities(), effortRequested: true }],
     [
-      "contextHint",
+      "effort",
       {
         capabilities: capabilities(),
-        effortRequested: false,
-        contextHintRequested: true,
+        effortRequested: true,
+        contextHintRequested: false,
       },
     ],
-  ])("reports the exact unsupported capability %s", (capability, input) => {
+  ])("reports the exact unsupported capability %s", (_capability, input) => {
     const error = expectWireCode(
       () => composeBetas(input),
       "UNSUPPORTED_CAPABILITY",
     );
-    expect(error.safeDetails).toEqual({ capability });
+    expect(error.safeDetails).toEqual({ capability: "effort" });
   });
 });
 

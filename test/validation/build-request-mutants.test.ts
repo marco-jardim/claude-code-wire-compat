@@ -221,21 +221,17 @@ describe("build-request surviving input-validation mutants", () => {
         buildTime: "2026-02-03T04:05:06.000Z",
         gitSha: "fresh-profile-sha",
         attributionHeaderEnabled: false,
-        defaultCapabilities: {
-          contextHint: false,
-          adaptiveThinking: false,
-          effort: false,
-          interleavedThinking: false,
-        },
+        contextHintEnabled: false,
         supportedModels: {
           [supportedModel]: {
             family: "opus",
-            capabilities: {
-              contextHint: true,
-              adaptiveThinking: true,
-              effort: true,
-              interleavedThinking: true,
-            },
+            capabilities: [
+              "effort",
+              "max_effort",
+              "xhigh_effort",
+              "adaptive_thinking",
+              "context_management",
+            ],
           },
         },
         orderedBetas: ["fresh-beta"],
@@ -245,11 +241,10 @@ describe("build-request surviving input-validation mutants", () => {
     const built = await fresh.buildClaudeCodeRequest(input);
     expect(built.evidence.profileId).toBe("fresh-profile-id");
     expect(built.evidence.modelFamily).toBe("opus");
-    expect(built.evidence.capabilityDecisions).toEqual({
-      contextHint: false,
+    expect(built.evidence.capabilityDecisions).toMatchObject({
+      thinking: false,
       adaptiveThinking: false,
       effort: false,
-      interleavedThinking: false,
     });
     expect(bodyRecord(built.body)["output_format"]).toEqual({
       type: "json_schema",
@@ -767,7 +762,7 @@ describe("build-request surviving input-validation mutants", () => {
   });
 
   it.each([
-    ["contextHint", "yes"],
+    ["thinking", "yes"],
     ["adaptiveThinking", 1],
     ["effort", "yes"],
     ["interleavedThinking", []],
@@ -805,7 +800,7 @@ describe("build-request surviving input-validation mutants", () => {
       requestInput({
         ...validInput(),
         capabilities: {
-          contextHint: false,
+          thinking: false,
           adaptiveThinking: false,
           effort: false,
           interleavedThinking: false,
@@ -814,10 +809,15 @@ describe("build-request surviving input-validation mutants", () => {
       }),
     );
     expect(built.evidence.capabilityDecisions).toEqual({
-      contextHint: false,
+      thinking: false,
       adaptiveThinking: false,
       effort: false,
       interleavedThinking: false,
+      maxEffort: false,
+      xhighEffort: false,
+      contextManagement: false,
+      temperature: false,
+      rejectsDisabledThinking: false,
     });
     expect(bodyRecord(built.body)["metadata"]).toBeDefined();
   });

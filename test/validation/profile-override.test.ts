@@ -30,6 +30,74 @@ function headerValue(
   return headers.find(([candidate]) => candidate === name)?.[1];
 }
 
+describe("catalogue entry validation coverage", () => {
+  const modelId = "claude-opus-4-7";
+  const catalogueEntry = CLAUDE_CODE_2_1_195_PROFILE.supportedModels[modelId];
+
+  it.each([
+    ["non-object context", "not-an-object"],
+    ["unknown context key", { ...catalogueEntry.context, unexpected: true }],
+    [
+      "non-numeric context window",
+      { ...catalogueEntry.context, window: "200000" },
+    ],
+    ["zero context window", { ...catalogueEntry.context, window: 0 }],
+    ["negative context window", { ...catalogueEntry.context, window: -1 }],
+    ["non-boolean native1m", { ...catalogueEntry.context, native1m: "true" }],
+    [
+      "non-boolean supports1mBeta",
+      { ...catalogueEntry.context, supports1mBeta: "true" },
+    ],
+  ])("rejects %s", async (_name, context) => {
+    await expect(
+      buildWithOverride({
+        supportedModels: {
+          [modelId]: { ...catalogueEntry, context },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+
+  it.each([
+    ["non-array capabilities", { thinking: true }],
+    ["non-string capability element", ["thinking", 1]],
+  ])("rejects %s", async (_name, capabilities) => {
+    await expect(
+      buildWithOverride({
+        supportedModels: {
+          [modelId]: { ...catalogueEntry, capabilities },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+
+  it("rejects an invalid defaultEffort", async () => {
+    await expect(
+      buildWithOverride({
+        supportedModels: {
+          [modelId]: { ...catalogueEntry, defaultEffort: "maximum" },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+
+  it("rejects a non-string defaultEffort", async () => {
+    await expect(
+      buildWithOverride({
+        supportedModels: {
+          [modelId]: { ...catalogueEntry, defaultEffort: 1 },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+
+  it("rejects a non-boolean profile flag", async () => {
+    await expect(
+      buildWithOverride({ contextHintEnabled: "true" }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+});
+
 function buildWithOverride(profileOverride: unknown) {
   const input: Record<string, unknown> = { ...base, profileOverride };
   return buildClaudeCodeRequest(
@@ -148,12 +216,7 @@ describe("protocol profile override", () => {
         supportedModels: {
           [model]: {
             family: "opus",
-            capabilities: {
-              contextHint: true,
-              adaptiveThinking: true,
-              effort: true,
-              interleavedThinking: true,
-            },
+            capabilities: [],
           },
         },
       },
@@ -188,12 +251,7 @@ describe("protocol profile override", () => {
             [base.model]: {
               family: "opus",
               removedField: removedFieldValue,
-              capabilities: {
-                contextHint: true,
-                adaptiveThinking: true,
-                effort: true,
-                interleavedThinking: true,
-              },
+              capabilities: [],
             },
           },
         }),
@@ -251,17 +309,13 @@ describe("protocol profile override", () => {
     },
   );
 
-  it("uses a complete default-capability override", async () => {
-    const defaultCapabilities = {
-      contextHint: false,
-      adaptiveThinking: false,
-      effort: false,
-      interleavedThinking: false,
-    } as const;
-    const result = await buildWithOverride({ defaultCapabilities });
-
-    expect(result.evidence.capabilityDecisions).toEqual(defaultCapabilities);
-    expect(Object.isFrozen(result.evidence.capabilityDecisions)).toBe(true);
+  it("uses a context-hint override", async () => {
+    const result = await buildWithOverride({ contextHintEnabled: true });
+    expect(result.headers).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining(["anthropic-beta", expect.any(String)]),
+      ]),
+    );
   });
 
   it.each([
@@ -300,14 +354,11 @@ describe("protocol profile override", () => {
       effort: false,
       interleavedThinking: "false",
     },
-  ])(
-    "rejects malformed default capabilities %#",
-    async (defaultCapabilities) => {
-      await expect(
-        buildWithOverride({ defaultCapabilities }),
-      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
-    },
-  );
+  ])("rejects removed default capabilities %#", async (defaultCapabilities) => {
+    await expect(
+      buildWithOverride({ defaultCapabilities }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
 
   it.each([["haiku"], ["sonnet"], ["opus"], ["fable"]] as const)(
     "accepts the exact supported-model family %s",
@@ -320,12 +371,7 @@ describe("protocol profile override", () => {
           supportedModels: {
             [model]: {
               family,
-              capabilities: {
-                contextHint: true,
-                adaptiveThinking: true,
-                effort: true,
-                interleavedThinking: true,
-              },
+              capabilities: [],
             },
           },
         },

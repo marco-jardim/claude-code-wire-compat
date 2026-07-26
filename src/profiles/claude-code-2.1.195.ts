@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type {
-  ClaudeCodeProtocolProfile,
-  ClaudeCodeCapabilities,
-} from "../contracts.js";
+import type { ClaudeCodeProtocolProfile } from "../contracts.js";
 
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === "object") {
@@ -13,15 +10,6 @@ function deepFreeze<T>(value: T): T {
     Object.freeze(value);
   }
   return value;
-}
-
-function capabilities(
-  adaptiveThinking: boolean,
-  effort: boolean,
-  interleavedThinking = true,
-  contextHint = true,
-): ClaudeCodeCapabilities {
-  return { contextHint, adaptiveThinking, effort, interleavedThinking };
 }
 
 export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
@@ -37,12 +25,7 @@ export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
     attributionHeaderEnabled: true,
     provider: "anthropic",
     anthropicVersion: "2023-06-01",
-    defaultCapabilities: {
-      contextHint: false,
-      adaptiveThinking: true,
-      effort: true,
-      interleavedThinking: true,
-    },
+    contextHintEnabled: false,
     /**
      * This is the full ordering vocabulary. Which subset is actually emitted
      * is decided per request in Wave 2 by capability gates;
@@ -63,85 +46,113 @@ export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
       "thinking-token-count-2026-05-13",
     ],
     /**
-     * This table is transcribed from the genuine client's generated model
-     * catalogue: a schema-validated table of 14 models carrying an `id`, a
-     * `family`, and a `capabilities` string array. Its capability vocabulary is
-     * exactly `effort`, `max_effort`, `xhigh_effort`, `adaptive_thinking`,
-     * `context_management`, `fast_mode`, `lean_prompt`, `mid_conv_system`,
-     * `rejects_disabled_thinking`, and `fable_5_mitigations`.
-     *
-     * This package models only two catalogue capabilities directly: `effort`
-     * maps to catalogue `effort` membership, and `adaptiveThinking` maps to
-     * catalogue `adaptive_thinking` membership. `interleavedThinking` and
-     * `contextHint` are not catalogue capabilities. Upstream gates both on the
-     * model not being a `claude-3-*` model, so they are false for the three
-     * `claude-3-*` entries and true for every other entry.
-     *
-     * Every canonical key is a real first-party wire identifier. The catalogue
-     * is a capability table, not an allowlist: unknown identifiers pass through
-     * and use `defaultCapabilities`. `claude-mythos-5` has no catalogue entry.
-     *
-     * Known divergences this package does not yet model are the per-model
-     * `default_effort` field (`xhigh` for Opus 4.7, `high` for Opus 4.8 and
-     * Fable 5), and the six catalogue capabilities beyond effort and adaptive
-     * thinking.
+     * Verbatim genuine-client catalogue at byte offset 226599191.
+     * `defaultEffort` is policy exposed as catalogue data; this package must
+     * never apply it to a request.
      */
     supportedModels: {
       "claude-3-5-haiku": {
         family: "haiku",
-        capabilities: capabilities(false, false, false, false),
+        capabilities: [],
       },
       "claude-haiku-4-5": {
         family: "haiku",
-        capabilities: capabilities(false, false),
+        capabilities: ["context_management"],
       },
       "claude-3-5-sonnet": {
         family: "sonnet",
-        capabilities: capabilities(false, false, false, false),
+        capabilities: [],
       },
       "claude-3-7-sonnet": {
         family: "sonnet",
-        capabilities: capabilities(false, false, false, false),
+        capabilities: [],
       },
       "claude-sonnet-4-0": {
         family: "sonnet",
-        capabilities: capabilities(false, false),
+        context: { window: 200000, supports1mBeta: true },
+        capabilities: ["context_management"],
       },
       "claude-sonnet-4-5": {
         family: "sonnet",
-        capabilities: capabilities(false, false),
+        context: { window: 200000, supports1mBeta: true },
+        capabilities: ["context_management"],
       },
       "claude-sonnet-4-6": {
         family: "sonnet",
-        capabilities: capabilities(true, true),
+        context: { window: 200000, supports1mBeta: true },
+        capabilities: [
+          "effort",
+          "max_effort",
+          "adaptive_thinking",
+          "context_management",
+        ],
       },
       "claude-opus-4-0": {
         family: "opus",
-        capabilities: capabilities(false, false),
+        capabilities: ["context_management"],
       },
       "claude-opus-4-1": {
         family: "opus",
-        capabilities: capabilities(false, false),
+        capabilities: ["context_management"],
       },
       "claude-opus-4-5": {
         family: "opus",
-        capabilities: capabilities(false, false),
+        capabilities: ["context_management"],
       },
       "claude-opus-4-6": {
         family: "opus",
-        capabilities: capabilities(true, true),
+        context: { window: 200000, supports1mBeta: true },
+        capabilities: [
+          "effort",
+          "max_effort",
+          "adaptive_thinking",
+          "context_management",
+          "fast_mode",
+        ],
       },
       "claude-opus-4-7": {
         family: "opus",
-        capabilities: capabilities(true, true),
+        context: { window: 1e6, native1m: true, supports1mBeta: true },
+        capabilities: [
+          "effort",
+          "max_effort",
+          "xhigh_effort",
+          "adaptive_thinking",
+          "context_management",
+          "fast_mode",
+        ],
+        defaultEffort: "xhigh",
       },
       "claude-opus-4-8": {
         family: "opus",
-        capabilities: capabilities(true, true),
+        context: { window: 1e6, native1m: true, supports1mBeta: true },
+        capabilities: [
+          "effort",
+          "max_effort",
+          "xhigh_effort",
+          "adaptive_thinking",
+          "mid_conv_system",
+          "context_management",
+          "fast_mode",
+          "lean_prompt",
+        ],
+        defaultEffort: "high",
       },
       "claude-fable-5": {
         family: "fable",
-        capabilities: capabilities(true, true),
+        context: { window: 1e6, native1m: true, supports1mBeta: true },
+        capabilities: [
+          "effort",
+          "max_effort",
+          "xhigh_effort",
+          "adaptive_thinking",
+          "rejects_disabled_thinking",
+          "mid_conv_system",
+          "context_management",
+          "lean_prompt",
+          "fable_5_mitigations",
+        ],
+        defaultEffort: "high",
       },
     },
   });

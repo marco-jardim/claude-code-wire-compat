@@ -10,10 +10,15 @@ import type {
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
 
 const CAPABILITIES: ClaudeCodeCapabilities = {
-  interleavedThinking: true,
+  thinking: true,
   adaptiveThinking: true,
+  interleavedThinking: true,
   effort: true,
-  contextHint: true,
+  maxEffort: true,
+  xhighEffort: true,
+  contextManagement: true,
+  temperature: false,
+  rejectsDisabledThinking: false,
 };
 
 describe("composeBetas validation", () => {
@@ -58,11 +63,18 @@ describe("composeBetas validation", () => {
         contextHintRequested: true,
       },
     },
-  ])("rejects an unsupported $name capability combination", ({ input }) => {
-    expect(() => composeBetas(input)).toThrow(
-      expect.objectContaining({ code: "UNSUPPORTED_CAPABILITY" }),
-    );
-  });
+  ])(
+    "handles an unsupported $name capability combination",
+    ({ name, input }) => {
+      if (name === "effort") {
+        expect(() => composeBetas(input)).toThrow(
+          expect.objectContaining({ code: "UNSUPPORTED_CAPABILITY" }),
+        );
+      } else {
+        expect(composeBetas(input)).not.toContain("context-hint-2026-04-09");
+      }
+    },
+  );
 
   it("emits interleaved thinking and preserves profile order exactly", () => {
     const profile: ClaudeCodeProtocolProfile = {
@@ -88,11 +100,14 @@ describe("composeBetas validation", () => {
   });
 
   it("emits effort and context-hint betas when both are requested", () => {
-    const result = composeBetas({
-      capabilities: CAPABILITIES,
-      effortRequested: true,
-      contextHintRequested: true,
-    });
+    const result = composeBetas(
+      {
+        capabilities: CAPABILITIES,
+        effortRequested: true,
+        contextHintRequested: true,
+      },
+      { ...CLAUDE_CODE_2_1_195_PROFILE, contextHintEnabled: true },
+    );
 
     expect(result).toContain("effort-2025-11-24");
     expect(result).toContain("context-hint-2026-04-09");

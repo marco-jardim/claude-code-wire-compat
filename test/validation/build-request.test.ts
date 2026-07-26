@@ -280,36 +280,27 @@ describe("buildClaudeCodeRequest input validation", () => {
 
   it("rejects a non-boolean capability value", async () => {
     await expectBuildCode(
-      inputWith("capabilities", { contextHint: "yes" }),
+      inputWith("capabilities", { thinking: "yes" }),
       "UNSUPPORTED_CAPABILITY",
     );
   });
 
   it("rejects a capability that the resolved model does not support", async () => {
-    const unsupported = Object.entries(
-      CLAUDE_CODE_2_1_195_PROFILE.supportedModels,
-    ).flatMap(([model, definition]) =>
-      Object.entries(definition.capabilities)
-        .filter(([, supported]) => !supported)
-        .map(([capability]) => ({ model, capability })),
-    )[0];
-    if (unsupported === undefined) {
-      throw new TypeError(
-        "Pinned profile must contain an unsupported capability.",
-      );
-    }
     await expectBuildCode(
       invalidInput({
         ...validInput(),
-        model: unsupported.model,
-        capabilities: { [unsupported.capability]: true },
+        model: "claude-haiku-4-5",
+        capabilities: { effort: true },
       }),
       "UNSUPPORTED_CAPABILITY",
     );
   });
 
   it("covers present capabilities with absent system in the rebuilt input", async () => {
-    const input = { ...validInput(), capabilities: { contextHint: false } };
+    const input = {
+      ...validInput(),
+      capabilities: { adaptiveThinking: false },
+    };
     delete (input as { system?: unknown }).system;
     const built = await buildClaudeCodeRequest(input);
     expect(bodyOf(built)["system"]).toEqual([
@@ -320,7 +311,7 @@ describe("buildClaudeCodeRequest input validation", () => {
         cache_control: { type: "ephemeral", ttl: "1h" },
       },
     ]);
-    expect(built.evidence.capabilityDecisions.contextHint).toBe(false);
+    expect(built.evidence.capabilityDecisions.adaptiveThinking).toBe(false);
   });
 });
 

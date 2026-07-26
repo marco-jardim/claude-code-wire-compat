@@ -16,6 +16,7 @@ import type {
   ClaudeCodeProtocolProfile,
 } from "../src/contracts.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../src/profiles/claude-code-2.1.195.js";
+import { resolveModel } from "../src/models.js";
 import {
   expectModuleUnimplemented,
   loadWave2Function,
@@ -72,7 +73,7 @@ function capabilitiesFor(model: string): ClaudeCodeCapabilities {
   const definition = CLAUDE_CODE_2_1_195_PROFILE.supportedModels[model];
   if (definition === undefined)
     throw new Error(`Missing profile model ${model}.`);
-  return definition.capabilities;
+  return resolveModel(model).capabilities;
 }
 
 describe("betas (Wave 1 RED specification)", () => {
@@ -152,7 +153,7 @@ describe("betas (Wave 1 RED specification)", () => {
         effortRequested: false,
         contextHintRequested: true,
       }),
-    ).toContain("context-hint-2026-04-09");
+    ).not.toContain("context-hint-2026-04-09");
   });
 
   it.each([
@@ -170,13 +171,19 @@ describe("betas (Wave 1 RED specification)", () => {
         contextHint: false,
       };
 
-      expect(() =>
+      const operation = () =>
         composeBetas({
           capabilities,
           effortRequested,
           contextHintRequested,
-        }),
-      ).toThrow(expect.objectContaining({ code: "UNSUPPORTED_CAPABILITY" }));
+        });
+      if (_name === "effort") {
+        expect(operation).toThrow(
+          expect.objectContaining({ code: "UNSUPPORTED_CAPABILITY" }),
+        );
+      } else {
+        expect(operation()).not.toContain("context-hint-2026-04-09");
+      }
     },
   );
 

@@ -4,6 +4,20 @@
 export type ClaudeCodeModelFamily =
   "haiku" | "sonnet" | "opus" | "fable" | "mythos" | "unknown";
 
+export type ClaudeCodeEffort = "low" | "medium" | "high" | "xhigh" | "max";
+
+export interface ClaudeCodeCatalogueEntry {
+  readonly family: ClaudeCodeModelFamily;
+  readonly context?: Readonly<{
+    readonly window: number;
+    readonly native1m?: boolean;
+    readonly supports1mBeta?: boolean;
+  }>;
+  /** Verbatim upstream capability keys; compared by the ported predicates. */
+  readonly capabilities: readonly string[];
+  readonly defaultEffort?: ClaudeCodeEffort;
+}
+
 export type HeaderPair = readonly [name: string, value: string];
 
 export type JsonPrimitive = string | number | boolean | null;
@@ -578,7 +592,7 @@ export interface JSONOutputFormat {
 }
 
 export interface OutputConfigInput {
-  readonly effort?: "low" | "medium" | "high" | "xhigh" | "max" | null;
+  readonly effort?: ClaudeCodeEffort | null;
   /** Beta-only: requires `task-budgets-2026-03-13`; absent from SDK 0.94.0. */
   readonly maxOutputTokens?: number | null;
 }
@@ -603,10 +617,15 @@ export type ToolChoice =
   ToolChoiceAuto | ToolChoiceAny | ToolChoiceTool | ToolChoiceNone;
 
 export interface ClaudeCodeCapabilities {
-  readonly contextHint: boolean;
+  readonly thinking: boolean;
   readonly adaptiveThinking: boolean;
-  readonly effort: boolean;
   readonly interleavedThinking: boolean;
+  readonly effort: boolean;
+  readonly maxEffort: boolean;
+  readonly xhighEffort: boolean;
+  readonly contextManagement: boolean;
+  readonly temperature: boolean;
+  readonly rejectsDisabledThinking: boolean;
 }
 
 /**
@@ -629,7 +648,7 @@ export interface ClaudeCodeProfileOverride {
   readonly buildTime?: string;
   readonly gitSha?: string;
   readonly attributionHeaderEnabled?: boolean;
-  readonly defaultCapabilities?: ClaudeCodeCapabilities;
+  readonly contextHintEnabled?: boolean;
   readonly supportedModels?: ClaudeCodeProtocolProfile["supportedModels"];
   readonly orderedBetas?: readonly string[];
 }
@@ -669,7 +688,7 @@ export interface ClaudeCodeRequestInput {
     readonly type: "enabled" | "adaptive";
     readonly budgetTokens?: number;
   };
-  readonly effort?: "low" | "medium" | "high" | "max";
+  readonly effort?: ClaudeCodeEffort;
   /** Supplies validated JSON metadata values in caller insertion order. */
   readonly metadata?: Readonly<Record<string, JsonValue>>;
   /** Appends validated, collision-safe beta fields to the request body. */
@@ -731,16 +750,8 @@ export interface ClaudeCodeProtocolProfile {
   readonly provider: "anthropic";
   /** Pins the upstream `anthropic-version` request header. */
   readonly anthropicVersion: "2023-06-01";
-  readonly defaultCapabilities: ClaudeCodeCapabilities;
-  readonly supportedModels: Readonly<
-    Record<
-      string,
-      Readonly<{
-        family: ClaudeCodeModelFamily;
-        capabilities: ClaudeCodeCapabilities;
-      }>
-    >
-  >;
+  readonly contextHintEnabled: boolean;
+  readonly supportedModels: Readonly<Record<string, ClaudeCodeCatalogueEntry>>;
   readonly orderedBetas: readonly string[];
 }
 

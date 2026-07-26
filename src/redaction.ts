@@ -207,16 +207,17 @@ function toHex(bytes: Uint8Array): string {
 function capabilityDecisions(
   input: BuildRedactedEvidenceInput,
 ): Readonly<Record<keyof ClaudeCodeCapabilities, boolean>> {
-  const defaults =
-    input.effectiveProfile?.defaultCapabilities ??
-    input.profile.defaultCapabilities;
   const requested = input.request.capabilities;
   return Object.freeze({
-    contextHint: requested?.contextHint ?? defaults.contextHint,
-    adaptiveThinking: requested?.adaptiveThinking ?? defaults.adaptiveThinking,
-    effort: requested?.effort ?? defaults.effort,
-    interleavedThinking:
-      requested?.interleavedThinking ?? defaults.interleavedThinking,
+    thinking: requested?.thinking ?? false,
+    adaptiveThinking: requested?.adaptiveThinking ?? false,
+    effort: requested?.effort ?? false,
+    interleavedThinking: requested?.interleavedThinking ?? false,
+    maxEffort: requested?.maxEffort ?? false,
+    xhighEffort: requested?.xhighEffort ?? false,
+    contextManagement: requested?.contextManagement ?? false,
+    temperature: requested?.temperature ?? false,
+    rejectsDisabledThinking: requested?.rejectsDisabledThinking ?? false,
   });
 }
 

@@ -22,6 +22,7 @@ import type {
   ToolResultContentBlock,
   ToolUseBlock,
 } from "./contracts.js";
+import { deriveCapabilities } from "./model-capabilities.js";
 import { stripModelMarkers } from "./model-identity.js";
 import { classifySurrogateAt } from "./unicode.js";
 
@@ -323,9 +324,15 @@ type ModelResolution = Readonly<{
   id: string;
   wireId: string;
   capabilities: Readonly<{
-    contextHint: boolean;
+    thinking: boolean;
     adaptiveThinking: boolean;
+    interleavedThinking: boolean;
     effort: boolean;
+    maxEffort: boolean;
+    xhighEffort: boolean;
+    contextManagement: boolean;
+    temperature: boolean;
+    rejectsDisabledThinking: boolean;
   }>;
 }>;
 
@@ -1304,13 +1311,47 @@ function tools(value: unknown): readonly ToolDefinition[] {
   });
 }
 
+function capabilityBoolean(value: unknown, fallback: boolean): boolean {
+  if (value === undefined) return fallback;
+  if (typeof value !== "boolean") fail("INVALID_INPUT");
+  return value;
+}
+
 function modelResolution(value: unknown): ModelResolution {
   const record = requireRecord(value);
-  const capabilities = requireRecord(record["capabilities"]);
+  const capabilityValue = record["capabilities"];
+  // A catalogue-shaped capability array is accepted at this boundary, but it
+  // never affects derivation: on first party every predicate depends only on
+  // the normalized id. See the header of `model-capabilities.ts`. The elements
+  // are still validated so that malformed input fails closed.
+  if (Array.isArray(capabilityValue)) {
+    for (const capability of capabilityValue) {
+      if (typeof capability !== "string") fail("INVALID_INPUT");
+    }
+  }
+  const capabilities = Array.isArray(capabilityValue)
+    ? deriveCapabilities(String(record["id"]))
+    : requireRecord(capabilityValue);
+  const derived = deriveCapabilities(String(record["id"]));
   if (
-    typeof capabilities["contextHint"] !== "boolean" ||
-    typeof capabilities["adaptiveThinking"] !== "boolean" ||
-    typeof capabilities["effort"] !== "boolean"
+    (capabilities.thinking !== undefined &&
+      typeof capabilities.thinking !== "boolean") ||
+    (capabilities.adaptiveThinking !== undefined &&
+      typeof capabilities.adaptiveThinking !== "boolean") ||
+    (capabilities.interleavedThinking !== undefined &&
+      typeof capabilities.interleavedThinking !== "boolean") ||
+    (capabilities.effort !== undefined &&
+      typeof capabilities.effort !== "boolean") ||
+    (capabilities.maxEffort !== undefined &&
+      typeof capabilities.maxEffort !== "boolean") ||
+    (capabilities.xhighEffort !== undefined &&
+      typeof capabilities.xhighEffort !== "boolean") ||
+    (capabilities.contextManagement !== undefined &&
+      typeof capabilities.contextManagement !== "boolean") ||
+    (capabilities.temperature !== undefined &&
+      typeof capabilities.temperature !== "boolean") ||
+    (capabilities.rejectsDisabledThinking !== undefined &&
+      typeof capabilities.rejectsDisabledThinking !== "boolean")
   ) {
     fail("INVALID_INPUT");
   }
@@ -1318,9 +1359,33 @@ function modelResolution(value: unknown): ModelResolution {
     id: requireString(record["id"]),
     wireId: requireString(record["wireId"]),
     capabilities: {
-      contextHint: capabilities["contextHint"],
-      adaptiveThinking: capabilities["adaptiveThinking"],
-      effort: capabilities["effort"],
+      thinking: capabilityBoolean(capabilities.thinking, derived.thinking),
+      adaptiveThinking: capabilityBoolean(
+        capabilities.adaptiveThinking,
+        derived.adaptiveThinking,
+      ),
+      interleavedThinking: capabilityBoolean(
+        capabilities.interleavedThinking,
+        derived.interleavedThinking,
+      ),
+      effort: capabilityBoolean(capabilities.effort, derived.effort),
+      maxEffort: capabilityBoolean(capabilities.maxEffort, derived.maxEffort),
+      xhighEffort: capabilityBoolean(
+        capabilities.xhighEffort,
+        derived.xhighEffort,
+      ),
+      contextManagement: capabilityBoolean(
+        capabilities.contextManagement,
+        derived.contextManagement,
+      ),
+      temperature: capabilityBoolean(
+        capabilities.temperature,
+        derived.temperature,
+      ),
+      rejectsDisabledThinking: capabilityBoolean(
+        capabilities.rejectsDisabledThinking,
+        derived.rejectsDisabledThinking,
+      ),
     },
   };
 }
@@ -1544,7 +1609,11 @@ function contextHintEnabled(
   const requested = isRecord(input["capabilities"])
     ? input["capabilities"]["contextHint"] === true
     : false;
-  if (!requested || !model.capabilities.contextHint || !isRecord(profile)) {
+  if (
+    !requested ||
+    !isRecord(profile) ||
+    profile["contextHintEnabled"] !== true
+  ) {
     return false;
   }
   const betas = profile["orderedBetas"];
@@ -1622,8 +1691,10 @@ export function buildCanonicalBody(
     thinkingActive = true;
   }
 
-  if (!thinkingActive && !hasOwn(input, "temperature")) {
-    result["temperature"] = 1;
+  if (!thinkingActive && resolvedModel.capabilities.temperature) {
+    result["temperature"] = hasOwn(input, "temperature")
+      ? requireNumber(input["temperature"])
+      : 1;
   }
 
   let adapterEffort: unknown;
@@ -1635,7 +1706,14 @@ export function buildCanonicalBody(
       (effort !== "low" &&
         effort !== "medium" &&
         effort !== "high" &&
+        effort !== "xhigh" &&
         effort !== "max")
+    ) {
+      fail("INVALID_EFFORT");
+    }
+    if (
+      (effort === "max" && !resolvedModel.capabilities.maxEffort) ||
+      (effort === "xhigh" && !resolvedModel.capabilities.xhighEffort)
     ) {
       fail("INVALID_EFFORT");
     }
@@ -1679,7 +1757,6 @@ export function buildCanonicalBody(
     else if (key === "stopSequences")
       result["stop_sequences"] = stringArray(item);
     else if (key === "stream") result["stream"] = requireBoolean(item);
-    else if (key === "temperature") result["temperature"] = requireNumber(item);
   }
 
   if (contextHintEnabled(input, resolvedModel, profile)) {

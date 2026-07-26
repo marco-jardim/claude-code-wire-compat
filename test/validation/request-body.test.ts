@@ -376,7 +376,7 @@ describe("buildCanonicalBody field validation", () => {
         RESOLVED_MODEL,
         [],
         {},
-        CLAUDE_CODE_2_1_195_PROFILE,
+        { ...CLAUDE_CODE_2_1_195_PROFILE, contextHintEnabled: true },
       )["context_hint"],
     ).toEqual({ enabled: true });
   });

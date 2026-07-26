@@ -50,12 +50,6 @@ export function composeBetas(
       capability: "effort",
     });
   }
-  if (input.contextHintRequested === true && !input.capabilities.contextHint) {
-    throw new ClaudeCodeWireError("UNSUPPORTED_CAPABILITY", {
-      capability: "contextHint",
-    });
-  }
-
   const selected = new Set(ALWAYS_ENABLED_BETAS);
   if (input.capabilities.interleavedThinking) {
     selected.add(INTERLEAVED_THINKING_BETA);
@@ -63,7 +57,7 @@ export function composeBetas(
   if (input.effortRequested) {
     selected.add(EFFORT_BETA);
   }
-  if (input.contextHintRequested === true) {
+  if (input.contextHintRequested === true && profile.contextHintEnabled) {
     selected.add(CONTEXT_HINT_BETA);
   }
 

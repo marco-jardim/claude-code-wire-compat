@@ -6,6 +6,7 @@ import type {
   ClaudeCodeProtocolProfile,
 } from "./contracts.js";
 import { ClaudeCodeWireError } from "./contracts.js";
+import { deriveCapabilities } from "./model-capabilities.js";
 import {
   modelFamilyOf,
   normalizeModelId,
@@ -30,14 +31,16 @@ export function resolveModel(
 
   const wireId = stripModelMarkers(model);
   const id = normalizeModelId(model);
-  const definition = Object.hasOwn(profile.supportedModels, id)
+  const entry = Object.hasOwn(profile.supportedModels, id)
     ? profile.supportedModels[id]
     : undefined;
-  // Interim: a later capability-predicate port will replace catalogue lookup.
   return Object.freeze({
     id,
     wireId,
-    family: definition?.family ?? modelFamilyOf(id),
-    capabilities: definition?.capabilities ?? profile.defaultCapabilities,
+    // The catalogue supplies the family. It does NOT supply capabilities:
+    // on first party every capability is a pure function of the normalized
+    // id. See the header of `model-capabilities.ts` for why.
+    family: entry?.family ?? modelFamilyOf(id),
+    capabilities: deriveCapabilities(id),
   });
 }
