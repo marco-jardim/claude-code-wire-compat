@@ -2,7 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.4] - Unreleased
+## [0.1.0-rc.5] - Unreleased
+
+### Changed
+
+- Consecutive caller system blocks with structurally equal `cache_control` values, including when
+  both are absent, are now joined into one wire block, with their texts joined in order by a single
+  newline. This mirrors the genuine Claude Code client, which emits one newline-joined caller block
+  rather than one block per caller entry. Blocks whose `cache_control` differs remain separate.
+
+### Added
+
+- A new optional top-level `cacheControl` input object (`ClaudeCodeCacheControlInput`) lets the
+  caller direct cache-breakpoint placement through `enabled`, `ttl`, `systemBreakpoint`,
+  `toolBreakpoint`, and `messageBreakpoint`. Omission preserves existing behaviour. One TTL is
+  shared across system, tools, and messages. Explicit `ttl: null` emits an ephemeral marker with no
+  `ttl` member. Incoming non-thinking markers are stripped before placement, and the message
+  breakpoint lands on the literal last block of the last user message, including when that block is
+  a `tool_result`. Unknown keys are rejected with `INVALID_INPUT`.
+
+## [0.1.0-rc.4] - 2026-07-26
 
 ### Added
 
