@@ -206,7 +206,7 @@ describe("redaction input validation", () => {
     );
   });
 
-  it.each(["haiku", "sonnet", "fable", "mythos"] as const)(
+  it.each([["haiku"], ["sonnet"], ["fable"]] as const)(
     "accepts the %s model family",
     async (modelFamily) => {
       const evidence = await buildRedactedEvidence(

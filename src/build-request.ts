@@ -270,8 +270,7 @@ function parseSupportedModels(
       family !== "haiku" &&
       family !== "sonnet" &&
       family !== "opus" &&
-      family !== "fable" &&
-      family !== "mythos"
+      family !== "fable"
     )
       fail();
     result[key] = Object.freeze({
@@ -568,8 +567,7 @@ function parseEvidence(value: unknown): RedactedRequestEvidence {
     modelFamily !== "haiku" &&
     modelFamily !== "sonnet" &&
     modelFamily !== "opus" &&
-    modelFamily !== "fable" &&
-    modelFamily !== "mythos"
+    modelFamily !== "fable"
   ) {
     fail();
   }

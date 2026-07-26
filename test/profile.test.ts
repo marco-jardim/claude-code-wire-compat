@@ -20,14 +20,14 @@ const EXPECTED_BETAS = [
 ] as const;
 
 const EXPECTED_MODELS = {
-  "claude-opus-5": {
-    family: "opus",
-    aliases: ["opus-5"],
+  "claude-3-5-haiku": {
+    family: "haiku",
+    aliases: [],
     capabilities: {
-      contextHint: true,
+      contextHint: false,
       adaptiveThinking: false,
-      effort: true,
-      interleavedThinking: true,
+      effort: false,
+      interleavedThinking: false,
     },
   },
   "claude-opus-4-8": {
@@ -66,18 +66,18 @@ const EXPECTED_MODELS = {
     capabilities: {
       contextHint: true,
       adaptiveThinking: false,
-      effort: true,
+      effort: false,
       interleavedThinking: true,
     },
   },
-  "claude-opus-4-5-20251101": {
-    family: "opus",
+  "claude-3-5-sonnet": {
+    family: "sonnet",
     aliases: [],
     capabilities: {
-      contextHint: true,
+      contextHint: false,
       adaptiveThinking: false,
-      effort: true,
-      interleavedThinking: true,
+      effort: false,
+      interleavedThinking: false,
     },
   },
   "claude-opus-4-1": {
@@ -90,14 +90,14 @@ const EXPECTED_MODELS = {
       interleavedThinking: true,
     },
   },
-  "claude-opus-4-1-20250805": {
-    family: "opus",
+  "claude-3-7-sonnet": {
+    family: "sonnet",
     aliases: [],
     capabilities: {
-      contextHint: true,
+      contextHint: false,
       adaptiveThinking: false,
       effort: false,
-      interleavedThinking: true,
+      interleavedThinking: false,
     },
   },
   "claude-opus-4-0": {
@@ -107,16 +107,6 @@ const EXPECTED_MODELS = {
       contextHint: true,
       adaptiveThinking: false,
       effort: false,
-      interleavedThinking: true,
-    },
-  },
-  "claude-sonnet-5": {
-    family: "sonnet",
-    aliases: ["sonnet-5"],
-    capabilities: {
-      contextHint: true,
-      adaptiveThinking: false,
-      effort: true,
       interleavedThinking: true,
     },
   },
@@ -133,16 +123,6 @@ const EXPECTED_MODELS = {
   "claude-sonnet-4-5": {
     family: "sonnet",
     aliases: ["sonnet-4-5", "claude-sonnet-4.5", "sonnet-4.5"],
-    capabilities: {
-      contextHint: true,
-      adaptiveThinking: false,
-      effort: false,
-      interleavedThinking: true,
-    },
-  },
-  "claude-sonnet-4-5-20250929": {
-    family: "sonnet",
-    aliases: [],
     capabilities: {
       contextHint: true,
       adaptiveThinking: false,
@@ -170,29 +150,9 @@ const EXPECTED_MODELS = {
       interleavedThinking: true,
     },
   },
-  "claude-haiku-4-5-20251001": {
-    family: "haiku",
-    aliases: [],
-    capabilities: {
-      contextHint: true,
-      adaptiveThinking: false,
-      effort: false,
-      interleavedThinking: true,
-    },
-  },
   "claude-fable-5": {
     family: "fable",
     aliases: ["anthropic/claude-fable-5"],
-    capabilities: {
-      contextHint: true,
-      adaptiveThinking: true,
-      effort: true,
-      interleavedThinking: true,
-    },
-  },
-  "claude-mythos-5": {
-    family: "mythos",
-    aliases: [],
     capabilities: {
       contextHint: true,
       adaptiveThinking: true,
@@ -238,9 +198,22 @@ describe("CLAUDE_CODE_2_1_195_PROFILE", () => {
   });
 
   it("pins exactly the exhaustive supported-model allowlist", () => {
-    expect(Object.keys(CLAUDE_CODE_2_1_195_PROFILE.supportedModels)).toEqual(
-      Object.keys(EXPECTED_MODELS),
-    );
+    expect(Object.keys(CLAUDE_CODE_2_1_195_PROFILE.supportedModels)).toEqual([
+      "claude-3-5-haiku",
+      "claude-haiku-4-5",
+      "claude-3-5-sonnet",
+      "claude-3-7-sonnet",
+      "claude-sonnet-4-0",
+      "claude-sonnet-4-5",
+      "claude-sonnet-4-6",
+      "claude-opus-4-0",
+      "claude-opus-4-1",
+      "claude-opus-4-5",
+      "claude-opus-4-6",
+      "claude-opus-4-7",
+      "claude-opus-4-8",
+      "claude-fable-5",
+    ]);
 
     for (const [modelId, expected] of Object.entries(EXPECTED_MODELS)) {
       const actual = CLAUDE_CODE_2_1_195_PROFILE.supportedModels[modelId];

@@ -40,9 +40,7 @@ async function expectEvidenceSafe(input: ClaudeCodeRequestInput) {
   const parsed = parseBuiltClaudeCodeRequest(built);
   expect(parsed).toEqual(built);
   expect(built.evidence.profileId).toBe(CLAUDE_CODE_2_1_195_PROFILE.id);
-  expect(built.evidence.modelFamily).toMatch(
-    /^(?:haiku|sonnet|opus|fable|mythos)$/u,
-  );
+  expect(built.evidence.modelFamily).toMatch(/^(?:haiku|sonnet|opus|fable)$/u);
   expect(built.evidence.betaFeatures).toBeInstanceOf(Array);
   expect(built.evidence.bodyByteLength).toBe(
     new TextEncoder().encode(built.body).length,

@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-/**
- * Model families used only in redacted evidence, never on the wire. `fable`
- * and `mythos` are consumer-observed identifiers matched upstream by
- * unanchored regex predicates.
- */
-export type ClaudeCodeModelFamily =
-  "haiku" | "sonnet" | "opus" | "fable" | "mythos";
+/** Model families used only in redacted evidence, never on the wire. */
+export type ClaudeCodeModelFamily = "haiku" | "sonnet" | "opus" | "fable";
 
 export type HeaderPair = readonly [name: string, value: string];
 

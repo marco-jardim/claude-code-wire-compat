@@ -200,7 +200,7 @@ describe("protocol profile override", () => {
     ).rejects.toMatchObject({ code: "INVALID_INPUT" });
   });
 
-  it("rejects Claude 3 while retaining interleaved thinking for supported models", async () => {
+  it("accepts Claude 3 while retaining interleaved thinking for other supported models", async () => {
     const existing = await buildClaudeCodeRequest(base);
 
     await expect(
@@ -208,7 +208,7 @@ describe("protocol profile override", () => {
         ...base,
         model: "claude-3-5-haiku",
       }),
-    ).rejects.toMatchObject({ code: "UNSUPPORTED_MODEL" });
+    ).resolves.toMatchObject({ evidence: { modelFamily: "haiku" } });
     expect(headerValue(existing.headers, "anthropic-beta")).toContain(
       "interleaved-thinking-2025-05-14",
     );
@@ -308,7 +308,7 @@ describe("protocol profile override", () => {
     },
   );
 
-  it.each(["haiku", "sonnet", "opus", "fable", "mythos"] as const)(
+  it.each([["haiku"], ["sonnet"], ["opus"], ["fable"]] as const)(
     "accepts the exact supported-model family %s",
     async (family) => {
       const model = `claude-override-${family}`;

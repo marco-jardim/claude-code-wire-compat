@@ -266,8 +266,7 @@ function assertEvidenceSources(value: unknown): void {
     modelFamily !== "haiku" &&
     modelFamily !== "sonnet" &&
     modelFamily !== "opus" &&
-    modelFamily !== "fable" &&
-    modelFamily !== "mythos"
+    modelFamily !== "fable"
   ) {
     throw wireError("INVALID_INPUT");
   }

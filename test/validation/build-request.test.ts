@@ -449,13 +449,7 @@ describe("parseBuiltClaudeCodeRequest validation", () => {
 
     expect(parseBuiltClaudeCodeRequest(built)).toEqual(built);
 
-    for (const modelFamily of [
-      "haiku",
-      "sonnet",
-      "opus",
-      "fable",
-      "mythos",
-    ] as const) {
+    for (const modelFamily of ["haiku", "sonnet", "opus", "fable"] as const) {
       expect(
         parseBuiltClaudeCodeRequest(
           cloneBuilt(built, {

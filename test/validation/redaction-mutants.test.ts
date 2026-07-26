@@ -116,7 +116,7 @@ function redactionInput(token = TOKEN): BuildRedactedEvidenceInput {
     profile: profile(),
     request: {
       accessToken: token,
-      model: "claude-sonnet-4-5-20250929",
+      model: "claude-sonnet-4-5",
       maxTokens: 128,
       messages: [{ role: "user", content: "hello" }],
       system: [{ type: "text", text: "system" }],

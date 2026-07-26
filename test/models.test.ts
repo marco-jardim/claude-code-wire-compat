@@ -21,7 +21,7 @@ import {
 
 interface ResolvedModel {
   readonly id: string;
-  readonly family: "haiku" | "sonnet" | "opus" | "fable" | "mythos";
+  readonly family: "haiku" | "sonnet" | "opus" | "fable";
   readonly capabilities: ClaudeCodeCapabilities;
 }
 
@@ -52,28 +52,19 @@ describe("models (Wave 1 RED specification)", () => {
     }
     expect(
       Object.keys(CLAUDE_CODE_2_1_195_PROFILE.supportedModels),
-    ).toHaveLength(18);
+    ).toHaveLength(14);
   });
 
   it.each([
-    [["claude-opus-5", "opus", true, false, true, true] as const],
-    [["claude-opus-4-5", "opus", true, false, true, true] as const],
-    [["claude-opus-4-5-20251101", "opus", true, false, true, true] as const],
-    [["claude-opus-4-1-20250805", "opus", true, false, false, true] as const],
-    [["claude-sonnet-5", "sonnet", true, false, true, true] as const],
-    [
-      [
-        "claude-sonnet-4-5-20250929",
-        "sonnet",
-        true,
-        false,
-        false,
-        true,
-      ] as const,
-    ],
-    [["claude-haiku-4-5-20251001", "haiku", true, false, false, true] as const],
+    [["claude-3-5-haiku", "haiku", false, false, false, false] as const],
+    [["claude-opus-4-5", "opus", true, false, false, true] as const],
+    [["claude-3-5-sonnet", "sonnet", false, false, false, false] as const],
+    [["claude-3-7-sonnet", "sonnet", false, false, false, false] as const],
+    [["claude-opus-4-8", "opus", true, true, true, true] as const],
+    [["claude-sonnet-4-0", "sonnet", true, false, false, true] as const],
+    [["claude-haiku-4-5", "haiku", true, false, false, true] as const],
   ])(
-    "resolves newly added model %s",
+    "resolves catalogue model %s to its exact family and capabilities",
     async ([
       id,
       family,
@@ -138,6 +129,9 @@ describe("models (Wave 1 RED specification)", () => {
     "",
     "evil-claude-opus-4-8-evil",
     "claude-3-opus",
+    "claude-mythos-5",
+    "claude-opus-5",
+    "claude-sonnet-5",
     "claude-3-5-haiku-latest",
   ])("fails closed for unsupported model %j", async (model) => {
     const resolveModel = await loadWave2Function<ResolveModel>(

@@ -2,7 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.8] - Unreleased
+## [0.1.0-rc.9] - Unreleased
+
+### Fixed
+
+- The pinned model table is now transcribed from the genuine client's own
+  generated model catalogue instead of being derived from a public model
+  index. Seven identifiers that the client does not carry were removed
+  (`claude-opus-5`, `claude-sonnet-5`, `claude-mythos-5`, and the four dated
+  snapshots `claude-opus-4-5-20251101`, `claude-opus-4-1-20250805`,
+  `claude-sonnet-4-5-20250929`, `claude-haiku-4-5-20251001`). Dated forms are
+  provider identifiers, not aliases; carrying them as aliases rewrote a
+  caller's model onto a different identifier.
+- `claude-opus-4-5` no longer advertises the effort capability. The catalogue
+  grants it only context management, so an effort request on that model now
+  fails closed instead of emitting an unsupported beta.
+
+### Added
+
+- `claude-3-5-haiku`, `claude-3-5-sonnet` and `claude-3-7-sonnet` are
+  supported again. They are genuine catalogue entries with an empty
+  capability list, so all four capability flags are false.
+
+### Changed
+
+- The model family union no longer includes `mythos`. It is now `haiku`,
+  `sonnet`, `opus` and `fable`.
+- The pinned table is ordered to match the catalogue.
+
+## [0.1.0-rc.8] - 2026-07-26
 
 ### Fixed
 
