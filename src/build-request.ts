@@ -37,6 +37,7 @@ const INPUT_KEYS = new Set([
   "messages",
   "system",
   "tools",
+  "cacheControl",
   "runtime",
   "capabilities",
   "profileOverride",
@@ -661,6 +662,7 @@ function evidenceRequest(
     runtime: ClaudeCodeRequestInput["runtime"];
     system?: NonNullable<ClaudeCodeRequestInput["system"]>;
     tools?: NonNullable<ClaudeCodeRequestInput["tools"]>;
+    cacheControl?: Exclude<ClaudeCodeRequestInput["cacheControl"], undefined>;
     capabilities?: NonNullable<ClaudeCodeRequestInput["capabilities"]>;
     thinking?: NonNullable<ClaudeCodeRequestInput["thinking"]>;
     effort?: NonNullable<ClaudeCodeRequestInput["effort"]>;
@@ -691,6 +693,8 @@ function evidenceRequest(
   };
   if (input.system !== undefined) request.system = input.system;
   if (input.tools !== undefined) request.tools = input.tools;
+  if (Object.hasOwn(input, "cacheControl"))
+    request.cacheControl = present(input.cacheControl);
   if (input.capabilities !== undefined)
     request.capabilities = input.capabilities;
   if (input.thinking !== undefined) request.thinking = input.thinking;

@@ -640,6 +640,15 @@ export interface ClaudeCodeRuntimeIdentity {
   readonly arch: string;
 }
 
+/** Directs where the package places cache breakpoints. */
+export interface ClaudeCodeCacheControlInput {
+  readonly enabled?: boolean | null;
+  readonly ttl?: "5m" | "1h" | null;
+  readonly systemBreakpoint?: boolean | null;
+  readonly toolBreakpoint?: boolean | null;
+  readonly messageBreakpoint?: boolean | null;
+}
+
 export interface ClaudeCodeRequestInput {
   readonly accessToken: string;
   readonly model: string;
@@ -647,6 +656,7 @@ export interface ClaudeCodeRequestInput {
   readonly messages: readonly Message[];
   readonly system?: readonly SystemInput[];
   readonly tools?: readonly ToolDefinition[];
+  readonly cacheControl?: ClaudeCodeCacheControlInput | null;
   readonly runtime: ClaudeCodeRuntimeIdentity;
   readonly capabilities?: Partial<ClaudeCodeCapabilities>;
   /** Substitutes protocol-identity fields of the pinned profile. */

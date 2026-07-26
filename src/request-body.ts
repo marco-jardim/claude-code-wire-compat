@@ -3,6 +3,7 @@
 import { ClaudeCodeWireError } from "./contracts.js";
 import type {
   CacheControlEphemeral,
+  ClaudeCodeCacheControlInput,
   ClaudeCodeProtocolProfile,
   CitationsConfigParam,
   DocumentBlock,
@@ -265,6 +266,13 @@ const COMPACT_KEYS = new Set([
   "trigger",
 ]);
 const OUTPUT_CONFIG_KEYS = new Set(["effort", "maxOutputTokens"]);
+const CACHE_CONTROL_INPUT_KEYS = new Set([
+  "enabled",
+  "ttl",
+  "systemBreakpoint",
+  "toolBreakpoint",
+  "messageBreakpoint",
+]);
 const JSON_OUTPUT_FORMAT_KEYS = new Set(["schema", "type"]);
 const TOOL_CHOICE_PARALLEL_KEYS = new Set([
   "type",
@@ -283,6 +291,7 @@ const INPUT_KEYS = [
   "messages",
   "system",
   "tools",
+  "cacheControl",
   "runtime",
   "capabilities",
   "thinking",
@@ -519,6 +528,122 @@ function cacheControl(
     }
   }
   return Object.fromEntries(entries) as unknown as CacheControlEphemeral;
+}
+
+function cacheControlInput(value: unknown): ClaudeCodeCacheControlInput {
+  const record = requireRecord(value);
+  assertExactKeys(record, CACHE_CONTROL_INPUT_KEYS);
+  const entries: [string, boolean | "5m" | "1h" | null][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "ttl") {
+      if (item !== null && item !== "5m" && item !== "1h") {
+        fail("INVALID_INPUT");
+      }
+      entries.push([key, item]);
+    } else {
+      entries.push([key, item === null ? null : requireBoolean(item)]);
+    }
+  }
+  return Object.fromEntries(entries);
+}
+
+function breakpoint(input: ClaudeCodeCacheControlInput): CacheControlEphemeral {
+  return input.ttl === undefined || input.ttl === null
+    ? { type: "ephemeral" }
+    : { type: "ephemeral", ttl: input.ttl };
+}
+
+function withoutCacheControl<T>(value: T): T {
+  if (!isRecord(value)) fail("INVALID_INPUT");
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) => key !== "cache_control"),
+  ) as unknown as T;
+}
+
+function withBreakpoint<T>(value: T, marker: CacheControlEphemeral): T {
+  if (!isRecord(value)) fail("INVALID_INPUT");
+  return Object.fromEntries([
+    ...Object.entries(value).filter(([key]) => key !== "cache_control"),
+    ["cache_control", marker],
+  ]) as unknown as T;
+}
+
+function applySystemCacheControl(
+  value: readonly TextBlock[],
+  input: ClaudeCodeCacheControlInput,
+): readonly TextBlock[] {
+  const result = value.map((block, index) =>
+    index === 1 ? withoutCacheControl(block) : block,
+  );
+  if (
+    input.enabled === true &&
+    input.systemBreakpoint === true &&
+    result.length > 2
+  ) {
+    const index = result.length - 1;
+    const block = result[index];
+    if (block !== undefined)
+      result[index] = withBreakpoint(block, breakpoint(input));
+  }
+  return result;
+}
+
+function applyToolCacheControl(
+  value: readonly ToolDefinition[],
+  input: ClaudeCodeCacheControlInput,
+): readonly ToolDefinition[] {
+  const result = value.map((tool) => withoutCacheControl(tool));
+  if (
+    input.enabled === true &&
+    input.toolBreakpoint === true &&
+    result.length > 0
+  ) {
+    const index = result.length - 1;
+    const tool = result[index];
+    if (tool !== undefined)
+      result[index] = withBreakpoint(tool, breakpoint(input));
+  }
+  return result;
+}
+
+function applyMessageCacheControl(
+  value: readonly Message[],
+  input: ClaudeCodeCacheControlInput,
+): readonly Message[] {
+  const result = value.map((message): Message => ({
+    role: message.role,
+    content:
+      typeof message.content === "string"
+        ? message.content
+        : message.content.map((block) =>
+            block.type === "thinking" || block.type === "redacted_thinking"
+              ? block
+              : withoutCacheControl(block),
+          ),
+  }));
+  if (input.enabled !== true || input.messageBreakpoint !== true) return result;
+
+  for (let index = result.length - 1; index >= 0; index -= 1) {
+    const message = result[index];
+    if (message?.role !== "user") continue;
+    if (typeof message.content === "string" || message.content.length === 0) {
+      return result;
+    }
+    const content: MessageContentBlock[] = [...message.content];
+    const blockIndex = content.length - 1;
+    const block = content[blockIndex];
+    if (
+      block !== undefined &&
+      block.type !== "thinking" &&
+      block.type !== "redacted_thinking"
+    ) {
+      content[blockIndex] = withBreakpoint(block, breakpoint(input));
+      result[index] = { role: message.role, content };
+    }
+    return result;
+  }
+  return result;
 }
 
 function citationsConfig(value: unknown): CitationsConfigParam {
@@ -1446,14 +1571,28 @@ export function buildCanonicalBody(
     fail("UNSUPPORTED_MODEL");
   }
 
+  const cacheOverride = hasOwn(input, "cacheControl")
+    ? nullable(input["cacheControl"], cacheControlInput)
+    : undefined;
+  let systemBlocks = system(rawSystemBlocks);
+  let messageList = messages(input["messages"]);
+  let toolList = hasOwn(input, "tools") ? tools(input["tools"]) : undefined;
+  if (cacheOverride !== undefined && cacheOverride !== null) {
+    systemBlocks = applySystemCacheControl(systemBlocks, cacheOverride);
+    messageList = applyMessageCacheControl(messageList, cacheOverride);
+    if (toolList !== undefined) {
+      toolList = applyToolCacheControl(toolList, cacheOverride);
+    }
+  }
+
   const result: Record<string, unknown> = {
     model: resolvedModel.id,
     max_tokens: requirePositiveInteger(input["maxTokens"]),
-    system: system(rawSystemBlocks),
-    messages: messages(input["messages"]),
+    system: systemBlocks,
+    messages: messageList,
   };
 
-  if (hasOwn(input, "tools")) result["tools"] = tools(input["tools"]);
+  if (toolList !== undefined) result["tools"] = toolList;
 
   let thinkingActive = false;
   if (hasOwn(input, "thinking")) {
