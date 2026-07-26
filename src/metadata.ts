@@ -2,6 +2,7 @@
 
 import { ClaudeCodeWireError } from "./contracts.js";
 import type { ClaudeCodeRuntimeIdentity, JsonValue } from "./contracts.js";
+import { inspectJsonInputs, validatedJson } from "./request-body.js";
 import { classifySurrogateAt } from "./unicode.js";
 
 const MAX_TEXT_LENGTH = 8_192;
@@ -157,7 +158,21 @@ function validateMetadataValue(value: unknown, key: string): JsonValue {
     return value;
   }
   if (typeof value === "boolean" || value === null) return value;
-  throw new ClaudeCodeWireError("INVALID_INPUT", { field: key });
+  if (typeof value !== "object") {
+    throw new ClaudeCodeWireError("INVALID_INPUT", { field: key });
+  }
+  inspectJsonInputs([value], (nestedString) => {
+    if (hasInvalidUtf16(nestedString)) {
+      throw new ClaudeCodeWireError("INVALID_UNICODE", { field: key });
+    }
+    if (nestedString.length > MAX_TEXT_LENGTH) {
+      throw new ClaudeCodeWireError("INPUT_TOO_LARGE", { field: key });
+    }
+    if (hasControlCharacter(nestedString)) {
+      throw new ClaudeCodeWireError("INVALID_UNICODE", { field: key });
+    }
+  });
+  return validatedJson(value);
 }
 
 function expectedCorrelationValue(

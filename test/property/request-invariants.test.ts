@@ -99,7 +99,7 @@ describe("request properties", () => {
     cyclic["self"] = cyclic;
     const deep: Record<string, unknown> = {};
     let cursor = deep;
-    for (let index = 0; index < 80; index += 1) {
+    for (let index = 0; index < 101; index += 1) {
       const next: Record<string, unknown> = {};
       cursor["next"] = next;
       cursor = next;

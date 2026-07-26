@@ -10,8 +10,10 @@ import type {
   OutputConfigInput,
   ToolChoice,
 } from "../../src/contracts.js";
-import { buildClaudeCodeRequest } from "../../src/build-request.js";
-import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
+import {
+  buildClaudeCodeRequest,
+  CLAUDE_CODE_2_1_195_PROFILE,
+} from "../../src/index.js";
 import { buildCanonicalBody } from "../../src/request-body.js";
 
 const MODEL_ID = "claude-opus-4-8";

@@ -3,7 +3,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { ClaudeCodeRequestInput } from "../../src/contracts.js";
-import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
+import {
+  buildClaudeCodeRequest,
+  CLAUDE_CODE_2_1_195_PROFILE,
+} from "../../src/index.js";
 import { buildCanonicalBody } from "../../src/request-body.js";
 
 const MODEL_ID = "claude-opus-4-8";
@@ -22,6 +25,44 @@ function build(metadata: unknown): Readonly<Record<string, unknown>> {
 }
 
 describe("metadata contract expansion", () => {
+  it("accepts nested metadata through the public build path", async () => {
+    const result = await buildClaudeCodeRequest(
+      {
+        accessToken: "test-token",
+        model: "claude-sonnet-4-6",
+        maxTokens: 1024,
+        messages: [{ role: "user", content: "Hello" }],
+        runtime: {
+          sessionId: "session-1",
+          deviceId: "device-1",
+          accountUuid: "account-1",
+          runtime: "node",
+          runtimeVersion: "22.0.0",
+          os: "Linux",
+          arch: "x64",
+        },
+        clientRequestId: "metadata-probe-1",
+        metadata: {
+          nested: { third: 3, first: 1, second: { beta: 2, alpha: 1 } },
+          list: [3, 1, 2],
+        },
+      },
+      CLAUDE_CODE_2_1_195_PROFILE,
+    );
+
+    const body = JSON.parse(result.body) as Record<string, unknown>;
+
+    expect(body["metadata"]).toEqual({
+      user_id:
+        '{"device_id":"device-1","account_uuid":"account-1","session_id":"session-1"}',
+      nested: { third: 3, first: 1, second: { beta: 2, alpha: 1 } },
+      list: [3, 1, 2],
+    });
+    expect(JSON.stringify(body["metadata"])).toBe(
+      '{"user_id":"{\\"device_id\\":\\"device-1\\",\\"account_uuid\\":\\"account-1\\",\\"session_id\\":\\"session-1\\"}","nested":{"third":3,"first":1,"second":{"beta":2,"alpha":1}},"list":[3,1,2]}',
+    );
+  });
+
   it("accepts nested object and array values in the public input type", () => {
     const input = {
       accessToken: "sentinel-token-metadata-expansion",

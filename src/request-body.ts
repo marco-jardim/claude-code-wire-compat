@@ -85,9 +85,14 @@ function hasOwn(value: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-function inspectString(value: string, state: InspectionState): void {
+function inspectString(
+  value: string,
+  state: InspectionState,
+  validateString?: (value: string) => void,
+): void {
   state.size += value.length;
   if (state.size > MAX_SIZE) fail("INPUT_TOO_LARGE");
+  validateString?.(value);
 
   for (let index = 0; index < value.length; index += 1) {
     const unit = value.charCodeAt(index);
@@ -106,11 +111,16 @@ function inspectString(value: string, state: InspectionState): void {
   }
 }
 
-function inspect(value: unknown, depth: number, state: InspectionState): void {
+function inspect(
+  value: unknown,
+  depth: number,
+  state: InspectionState,
+  validateString?: (value: string) => void,
+): void {
   if (depth > MAX_DEPTH) fail("INPUT_TOO_DEEP");
   if (value === null || typeof value === "boolean") return;
   if (typeof value === "string") {
-    inspectString(value, state);
+    inspectString(value, state, validateString);
     return;
   }
   if (typeof value === "number") {
@@ -129,7 +139,7 @@ function inspect(value: unknown, depth: number, state: InspectionState): void {
     if (state.size > MAX_SIZE) fail("INPUT_TOO_LARGE");
     for (let index = 0; index < value.length; index += 1) {
       if (!hasOwn(value, String(index))) fail("INVALID_INPUT");
-      inspect(value[index], depth + 1, state);
+      inspect(value[index], depth + 1, state, validateString);
     }
   } else {
     const prototype = Reflect.getPrototypeOf(value);
@@ -140,24 +150,27 @@ function inspect(value: unknown, depth: number, state: InspectionState): void {
       if (typeof key !== "string" || FORBIDDEN_KEYS.has(key)) {
         fail("INVALID_INPUT");
       }
-      inspectString(key, state);
+      inspectString(key, state, validateString);
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor === undefined || !("value" in descriptor)) {
         fail("INVALID_INPUT");
       }
-      inspect(descriptor.value, depth + 1, state);
+      inspect(descriptor.value, depth + 1, state, validateString);
     }
   }
   state.active.delete(value);
 }
 
-function inspectInputs(values: readonly unknown[]): void {
+export function inspectJsonInputs(
+  values: readonly unknown[],
+  validateString?: (value: string) => void,
+): void {
   const state: InspectionState = {
     active: new WeakSet(),
     items: 0,
     size: 0,
   };
-  for (const value of values) inspect(value, 0, state);
+  for (const value of values) inspect(value, 0, state, validateString);
 }
 
 function requireRecord(value: unknown): Record<string, unknown> {
@@ -177,7 +190,7 @@ function requirePositiveInteger(value: unknown): number {
   return value;
 }
 
-function validatedJsonObject(
+export function validatedJsonObject(
   value: unknown,
 ): Readonly<Record<string, JsonValue>> {
   const record = requireRecord(value);
@@ -188,7 +201,7 @@ function validatedJsonObject(
   return Object.fromEntries(entries);
 }
 
-function validatedJson(value: unknown): JsonValue {
+export function validatedJson(value: unknown): JsonValue {
   if (
     value === null ||
     typeof value === "string" ||
@@ -1223,7 +1236,7 @@ export function buildCanonicalBody(
   rawMetadata: unknown,
   profile?: ClaudeCodeProtocolProfile,
 ): Readonly<Record<string, unknown>> {
-  inspectInputs([
+  inspectJsonInputs([
     rawInput,
     rawResolvedModel,
     rawSystemBlocks,

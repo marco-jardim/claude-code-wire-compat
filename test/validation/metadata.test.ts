@@ -240,8 +240,15 @@ describe("metadata validation paths", () => {
     });
   });
 
+  it("rejects a non-plain object metadata value", () => {
+    expectWireError(
+      () =>
+        buildCorrelatedMetadata(IDENTITY, invalidMetadataValue(new Date(0))),
+      "INVALID_INPUT",
+    );
+  });
+
   it.each([
-    ["object", { nested: true }],
     ["symbol", Symbol("invalid")],
     ["undefined", undefined],
     ["bigint", 1n],

@@ -5,11 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildClaudeCodeRequest,
   parseBuiltClaudeCodeRequest,
-} from "../../src/build-request.js";
-import type {
-  ClaudeCodeRequestInput,
-  HeaderPair,
-} from "../../src/contracts.js";
+} from "../../src/index.js";
+import type { ClaudeCodeRequestInput, HeaderPair } from "../../src/index.js";
 
 const ACCESS_TOKEN = "sentinel-token-headers-wp-f";
 const BASE_INPUT: ClaudeCodeRequestInput = {
