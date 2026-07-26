@@ -75,9 +75,10 @@ describe("system-prompt (Wave 1 RED specification)", () => {
       text: "You are Claude Code, Anthropic's official CLI for Claude.",
       cache_control: { type: "ephemeral", ttl: "1h" },
     });
+    // Caller blocks with structurally equal cache_control (both absent here)
+    // join with a newline like the genuine client; caller[2] stays separate.
     expect(result.slice(2)).toEqual([
-      { type: "text", text: "first" },
-      caller[1],
+      { type: "text", text: "first\nsecond" },
       caller[2],
     ]);
     expect(caller).toEqual(before);

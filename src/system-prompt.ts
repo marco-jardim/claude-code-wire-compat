@@ -119,6 +119,25 @@ function cloneTextBlock(value: unknown): TextBlock {
   });
 }
 
+function equalCacheControl(
+  left: TextBlock["cache_control"],
+  right: TextBlock["cache_control"],
+): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  if (left === null || right === null) return left === right;
+  return left.ttl === right.ttl && left.scope === right.scope;
+}
+
+function joinTextBlocks(left: TextBlock, right: TextBlock): TextBlock {
+  return Object.freeze({
+    type: "text",
+    text: `${left.text}\n${right.text}`,
+    ...(left.cache_control === undefined
+      ? {}
+      : { cache_control: left.cache_control }),
+  });
+}
+
 /** Builds the pinned Claude Code system block sequence without changing caller data. */
 export function buildCanonicalSystem(
   input: readonly SystemInput[] | undefined,
@@ -148,16 +167,26 @@ export function buildCanonicalSystem(
   ];
 
   if (input !== undefined) {
+    let run: TextBlock | undefined;
     for (const entry of input) {
-      const block =
+      const block: TextBlock =
         typeof entry === "string"
           ? Object.freeze({ type: "text" as const, text: entry })
           : cloneTextBlock(entry);
 
       // Upstream recognizes only the byte-for-byte identity constant. Similar
       // caller text remains ordinary prompt content.
-      if (block.text !== IDENTITY_TEXT) blocks.push(block);
+      if (block.text === IDENTITY_TEXT) continue;
+      if (run === undefined) {
+        run = block;
+      } else if (equalCacheControl(run.cache_control, block.cache_control)) {
+        run = joinTextBlocks(run, block);
+      } else {
+        blocks.push(run);
+        run = block;
+      }
     }
+    if (run !== undefined) blocks.push(run);
   }
 
   return Object.freeze(blocks);
