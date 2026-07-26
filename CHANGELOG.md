@@ -2,7 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.2] - Unreleased
+## [0.1.0-rc.3] - Unreleased
+
+### Added
+
+- Full beta message content block union: `thinking`, `redacted_thinking`, `image`,
+  `document`, `search_result`, and nested `tool_reference` blocks, with the multimodal
+  `tool_result` content union.
+- Full beta tool definition union: `cache_control` and `defer_loading` on tool
+  definitions, plus the built-in and server tool shapes that carry no ordinary
+  `input_schema`.
+- Top-level request fields `context_management`, `output_config`, `speed`,
+  `service_tier`, `output_format`, `tool_choice`, `top_p`, `top_k`, `stop_sequences`,
+  `stream`, and `temperature`.
+- Validated header seam `extraHeaders` and the dynamic headers `x-app`,
+  `x-stainless-retry-count`, `x-stainless-helper`, `x-claude-remote-container-id`,
+  `x-claude-remote-session-id`, `x-client-app`, and
+  `x-anthropic-additional-protection`.
+- Validated body-level extension envelope `experimentalBodyFields`, so a caller can
+  emit a newly shipped protocol field without waiting for a package release.
+
+### Changed
+
+- Request body JSON now preserves the caller's key insertion order. The previous
+  recursive alphabetical sort rewrote the bytes of prior conversation turns, which is
+  the prefix the upstream prompt cache is keyed on.
+- The public metadata value type accepts nested JSON rather than only primitives.
+- Unknown properties on nested request shapes are now rejected with `INVALID_INPUT`
+  instead of being silently dropped, making the contract fail-closed at every level.
+
+### Fixed
+
+- Nested JSON metadata was rejected on the public build path even though the
+  published type declared it as accepted.
+
+## [0.1.0-rc.2] - 2026-07-25
 
 ### Fixed
 
