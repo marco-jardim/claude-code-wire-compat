@@ -83,8 +83,16 @@ describe("caller-directed cache breakpoint placement", () => {
       cacheControl: { enabled: false },
     });
     const body = parseBody(result.body);
+    const system = requireArray(body["system"]);
 
-    expect(JSON.stringify(body)).not.toContain("cache_control");
+    // The identity pin is package-owned protocol identity, so disabling
+    // caller-directed placement does not suppress it.
+    expect(system[1]).toEqual({
+      type: "text",
+      text: "You are Claude Code, Anthropic's official CLI for Claude.",
+      cache_control: { type: "ephemeral" },
+    });
+    expect(result.body.match(/"cache_control"/gu)).toHaveLength(1);
   });
 
   it("uses one explicit TTL for selected system, tool, and message breakpoints", async () => {
@@ -113,7 +121,7 @@ describe("caller-directed cache breakpoint placement", () => {
     const marker = { type: "ephemeral", ttl: "1h" };
 
     expect(system).toHaveLength(3);
-    expect(system[1]).not.toHaveProperty("cache_control");
+    expect(system[1]).toMatchObject({ cache_control: marker });
     expect(system[2]).toMatchObject({
       text: "static\ndynamic",
       cache_control: marker,
@@ -141,7 +149,8 @@ describe("caller-directed cache breakpoint placement", () => {
 
     expect(
       bodyText.match(/"cache_control":\{"type":"ephemeral"\}/gu),
-    ).toHaveLength(3);
+      // Identity plus selected system, tool, and message markers omit ttl.
+    ).toHaveLength(4);
     expect(bodyText).not.toContain('"ttl"');
   });
 

@@ -574,7 +574,7 @@ function applySystemCacheControl(
   input: ClaudeCodeCacheControlInput,
 ): readonly TextBlock[] {
   const result = value.map((block, index) =>
-    index === 1 ? withoutCacheControl(block) : block,
+    index === 1 ? withBreakpoint(block, breakpoint(input)) : block,
   );
   if (
     input.enabled === true &&
