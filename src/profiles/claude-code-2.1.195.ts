@@ -77,96 +77,70 @@ export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
      * model not being a `claude-3-*` model, so they are false for the three
      * `claude-3-*` entries and true for every other entry.
      *
-     * Every canonical key is a real first-party wire identifier because the
-     * genuine request builder emits the catalogue id directly after stripping
-     * only a `[1m]`/`[2m]` suffix. Dated forms such as
-     * `claude-3-5-haiku-20241022` are `provider_ids.first_party` values and are
-     * therefore not aliases: adding them as aliases would rewrite a caller's
-     * model string onto a different identifier. Every alias is a non-wire
-     * spelling that canonicalises onto a real identifier. `claude-mythos-5` was
-     * removed because it has no catalogue entry in this client version, even
-     * though the client's display code recognises the string.
+     * Every canonical key is a real first-party wire identifier. The catalogue
+     * is a capability table, not an allowlist: unknown identifiers pass through
+     * and use `defaultCapabilities`. `claude-mythos-5` has no catalogue entry.
      *
      * Known divergences this package does not yet model are the per-model
      * `default_effort` field (`xhigh` for Opus 4.7, `high` for Opus 4.8 and
      * Fable 5), and the six catalogue capabilities beyond effort and adaptive
      * thinking.
-     *
-     * DIVERGENCE: this package deliberately pins the catalogue as an exhaustive
-     * allowlist, so unknown identifiers FAIL CLOSED with `UNSUPPORTED_MODEL`,
-     * per plan section 3.3. This is stricter than display and predicate code
-     * elsewhere in the genuine client, which may recognise strings that are not
-     * catalogue entries.
      */
     supportedModels: {
       "claude-3-5-haiku": {
         family: "haiku",
-        aliases: [],
         capabilities: capabilities(false, false, false, false),
       },
       "claude-haiku-4-5": {
         family: "haiku",
-        aliases: ["haiku-4-5", "claude-haiku-4.5", "haiku-4.5"],
         capabilities: capabilities(false, false),
       },
       "claude-3-5-sonnet": {
         family: "sonnet",
-        aliases: [],
         capabilities: capabilities(false, false, false, false),
       },
       "claude-3-7-sonnet": {
         family: "sonnet",
-        aliases: [],
         capabilities: capabilities(false, false, false, false),
       },
       "claude-sonnet-4-0": {
         family: "sonnet",
-        aliases: ["sonnet-4-0", "claude-sonnet-4.0", "sonnet-4.0"],
         capabilities: capabilities(false, false),
       },
       "claude-sonnet-4-5": {
         family: "sonnet",
-        aliases: ["sonnet-4-5", "claude-sonnet-4.5", "sonnet-4.5"],
         capabilities: capabilities(false, false),
       },
       "claude-sonnet-4-6": {
         family: "sonnet",
-        aliases: ["sonnet-4-6", "claude-sonnet-4.6", "sonnet-4.6"],
         capabilities: capabilities(true, true),
       },
       "claude-opus-4-0": {
         family: "opus",
-        aliases: ["opus-4-0", "claude-opus-4.0", "opus-4.0"],
         capabilities: capabilities(false, false),
       },
       "claude-opus-4-1": {
         family: "opus",
-        aliases: ["opus-4-1", "claude-opus-4.1", "opus-4.1"],
         capabilities: capabilities(false, false),
       },
       "claude-opus-4-5": {
         family: "opus",
-        aliases: ["opus-4-5", "claude-opus-4.5", "opus-4.5"],
         capabilities: capabilities(false, false),
       },
       "claude-opus-4-6": {
         family: "opus",
-        aliases: ["opus-4-6", "claude-opus-4.6", "opus-4.6"],
         capabilities: capabilities(true, true),
       },
       "claude-opus-4-7": {
         family: "opus",
-        aliases: ["opus-4-7", "claude-opus-4.7", "opus-4.7"],
         capabilities: capabilities(true, true),
       },
       "claude-opus-4-8": {
         family: "opus",
-        aliases: ["opus-4-8", "claude-opus-4.8", "opus-4.8"],
         capabilities: capabilities(true, true),
       },
       "claude-fable-5": {
         family: "fable",
-        aliases: ["anthropic/claude-fable-5"],
         capabilities: capabilities(true, true),
       },
     },

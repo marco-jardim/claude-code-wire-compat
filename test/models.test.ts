@@ -4,7 +4,7 @@
  * Wave 1 RED specification for the models module.
  *
  * Wave 2 export expected:
- * - `resolveModel(model: string, profile?: ClaudeCodeProtocolProfile): { readonly id: string; readonly family: "haiku" | "sonnet" | "opus"; readonly capabilities: ClaudeCodeCapabilities }`
+ * - `resolveModel(model: string, profile?: ClaudeCodeProtocolProfile): ResolvedClaudeCodeModel`
  */
 
 import { describe, expect, it } from "vitest";
@@ -21,7 +21,8 @@ import {
 
 interface ResolvedModel {
   readonly id: string;
-  readonly family: "haiku" | "sonnet" | "opus" | "fable";
+  readonly wireId: string;
+  readonly family: "haiku" | "sonnet" | "opus" | "fable" | "mythos" | "unknown";
   readonly capabilities: ClaudeCodeCapabilities;
 }
 
@@ -46,6 +47,7 @@ describe("models (Wave 1 RED specification)", () => {
     )) {
       expect(resolveModel(id)).toEqual({
         id,
+        wireId: id,
         family: definition.family,
         capabilities: definition.capabilities,
       });
@@ -80,6 +82,7 @@ describe("models (Wave 1 RED specification)", () => {
 
       expect(resolveModel(id)).toEqual({
         id,
+        wireId: id,
         family,
         capabilities: {
           contextHint,
@@ -92,68 +95,56 @@ describe("models (Wave 1 RED specification)", () => {
   );
 
   it.each([["anthropic/claude-fable-5", "claude-fable-5"]])(
-    "resolves new alias %s to %s",
-    async (alias, id) => {
+    "normalizes unanchored model identity %s to %s without rewriting the wire id",
+    async (model, id) => {
       const resolveModel = await loadWave2Function<ResolveModel>(
         "models",
         "resolveModel",
       );
 
-      expect(resolveModel(alias).id).toBe(id);
+      expect(resolveModel(model)).toMatchObject({ id, wireId: model });
     },
   );
-
-  it("resolves every profile alias to its canonical id", async () => {
-    const resolveModel = await loadWave2Function<ResolveModel>(
-      "models",
-      "resolveModel",
-    );
-
-    for (const [id, definition] of Object.entries(
-      CLAUDE_CODE_2_1_195_PROFILE.supportedModels,
-    )) {
-      for (const alias of definition.aliases) {
-        expect(resolveModel(alias)).toEqual({
-          id,
-          family: definition.family,
-          capabilities: definition.capabilities,
-        });
-      }
-    }
-  });
 
   it.each([
     "claude-opus-4-9",
     "opus",
     "claude-opus",
-    "",
     "evil-claude-opus-4-8-evil",
     "claude-3-opus",
     "claude-mythos-5",
     "claude-opus-5",
     "claude-sonnet-5",
     "claude-3-5-haiku-latest",
-  ])("fails closed for unsupported model %j", async (model) => {
+  ])("passes through unrecognised non-empty model %j", async (model) => {
     const resolveModel = await loadWave2Function<ResolveModel>(
       "models",
       "resolveModel",
     );
-    expect(() => resolveModel(model)).toThrow(
-      expect.objectContaining({ code: "UNSUPPORTED_MODEL" }),
+    expect(resolveModel(model)).toMatchObject({ wireId: model });
+  });
+
+  it("rejects the empty caller model", async () => {
+    const resolveModel = await loadWave2Function<ResolveModel>(
+      "models",
+      "resolveModel",
+    );
+    expect(() => resolveModel("")).toThrow(
+      expect.objectContaining({ code: "INVALID_INPUT" }),
     );
   });
 
   it.each(["CLAUDE-OPUS-4-8", " claude-opus-4-8 "])(
-    "rejects rather than normalizes %j",
+    "normalizes identity while preserving wire spelling for %j",
     async (model) => {
       const resolveModel = await loadWave2Function<ResolveModel>(
         "models",
         "resolveModel",
       );
-      // Upstream used unanchored case-insensitive regexes; this package deliberately diverges to fail closed.
-      expect(() => resolveModel(model)).toThrow(
-        expect.objectContaining({ code: "UNSUPPORTED_MODEL" }),
-      );
+      expect(resolveModel(model)).toMatchObject({
+        id: "claude-opus-4-8",
+        wireId: model,
+      });
     },
   );
 

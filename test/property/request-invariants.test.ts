@@ -136,14 +136,12 @@ describe("request properties", () => {
     expect(JSON.parse('{"key":1,"key":2}')).toEqual({ key: 2 });
   });
 
-  it("accepts all model aliases and canonicalizes them", async () => {
-    for (const [model, descriptor] of Object.entries(
+  it("passes every catalogue model through without rewriting it", async () => {
+    for (const model of Object.keys(
       CLAUDE_CODE_2_1_195_PROFILE.supportedModels,
     )) {
-      for (const alias of descriptor.aliases) {
-        const built = await buildClaudeCodeRequest({ ...base, model: alias });
-        expect(JSON.parse(built.body)).toMatchObject({ model });
-      }
+      const built = await buildClaudeCodeRequest({ ...base, model });
+      expect(JSON.parse(built.body)).toMatchObject({ model });
     }
   });
 });

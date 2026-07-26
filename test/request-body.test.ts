@@ -75,7 +75,7 @@ function bodyArguments(
   }
   return [
     input,
-    { id: model, ...modelProfile },
+    { id: model, wireId: model, ...modelProfile },
     body["system"],
     body["metadata"],
   ];

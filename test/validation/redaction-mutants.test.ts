@@ -612,7 +612,6 @@ describe("safe redaction error details", () => {
   const safeCodes: readonly ClaudeCodeWireErrorCode[] = [
     "INVALID_INPUT",
     "INVALID_IDENTITY",
-    "UNSUPPORTED_MODEL",
     "UNSUPPORTED_CAPABILITY",
     "INVALID_THINKING",
     "INVALID_EFFORT",

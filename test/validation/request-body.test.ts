@@ -10,7 +10,7 @@ const MODEL_DEFINITION = CLAUDE_CODE_2_1_195_PROFILE.supportedModels[MODEL_ID];
 if (MODEL_DEFINITION === undefined)
   throw new Error("Missing test model profile.");
 
-const RESOLVED_MODEL = { id: MODEL_ID, ...MODEL_DEFINITION };
+const RESOLVED_MODEL = { id: MODEL_ID, wireId: MODEL_ID, ...MODEL_DEFINITION };
 const BASE_INPUT = {
   model: MODEL_ID,
   maxTokens: 1024,
@@ -359,6 +359,7 @@ describe("buildCanonicalBody field validation", () => {
     expectCode("INVALID_INPUT", () =>
       build(BASE_INPUT, {
         id: MODEL_ID,
+        wireId: MODEL_ID,
         capabilities: {
           contextHint: true,
           adaptiveThinking: true,
@@ -381,7 +382,7 @@ describe("buildCanonicalBody field validation", () => {
   });
 
   it("rejects a model mismatch", () => {
-    expectCode("UNSUPPORTED_MODEL", () =>
+    expectCode("INVALID_INPUT", () =>
       build({ ...BASE_INPUT, model: "claude-synthetic-mismatch" }),
     );
   });
@@ -461,6 +462,7 @@ describe("buildCanonicalBody thinking validation", () => {
         { ...BASE_INPUT, thinking: { type: "adaptive" } },
         {
           id: MODEL_ID,
+          wireId: MODEL_ID,
           capabilities: {
             contextHint: true,
             adaptiveThinking: false,

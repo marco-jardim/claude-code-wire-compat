@@ -101,7 +101,7 @@ const OVERRIDE_KEYS = new Set([
   "supportedModels",
   "orderedBetas",
 ]);
-const MODEL_KEYS = new Set(["family", "aliases", "capabilities"]);
+const MODEL_KEYS = new Set(["family", "capabilities"]);
 
 type UnknownRecord = Readonly<Record<string, unknown>>;
 
@@ -245,13 +245,6 @@ function parseNonEmptyUniqueStrings(value: unknown): readonly string[] {
   return Object.freeze(result);
 }
 
-function parseUniqueStrings(value: unknown): readonly string[] {
-  if (!Array.isArray(value)) fail();
-  const result = value.map(requireNonEmptyString);
-  if (new Set(result).size !== result.length) fail();
-  return Object.freeze(result);
-}
-
 function parseSupportedModels(
   value: unknown,
 ): ClaudeCodeProtocolProfile["supportedModels"] {
@@ -270,12 +263,13 @@ function parseSupportedModels(
       family !== "haiku" &&
       family !== "sonnet" &&
       family !== "opus" &&
-      family !== "fable"
+      family !== "fable" &&
+      family !== "mythos" &&
+      family !== "unknown"
     )
       fail();
     result[key] = Object.freeze({
       family,
-      aliases: parseUniqueStrings(ownValue(model, "aliases")),
       capabilities: parseCapabilities(ownValue(model, "capabilities")),
     });
   }
@@ -567,7 +561,9 @@ function parseEvidence(value: unknown): RedactedRequestEvidence {
     modelFamily !== "haiku" &&
     modelFamily !== "sonnet" &&
     modelFamily !== "opus" &&
-    modelFamily !== "fable"
+    modelFamily !== "fable" &&
+    modelFamily !== "mythos" &&
+    modelFamily !== "unknown"
   ) {
     fail();
   }
@@ -666,7 +662,7 @@ function splitDynamicAndExtraHeaders(headers: readonly HeaderPair[]): {
 
 function evidenceRequest(
   input: ClaudeCodeRequestInput,
-  canonicalModelId: string,
+  callerModel: string,
 ): NormalizedRequestInput {
   const request: {
     accessToken: string;
@@ -700,7 +696,7 @@ function evidenceRequest(
     temperature?: Exclude<ClaudeCodeRequestInput["temperature"], undefined>;
   } = {
     accessToken: input.accessToken,
-    model: canonicalModelId,
+    model: callerModel,
     maxTokens: input.maxTokens,
     messages: input.messages,
     runtime: input.runtime,
@@ -786,7 +782,7 @@ export async function buildClaudeCodeRequest(
       identity,
     );
     const canonicalBody = buildCanonicalBody(
-      evidenceRequest(validated.source, resolvedModel.id),
+      evidenceRequest(validated.source, validated.source.model),
       effectiveModel,
       system,
       metadata,
@@ -824,7 +820,7 @@ export async function buildClaudeCodeRequest(
       {
         profile: pinnedProfile,
         effectiveProfile,
-        request: evidenceRequest(validated.source, resolvedModel.id),
+        request: evidenceRequest(validated.source, validated.source.model),
         modelFamily: resolvedModel.family,
         logicalHeaders: headers,
         betaFeatures: betas,

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 /** Model families used only in redacted evidence, never on the wire. */
-export type ClaudeCodeModelFamily = "haiku" | "sonnet" | "opus" | "fable";
+export type ClaudeCodeModelFamily =
+  "haiku" | "sonnet" | "opus" | "fable" | "mythos" | "unknown";
 
 export type HeaderPair = readonly [name: string, value: string];
 
@@ -736,7 +737,6 @@ export interface ClaudeCodeProtocolProfile {
       string,
       Readonly<{
         family: ClaudeCodeModelFamily;
-        aliases: readonly string[];
         capabilities: ClaudeCodeCapabilities;
       }>
     >
@@ -747,7 +747,6 @@ export interface ClaudeCodeProtocolProfile {
 export type ClaudeCodeWireErrorCode =
   | "INVALID_INPUT"
   | "INVALID_IDENTITY"
-  | "UNSUPPORTED_MODEL"
   | "UNSUPPORTED_CAPABILITY"
   | "INVALID_THINKING"
   | "INVALID_EFFORT"

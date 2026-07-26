@@ -22,6 +22,7 @@ import type {
   ToolResultContentBlock,
   ToolUseBlock,
 } from "./contracts.js";
+import { stripModelMarkers } from "./model-identity.js";
 import { classifySurrogateAt } from "./unicode.js";
 
 const MAX_DEPTH = 100;
@@ -320,6 +321,7 @@ interface InspectionState {
 
 type ModelResolution = Readonly<{
   id: string;
+  wireId: string;
   capabilities: Readonly<{
     contextHint: boolean;
     adaptiveThinking: boolean;
@@ -1314,6 +1316,7 @@ function modelResolution(value: unknown): ModelResolution {
   }
   return {
     id: requireString(record["id"]),
+    wireId: requireString(record["wireId"]),
     capabilities: {
       contextHint: capabilities["contextHint"],
       adaptiveThinking: capabilities["adaptiveThinking"],
@@ -1567,8 +1570,12 @@ export function buildCanonicalBody(
   assertExactKeys(input, INPUT_KEY_SET);
   requireKeys(input, ["maxTokens", "messages"]);
   const resolvedModel = modelResolution(rawResolvedModel);
-  if (hasOwn(input, "model") && input["model"] !== resolvedModel.id) {
-    fail("UNSUPPORTED_MODEL");
+  if (
+    hasOwn(input, "model") &&
+    (typeof input["model"] !== "string" ||
+      stripModelMarkers(input["model"]) !== resolvedModel.wireId)
+  ) {
+    fail("INVALID_INPUT");
   }
 
   const cacheOverride = hasOwn(input, "cacheControl")
@@ -1586,7 +1593,7 @@ export function buildCanonicalBody(
   }
 
   const result: Record<string, unknown> = {
-    model: resolvedModel.id,
+    model: resolvedModel.wireId,
     max_tokens: requirePositiveInteger(input["maxTokens"]),
     system: systemBlocks,
     messages: messageList,

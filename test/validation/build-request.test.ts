@@ -254,11 +254,14 @@ describe("buildClaudeCodeRequest input validation", () => {
     },
   );
 
-  it("rejects an unsupported model with its specific code", async () => {
-    await expectBuildCode(
+  it("passes an unrecognised model through", async () => {
+    const built = await buildClaudeCodeRequest(
       inputWith("model", "claude-unsupported-synthetic"),
-      "UNSUPPORTED_MODEL",
     );
+    expect(JSON.parse(built.body)).toMatchObject({
+      model: "claude-unsupported-synthetic",
+    });
+    expect(built.evidence.modelFamily).toBe("unknown");
   });
 
   it("rejects a non-record capabilities value", async () => {

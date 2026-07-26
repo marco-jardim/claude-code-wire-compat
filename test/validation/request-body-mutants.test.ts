@@ -11,6 +11,7 @@ import { buildCanonicalBody } from "../../src/request-body.js";
 
 const model = {
   id: "m",
+  wireId: "m",
   capabilities: {
     contextHint: true,
     adaptiveThinking: true,
@@ -127,8 +128,8 @@ describe("request body inspection mutation boundaries", () => {
   );
 
   it("distinguishes the exact aggregate string-size limit from one over", () => {
-    const exactlyAtLimit = "x".repeat(999_919);
-    const oneOverLimit = "x".repeat(999_920);
+    const exactlyAtLimit = "x".repeat(999_912);
+    const oneOverLimit = "x".repeat(999_913);
 
     expect(
       build({
@@ -470,7 +471,12 @@ describe("request body canonicalization mutation boundaries", () => {
     ],
   ])("rejects a non-boolean model capability (%s)", (badCapabilities) => {
     expectWireCode(
-      () => build(baseInput(), { id: "m", capabilities: badCapabilities }),
+      () =>
+        build(baseInput(), {
+          id: "m",
+          wireId: "m",
+          capabilities: badCapabilities,
+        }),
       "INVALID_INPUT",
     );
   });
@@ -478,7 +484,7 @@ describe("request body canonicalization mutation boundaries", () => {
   it("rejects a deliberately mismatched input and resolved model", () => {
     expectWireCode(
       () => build({ ...baseInput(), model: "different" }, model),
-      "UNSUPPORTED_MODEL",
+      "INVALID_INPUT",
     );
   });
 });
@@ -700,16 +706,11 @@ describe("beta composition mutants", () => {
 });
 
 describe("model and error-contract mutants", () => {
-  it("includes the rejected model in unsupported-model safe details", () => {
-    const error = expectWireCode(
-      () => resolveModel("definitely-not-a-model"),
-      "UNSUPPORTED_MODEL",
-    );
-    expect(error.safeDetails).toEqual({ model: "definitely-not-a-model" });
-    expect(error.toJSON()).toEqual({
-      name: "ClaudeCodeWireError",
-      code: "UNSUPPORTED_MODEL",
-      safeDetails: { model: "definitely-not-a-model" },
+  it("passes an unrecognised model through with unknown family", () => {
+    expect(resolveModel("definitely-not-a-model")).toMatchObject({
+      id: "definitely-not-a-model",
+      wireId: "definitely-not-a-model",
+      family: "unknown",
     });
   });
 

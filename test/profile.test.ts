@@ -22,7 +22,6 @@ const EXPECTED_BETAS = [
 const EXPECTED_MODELS = {
   "claude-3-5-haiku": {
     family: "haiku",
-    aliases: [],
     capabilities: {
       contextHint: false,
       adaptiveThinking: false,
@@ -32,7 +31,6 @@ const EXPECTED_MODELS = {
   },
   "claude-opus-4-8": {
     family: "opus",
-    aliases: ["opus-4-8", "claude-opus-4.8", "opus-4.8"],
     capabilities: {
       contextHint: true,
       adaptiveThinking: true,
@@ -42,7 +40,6 @@ const EXPECTED_MODELS = {
   },
   "claude-opus-4-7": {
     family: "opus",
-    aliases: ["opus-4-7", "claude-opus-4.7", "opus-4.7"],
     capabilities: {
       contextHint: true,
       adaptiveThinking: true,
@@ -52,7 +49,6 @@ const EXPECTED_MODELS = {
   },
   "claude-opus-4-6": {
     family: "opus",
-    aliases: ["opus-4-6", "claude-opus-4.6", "opus-4.6"],
     capabilities: {
       contextHint: true,
       adaptiveThinking: true,
@@ -62,7 +58,6 @@ const EXPECTED_MODELS = {
   },
   "claude-opus-4-5": {
     family: "opus",
-    aliases: ["opus-4-5", "claude-opus-4.5", "opus-4.5"],
     capabilities: {
       contextHint: true,
       adaptiveThinking: false,
@@ -72,7 +67,6 @@ const EXPECTED_MODELS = {
   },
   "claude-3-5-sonnet": {
     family: "sonnet",
-    aliases: [],
     capabilities: {
       contextHint: false,
       adaptiveThinking: false,
@@ -82,7 +76,6 @@ const EXPECTED_MODELS = {
   },
   "claude-opus-4-1": {
     family: "opus",
-    aliases: ["opus-4-1", "claude-opus-4.1", "opus-4.1"],
     capabilities: {
       contextHint: true,
       adaptiveThinking: false,
@@ -92,7 +85,6 @@ const EXPECTED_MODELS = {
   },
   "claude-3-7-sonnet": {
     family: "sonnet",
-    aliases: [],
     capabilities: {
       contextHint: false,
       adaptiveThinking: false,
@@ -102,7 +94,6 @@ const EXPECTED_MODELS = {
   },
   "claude-opus-4-0": {
     family: "opus",
-    aliases: ["opus-4-0", "claude-opus-4.0", "opus-4.0"],
     capabilities: {
       contextHint: true,
       adaptiveThinking: false,
@@ -112,7 +103,6 @@ const EXPECTED_MODELS = {
   },
   "claude-sonnet-4-6": {
     family: "sonnet",
-    aliases: ["sonnet-4-6", "claude-sonnet-4.6", "sonnet-4.6"],
     capabilities: {
       contextHint: true,
       adaptiveThinking: true,
@@ -122,7 +112,6 @@ const EXPECTED_MODELS = {
   },
   "claude-sonnet-4-5": {
     family: "sonnet",
-    aliases: ["sonnet-4-5", "claude-sonnet-4.5", "sonnet-4.5"],
     capabilities: {
       contextHint: true,
       adaptiveThinking: false,
@@ -132,7 +121,6 @@ const EXPECTED_MODELS = {
   },
   "claude-sonnet-4-0": {
     family: "sonnet",
-    aliases: ["sonnet-4-0", "claude-sonnet-4.0", "sonnet-4.0"],
     capabilities: {
       contextHint: true,
       adaptiveThinking: false,
@@ -142,7 +130,6 @@ const EXPECTED_MODELS = {
   },
   "claude-haiku-4-5": {
     family: "haiku",
-    aliases: ["haiku-4-5", "claude-haiku-4.5", "haiku-4.5"],
     capabilities: {
       contextHint: true,
       adaptiveThinking: false,
@@ -152,7 +139,6 @@ const EXPECTED_MODELS = {
   },
   "claude-fable-5": {
     family: "fable",
-    aliases: ["anthropic/claude-fable-5"],
     capabilities: {
       contextHint: true,
       adaptiveThinking: true,
@@ -221,7 +207,6 @@ describe("CLAUDE_CODE_2_1_195_PROFILE", () => {
         throw new Error(`Missing expected model: ${modelId}`);
       }
       expect(actual.family).toBe(expected.family);
-      expect(actual.aliases).toEqual(expected.aliases);
       expect(actual.capabilities).toEqual(expected.capabilities);
     }
   });
@@ -230,20 +215,14 @@ describe("CLAUDE_CODE_2_1_195_PROFILE", () => {
     const modelIds = new Set(
       Object.keys(CLAUDE_CODE_2_1_195_PROFILE.supportedModels),
     );
-    const aliases = new Set<string>();
 
     for (const [modelId, model] of Object.entries(
       CLAUDE_CODE_2_1_195_PROFILE.supportedModels,
     )) {
       expect(modelId).toBe(modelId.toLowerCase());
+      expect(modelIds.has(modelId)).toBe(true);
+      expect(model).toBeDefined();
       expect(modelId).not.toMatch(/\s/u);
-      for (const alias of model.aliases) {
-        expect(alias).toBe(alias.toLowerCase());
-        expect(alias).not.toMatch(/\s/u);
-        expect(modelIds.has(alias)).toBe(false);
-        expect(aliases.has(alias)).toBe(false);
-        aliases.add(alias);
-      }
     }
   });
 
@@ -260,7 +239,6 @@ describe("CLAUDE_CODE_2_1_195_PROFILE", () => {
       CLAUDE_CODE_2_1_195_PROFILE.supportedModels,
     )) {
       expect(Object.isFrozen(model)).toBe(true);
-      expect(Object.isFrozen(model.aliases)).toBe(true);
       expect(Object.isFrozen(model.capabilities)).toBe(true);
     }
 

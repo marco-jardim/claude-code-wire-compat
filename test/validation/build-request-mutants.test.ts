@@ -230,7 +230,6 @@ describe("build-request surviving input-validation mutants", () => {
         supportedModels: {
           [supportedModel]: {
             family: "opus",
-            aliases: ["fresh-override-opus"],
             capabilities: {
               contextHint: true,
               adaptiveThinking: true,

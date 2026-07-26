@@ -6,6 +6,7 @@ import { buildCanonicalBody } from "../../src/request-body.js";
 
 const model = {
   id: "claude-sonnet-4-6",
+  wireId: "claude-sonnet-4-6",
   capabilities: {
     contextHint: true,
     adaptiveThinking: true,

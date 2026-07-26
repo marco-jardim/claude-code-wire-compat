@@ -630,7 +630,7 @@ describe("system prompt mutation boundaries", () => {
 });
 
 describe("profile deep immutability", () => {
-  it("freezes nested model records, alias arrays, and alias elements", () => {
+  it("freezes nested model and capability records", () => {
     const model =
       CLAUDE_CODE_2_1_195_PROFILE.supportedModels["claude-opus-4-8"];
     expect(model).toBeDefined();
@@ -641,9 +641,5 @@ describe("profile deep immutability", () => {
       true,
     );
     expect(Object.isFrozen(model)).toBe(true);
-    expect(Object.isFrozen(model.aliases)).toBe(true);
-    expect(Object.isFrozen(model.aliases[0])).toBe(true);
-    expect(Reflect.set(model.aliases, 0, "changed")).toBe(false);
-    expect(model.aliases[0]).toBe("opus-4-8");
   });
 });

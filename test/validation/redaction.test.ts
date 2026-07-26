@@ -217,11 +217,11 @@ describe("redaction input validation", () => {
     },
   );
 
-  it("rejects an unknown model family", async () => {
+  it("rejects an unrecognised model family", async () => {
     await expectInvalid(
       input({
         // Intentional invalid-input fixture used to exercise the runtime boundary.
-        modelFamily: "unknown" as unknown as "opus",
+        modelFamily: "falcon" as unknown as "opus",
       }),
     );
   });

@@ -139,9 +139,8 @@ describe("protocol profile override", () => {
   it("uses an overridden supported-model table for model resolution", async () => {
     const model = "claude-emergency-5-0";
     const input = { ...base, model };
-    await expect(buildClaudeCodeRequest(input)).rejects.toMatchObject({
-      code: "UNSUPPORTED_MODEL",
-    });
+    const passthrough = await buildClaudeCodeRequest(input);
+    expect(passthrough.evidence.modelFamily).toBe("unknown");
 
     const result = await buildClaudeCodeRequest({
       ...input,
@@ -149,7 +148,6 @@ describe("protocol profile override", () => {
         supportedModels: {
           [model]: {
             family: "opus",
-            aliases: ["emergency-5-0"],
             capabilities: {
               contextHint: true,
               adaptiveThinking: true,
@@ -181,24 +179,27 @@ describe("protocol profile override", () => {
     ["a non-array", "override-model"],
     ["duplicate entries", ["override-model", "override-model"]],
     ["an empty string", [""]],
-  ])("rejects aliases containing %s", async (_description, aliases) => {
-    await expect(
-      buildWithOverride({
-        supportedModels: {
-          [base.model]: {
-            family: "opus",
-            aliases,
-            capabilities: {
-              contextHint: true,
-              adaptiveThinking: true,
-              effort: true,
-              interleavedThinking: true,
+  ])(
+    "rejects a removed descriptor field containing %s",
+    async (_description, removedFieldValue) => {
+      await expect(
+        buildWithOverride({
+          supportedModels: {
+            [base.model]: {
+              family: "opus",
+              removedField: removedFieldValue,
+              capabilities: {
+                contextHint: true,
+                adaptiveThinking: true,
+                effort: true,
+                interleavedThinking: true,
+              },
             },
           },
-        },
-      }),
-    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
-  });
+        }),
+      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    },
+  );
 
   it("accepts Claude 3 while retaining interleaved thinking for other supported models", async () => {
     const existing = await buildClaudeCodeRequest(base);
@@ -319,7 +320,6 @@ describe("protocol profile override", () => {
           supportedModels: {
             [model]: {
               family,
-              aliases: [`override-${family}`],
               capabilities: {
                 contextHint: true,
                 adaptiveThinking: true,
@@ -341,7 +341,6 @@ describe("protocol profile override", () => {
         supportedModels: {
           "claude-override-falcon": {
             family: "falcon",
-            aliases: ["override-falcon"],
             capabilities: {
               contextHint: true,
               adaptiveThinking: true,
@@ -362,7 +361,7 @@ describe("protocol profile override", () => {
     {
       model: {
         family: "invalid",
-        aliases: ["model"],
+        removedField: ["model"],
         capabilities: {
           contextHint: true,
           adaptiveThinking: true,
@@ -374,7 +373,7 @@ describe("protocol profile override", () => {
     {
       model: {
         family: 7,
-        aliases: ["model"],
+        removedField: ["model"],
         capabilities: {
           contextHint: true,
           adaptiveThinking: true,
@@ -386,7 +385,7 @@ describe("protocol profile override", () => {
     {
       model: {
         family: "opus",
-        aliases: [""],
+        removedField: [""],
         capabilities: {
           contextHint: true,
           adaptiveThinking: true,
@@ -398,7 +397,7 @@ describe("protocol profile override", () => {
     {
       model: {
         family: "opus",
-        aliases: ["same", "same"],
+        removedField: ["same", "same"],
         capabilities: {
           contextHint: true,
           adaptiveThinking: true,
@@ -421,7 +420,6 @@ describe("protocol profile override", () => {
   it("rejects empty and symbol supported-model keys", async () => {
     const validModel = {
       family: "opus",
-      aliases: ["override-model"],
       capabilities: {
         contextHint: true,
         adaptiveThinking: true,
@@ -446,7 +444,6 @@ describe("protocol profile override", () => {
   it("rejects an empty supported-model key beside the requested model", async () => {
     const validModel = {
       family: "opus",
-      aliases: ["override-model"],
       capabilities: {
         contextHint: true,
         adaptiveThinking: true,
@@ -467,7 +464,6 @@ describe("protocol profile override", () => {
   it("rejects a symbol supported-model key beside the requested model", async () => {
     const validModel = {
       family: "opus",
-      aliases: ["override-model"],
       capabilities: {
         contextHint: true,
         adaptiveThinking: true,

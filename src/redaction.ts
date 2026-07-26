@@ -35,7 +35,6 @@ const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const SAFE_ERROR_CODES = new Set([
   "INVALID_INPUT",
   "INVALID_IDENTITY",
-  "UNSUPPORTED_MODEL",
   "UNSUPPORTED_CAPABILITY",
   "INVALID_THINKING",
   "INVALID_EFFORT",
@@ -266,7 +265,9 @@ function assertEvidenceSources(value: unknown): void {
     modelFamily !== "haiku" &&
     modelFamily !== "sonnet" &&
     modelFamily !== "opus" &&
-    modelFamily !== "fable"
+    modelFamily !== "fable" &&
+    modelFamily !== "mythos" &&
+    modelFamily !== "unknown"
   ) {
     throw wireError("INVALID_INPUT");
   }

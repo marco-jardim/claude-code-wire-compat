@@ -14,7 +14,7 @@ const MODEL_ID = "claude-opus-4-8";
 const MODEL_DEFINITION = CLAUDE_CODE_2_1_195_PROFILE.supportedModels[MODEL_ID];
 if (MODEL_DEFINITION === undefined)
   throw new Error("Missing test model profile.");
-const RESOLVED_MODEL = { id: MODEL_ID, ...MODEL_DEFINITION };
+const RESOLVED_MODEL = { id: MODEL_ID, wireId: MODEL_ID, ...MODEL_DEFINITION };
 const BASE_INPUT = {
   model: MODEL_ID,
   maxTokens: 1024,
