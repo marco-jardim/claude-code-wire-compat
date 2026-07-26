@@ -65,8 +65,11 @@ describe("runtime/runtime-neutral (Wave 1 RED specification)", () => {
     expect(Object.keys(first).sort()).toEqual([
       "CLAUDE_CODE_2_1_195_PROFILE",
       "ClaudeCodeWireError",
+      "DEFAULT_ANTI_VERBOSITY_POLICY",
+      "antiVerbosityText",
       "buildClaudeCodeRequest",
       "parseBuiltClaudeCodeRequest",
+      "selectAntiVerbositySection",
     ]);
     expect(globalsAfterFirst).toEqual(globalsBefore);
     expect(Reflect.ownKeys(globalThis)).toEqual(globalsBefore);

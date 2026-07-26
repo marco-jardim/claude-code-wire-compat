@@ -13,6 +13,8 @@
  */
 
 export type {
+  AntiVerbosityPolicy,
+  AntiVerbositySection,
   BuiltClaudeCodeRequest,
   ClaudeCodeBetaPolicy,
   ClaudeCodeCapabilities,
@@ -38,6 +40,12 @@ export type {
 } from "./contracts.js";
 
 export { ClaudeCodeWireError } from "./contracts.js";
+
+export {
+  DEFAULT_ANTI_VERBOSITY_POLICY,
+  antiVerbosityText,
+  selectAntiVerbositySection,
+} from "./anti-verbosity.js";
 
 export {
   buildClaudeCodeRequest,

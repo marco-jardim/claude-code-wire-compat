@@ -9,6 +9,21 @@ export type ClaudeCodeModelFamily =
 
 export type ClaudeCodeEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
+/** Identifies which branch of the client's anti-verbosity selector applies. */
+export type AntiVerbositySection =
+  "communicating-with-the-user" | "lean" | "text-output";
+
+/**
+ * Host state the package cannot observe, mirrored from the upstream gates so a
+ * caller that does know it can reproduce the client exactly.
+ */
+export interface AntiVerbosityPolicy {
+  /** Upstream `oqo.isBriefEnabled()`. */
+  readonly briefModeEnabled: boolean;
+  /** Upstream `Jxe()`, the pewter-owl tool flag. */
+  readonly pewterOwlToolEnabled: boolean;
+}
+
 export interface ClaudeCodeCatalogueEntry {
   readonly family: ClaudeCodeModelFamily;
   readonly context?: Readonly<{

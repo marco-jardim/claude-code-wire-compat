@@ -38,9 +38,14 @@ export function runtimeNeutralityErrors(source: string): readonly string[] {
     errors.push("node builtin import");
   if (new RegExp(String.raw`\bimport\s+${specifier}`, "u").test(source))
     errors.push("node builtin import");
-  if (/\bprocess\s*\.\s*[A-Za-z_$]/u.test(source))
+  // Member access is matched without tolerating whitespace around the dot.
+  // `src/anti-verbosity.ts` carries verbatim prompt prose from the pinned
+  // client, and that prose ends a sentence with "your thought process. State
+  // results directly", which a `\s*\.\s*` form flagged as a global read.
+  if (/\bprocess\.[A-Za-z_$]|\bprocess\[/u.test(source))
     errors.push("process global");
-  if (/\bBuffer\s*(?:\.|\()/u.test(source)) errors.push("Buffer global");
+  if (/\bBuffer\.[A-Za-z_$]|\bBuffer\[|\bBuffer\(/u.test(source))
+    errors.push("Buffer global");
   if (/\b__(?:dirname|filename)\b/u.test(source))
     errors.push("commonjs global");
   if (source.toLowerCase().includes("xxhash")) errors.push("xxhash reference");
@@ -134,7 +139,9 @@ describe("package policy", () => {
     ['const os = require("os");', "node builtin import"],
     ['import "node:crypto";', "node builtin import"],
     ["const home = process.env.HOME;", "process global"],
+    ['const p = process["env"];', "process global"],
     ['const b = Buffer.from("x");', "Buffer global"],
+    ["const b = Buffer(8);", "Buffer global"],
     ["const here = __dirname;", "commonjs global"],
     ["// hash via xxhash64", "xxhash reference"],
   ] as const)("detects runtime-specific source", (source, expectedError) => {
@@ -143,6 +150,8 @@ describe("package policy", () => {
 
   it.each([
     "// we process the blocks in canonical order",
+    "// a running commentary on your thought process. State results directly.",
+    "// they didn't watch your process unfold. Before your first tool call...",
     "/** Buffered output is not used here. */",
     'const digest = await subtle.digest("SHA-256", bytes);',
     "export interface ProcessingResult { readonly ok: boolean }",

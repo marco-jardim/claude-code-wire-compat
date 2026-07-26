@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 const validationDirectory = join(process.cwd(), "test", "validation");
 const INTERNAL_UNIT_TEST_ALLOWLIST = new Set([
+  "anti-verbosity-text.test.ts", // Pins the internal prompt text and digests directly.
   "betas.test.ts", // Exercises beta composition directly without constructing requests.
   "build-request.test.ts", // Exercises parser and request-builder implementation helpers directly.
   "content-blocks.test.ts", // Exercises canonical content-block parsing as an internal unit.

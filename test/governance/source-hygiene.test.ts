@@ -15,7 +15,47 @@ function sourceFiles(directory: URL): readonly URL[] {
   return files;
 }
 
+/**
+ * Matches a read of a host global rather than the bare word.
+ *
+ * This deliberately requires member access, a `typeof` guard, or a property
+ * lookup off another object. `src/anti-verbosity.ts` carries verbatim prompt
+ * prose extracted from the pinned client, and that prose contains the English
+ * noun "process" three times ("they didn't watch your process unfold"). A
+ * bare-word rule flagged it, which is a false positive: a string literal is not
+ * an ambient runtime dependency. Every way of actually reaching these globals
+ * still matches, and `ambient global forms` below pins that.
+ */
+const AMBIENT_GLOBALS =
+  /\b(?:process|Buffer)\.[A-Za-z_$]|\b(?:process|Buffer)\[|\btypeof\s+(?:process|Buffer)\b|\bnew\s+Buffer\b|\.(?:process|Buffer)\b|\[["'](?:process|Buffer)["']\]|__dirname|__filename/u;
+
 describe("source hygiene", () => {
+  it("keeps the ambient global pattern strict enough to matter", () => {
+    for (const bad of [
+      "process.env.HOME",
+      'process["env"]',
+      "typeof process",
+      "typeof Buffer",
+      "Buffer.from(x)",
+      "new Buffer(8)",
+      "globalThis.process",
+      'globalThis["Buffer"]',
+      "const d = __dirname;",
+      "const f = __filename;",
+    ]) {
+      expect(bad).toMatch(AMBIENT_GLOBALS);
+    }
+
+    for (const good of [
+      "they didn't watch your process unfold",
+      "a running commentary on your thought process",
+      "the review process is documented",
+      "a Buffer of prose is still just prose",
+    ]) {
+      expect(good).not.toMatch(AMBIENT_GLOBALS);
+    }
+  });
+
   it("keeps every source module free of ambient runtime dependencies", () => {
     const builtins = new Set(
       builtinModules.flatMap((name) => [name, name.replace(/^node:/u, "")]),
@@ -33,7 +73,7 @@ describe("source hygiene", () => {
           expect(builtins.has(specifier.replace(/^node:/u, ""))).toBe(false);
         }
       }
-      expect(text).not.toMatch(/\bprocess\b|\bBuffer\b|__dirname|__filename/gu);
+      expect(text).not.toMatch(AMBIENT_GLOBALS);
       expect(text).not.toMatch(/\brequire\s*\(|\bfetch\s*\(/gu);
       expect(text).not.toMatch(/\bset(?:Timeout|Interval)\s*\(/gu);
       expect(text).not.toMatch(/\bDate\.now\s*\(|\bnew\s+Date\s*\(/gu);
