@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { ThinkingDisplay } from "./thinking.js";
+export type { ThinkingDisplay } from "./thinking.js";
+
 /** Model families used only in redacted evidence, never on the wire. */
 export type ClaudeCodeModelFamily =
   "haiku" | "sonnet" | "opus" | "fable" | "mythos" | "unknown";
@@ -701,8 +704,9 @@ export interface ClaudeCodeRequestInput {
   /** Substitutes protocol-identity fields of the pinned profile. */
   readonly profileOverride?: ClaudeCodeProfileOverride;
   readonly thinking?: {
-    readonly type: "enabled" | "adaptive";
+    readonly type: "enabled" | "adaptive" | "disabled";
     readonly budgetTokens?: number;
+    readonly display?: ThinkingDisplay;
   };
   readonly effort?: ClaudeCodeEffort;
   /** Supplies validated JSON metadata values in caller insertion order. */

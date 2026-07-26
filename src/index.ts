@@ -31,6 +31,7 @@ export type {
   RedactedRequestEvidence,
   SystemInput,
   TextBlock,
+  ThinkingDisplay,
   ToolDefinition,
   ToolResultBlock,
   ToolUseBlock,

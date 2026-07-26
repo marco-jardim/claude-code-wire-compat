@@ -15,6 +15,7 @@ export interface ComposeBetasInput {
   readonly rawModel: string;
   readonly normalizedId: string;
   readonly capabilities: ClaudeCodeCapabilities;
+  readonly thinkingDisplayActive: boolean;
   readonly cacheTtl?: "5m" | "1h" | null;
   readonly speed?: "standard" | "fast" | null;
 }
@@ -43,7 +44,8 @@ export function composeBetas(
     experimental &&
     input.capabilities.interleavedThinking &&
     policy.interactive &&
-    !policy.thinkingSummariesShown
+    !policy.thinkingSummariesShown &&
+    !input.thinkingDisplayActive
   ) {
     out.push(BETA_REGISTRY.REDACT_THINKING.header);
   }

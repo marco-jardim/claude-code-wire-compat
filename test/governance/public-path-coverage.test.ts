@@ -22,6 +22,7 @@ const INTERNAL_UNIT_TEST_ALLOWLIST = new Set([
   "request-body-mutants.test.ts", // Mutation tests target canonical body internals directly.
   "request-body.test.ts", // Exercises canonical request-body parsing as an internal unit.
   "system-prompt.test.ts", // Exercises canonical system-prompt composition as an internal unit.
+  "thinking-budget.test.ts", // Exercises the internal thinking-budget table directly.
   "tool-definitions.test.ts", // Exercises tool-union parsing as an internal request-body unit.
   "unicode.test.ts", // Exercises UTF-16 classification independently of request construction.
 ]);

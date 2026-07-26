@@ -456,33 +456,33 @@ describe("buildCanonicalBody thinking validation", () => {
     );
   });
 
-  it("rejects adaptive thinking when unsupported", () => {
-    expectCode("INVALID_THINKING", () =>
-      build(
-        { ...BASE_INPUT, thinking: { type: "adaptive" } },
-        {
-          id: MODEL_ID,
-          wireId: MODEL_ID,
-          capabilities: {
-            contextHint: true,
-            adaptiveThinking: false,
-            effort: true,
-          },
+  it("resolves adaptive thinking to enabled when unsupported", () => {
+    const result = build(
+      { ...BASE_INPUT, thinking: { type: "adaptive" } },
+      {
+        id: MODEL_ID,
+        wireId: MODEL_ID,
+        capabilities: {
+          contextHint: true,
+          adaptiveThinking: false,
+          effort: true,
         },
-      ),
+      },
     );
+    expect(result["thinking"]).toMatchObject({ type: "enabled" });
+    expect(result["thinking"]).toHaveProperty("budget_tokens");
   });
 
-  it("rejects missing and forbidden thinking budgets", () => {
-    expectCode("INVALID_THINKING", () =>
-      build({ ...BASE_INPUT, thinking: { type: "enabled" } }),
-    );
-    expectCode("INVALID_THINKING", () =>
+  it("accepts optional enabled and adaptive thinking budgets", () => {
+    expect(
+      build({ ...BASE_INPUT, thinking: { type: "enabled" } })["thinking"],
+    ).toEqual({ type: "adaptive" });
+    expect(
       build({
         ...BASE_INPUT,
         thinking: { type: "adaptive", budgetTokens: 1024 },
-      }),
-    );
+      })["thinking"],
+    ).toEqual({ type: "adaptive" });
   });
 
   it("accepts the max effort boundary with adaptive thinking", () => {
@@ -495,15 +495,12 @@ describe("buildCanonicalBody thinking validation", () => {
     expect(result["output_config"]).toEqual({ effort: "max" });
   });
 
-  it("canonicalizes enabled thinking with a positive budget", () => {
+  it("lets the adaptive model override enabled thinking", () => {
     const result = build({
       ...BASE_INPUT,
       thinking: { type: "enabled", budgetTokens: 1024 },
     });
-    expect(result["thinking"]).toEqual({
-      type: "enabled",
-      budget_tokens: 1024,
-    });
+    expect(result["thinking"]).toEqual({ type: "adaptive" });
     expect(result).not.toHaveProperty("temperature");
   });
 

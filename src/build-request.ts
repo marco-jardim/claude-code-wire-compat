@@ -24,6 +24,7 @@ import { buildRedactedEvidence, toSafeErrorDetails } from "./redaction.js";
 import { buildCanonicalBody } from "./request-body.js";
 import { sha256Hex } from "./sha256.js";
 import { buildCanonicalSystem } from "./system-prompt.js";
+import { isThinkingDisplayActive } from "./thinking.js";
 import { classifySurrogateAt } from "./unicode.js";
 
 const METHOD = "POST";
@@ -937,6 +938,11 @@ export async function buildClaudeCodeRequest(
         rawModel: validated.source.model,
         normalizedId: resolvedModel.id,
         capabilities,
+        thinkingDisplayActive: isThinkingDisplayActive(
+          validated.source.thinking,
+          capabilities,
+          effectiveProfile.betaPolicy,
+        ),
         ...(validated.source.cacheControl?.ttl === undefined
           ? {}
           : { cacheTtl: validated.source.cacheControl.ttl }),

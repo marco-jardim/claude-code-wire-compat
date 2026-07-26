@@ -27,6 +27,7 @@ const INPUT = {
   rawModel: "claude-opus-4-8",
   normalizedId: "claude-opus-4-8",
   capabilities: CAPABILITIES,
+  thinkingDisplayActive: false,
 } as const;
 
 describe("composeBetas policy combinations", () => {

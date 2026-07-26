@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
+import { resolveThinking } from "./thinking.js";
+import type { ThinkingDisplay, ThinkingRequest } from "./thinking.js";
+
 import { ClaudeCodeWireError } from "./contracts.js";
 import type {
   CacheControlEphemeral,
@@ -1639,37 +1643,65 @@ export function buildCanonicalBody(
     }
   }
 
+  const maxTokens = requirePositiveInteger(input["maxTokens"]);
   const result: Record<string, unknown> = {
     model: resolvedModel.wireId,
-    max_tokens: requirePositiveInteger(input["maxTokens"]),
+    max_tokens: maxTokens,
     system: systemBlocks,
     messages: messageList,
   };
 
   if (toolList !== undefined) result["tools"] = toolList;
 
-  let thinkingActive = false;
+  let thinkingRequest: ThinkingRequest | undefined;
   if (hasOwn(input, "thinking")) {
-    const rawThinking = requireRecord(input["thinking"]);
+    const rawThinking = input["thinking"];
+    if (!isRecord(rawThinking) || Array.isArray(rawThinking)) {
+      fail("INVALID_THINKING");
+    }
+    for (const key of Reflect.ownKeys(rawThinking)) {
+      if (key !== "type" && key !== "budgetTokens" && key !== "display") {
+        fail("INVALID_THINKING");
+      }
+    }
     const type = rawThinking["type"];
-    if (type !== "enabled" && type !== "adaptive") fail("INVALID_THINKING");
-    if (type === "adaptive" && !resolvedModel.capabilities.adaptiveThinking) {
+    if (type !== "enabled" && type !== "adaptive" && type !== "disabled") {
       fail("INVALID_THINKING");
     }
-    const thinking: Record<string, unknown> = { type };
-    if (type === "enabled") {
-      if (!hasOwn(rawThinking, "budgetTokens")) fail("INVALID_THINKING");
-      thinking["budget_tokens"] = requirePositiveInteger(
-        rawThinking["budgetTokens"],
-      );
-    } else if (hasOwn(rawThinking, "budgetTokens")) {
-      fail("INVALID_THINKING");
+    let budgetTokens: number | undefined;
+    if (hasOwn(rawThinking, "budgetTokens")) {
+      const raw = rawThinking["budgetTokens"];
+      if (typeof raw !== "number" || !Number.isSafeInteger(raw) || raw <= 0) {
+        fail("INVALID_THINKING");
+      }
+      budgetTokens = raw;
     }
-    result["thinking"] = thinking;
-    thinkingActive = true;
+    let display: ThinkingDisplay | undefined;
+    if (hasOwn(rawThinking, "display")) {
+      const raw = rawThinking["display"];
+      if (raw !== "summarized" && raw !== "omitted") fail("INVALID_THINKING");
+      // Upstream's schema attaches `display` to the enabled and adaptive
+      // variants only; the disabled variant declares no such property.
+      if (type === "disabled") fail("INVALID_THINKING");
+      display = raw;
+    }
+    thinkingRequest = {
+      type,
+      ...(budgetTokens === undefined ? {} : { budgetTokens }),
+      ...(display === undefined ? {} : { display }),
+    };
   }
 
-  if (!thinkingActive && resolvedModel.capabilities.temperature) {
+  const resolved = resolveThinking(
+    thinkingRequest,
+    resolvedModel.id,
+    resolvedModel.capabilities,
+    (profile ?? CLAUDE_CODE_2_1_195_PROFILE).betaPolicy,
+    maxTokens,
+  );
+  if (resolved.emitted !== undefined) result["thinking"] = resolved.emitted;
+
+  if (!resolved.requestActive && resolvedModel.capabilities.temperature) {
     result["temperature"] = hasOwn(input, "temperature")
       ? requireNumber(input["temperature"])
       : 1;
@@ -1729,8 +1761,14 @@ export function buildCanonicalBody(
       result["service_tier"] = item;
     } else if (key === "outputFormat")
       result["output_format"] = nullable(item, outputFormat);
-    else if (key === "toolChoice") result["tool_choice"] = toolChoice(item);
-    else if (key === "topP") result["top_p"] = requireNumber(item);
+    else if (key === "toolChoice") {
+      const validatedToolChoice = toolChoice(item);
+      result["tool_choice"] =
+        validatedToolChoice["type"] === "tool" &&
+        resolved.extendedThinkingActive
+          ? { type: "auto" }
+          : validatedToolChoice;
+    } else if (key === "topP") result["top_p"] = requireNumber(item);
     else if (key === "topK") result["top_k"] = requireNumber(item);
     else if (key === "stopSequences")
       result["stop_sequences"] = stringArray(item);

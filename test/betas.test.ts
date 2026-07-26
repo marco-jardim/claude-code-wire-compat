@@ -21,6 +21,7 @@ function betasFor(
       rawModel: model,
       normalizedId: resolved.id,
       capabilities: resolved.capabilities,
+      thinkingDisplayActive: false,
       ...options,
     },
     profile,

@@ -557,18 +557,15 @@ describe("request body capability and freeze behavior", () => {
     );
   });
 
-  it("distinguishes enabled and adaptive thinking and effort output", () => {
+  it("resolves enabled and adaptive requests from model capabilities", () => {
     const enabled = build({
       ...baseInput(),
       thinking: { type: "enabled", budgetTokens: 256 },
       effort: "high",
     });
-    expect(enabled["thinking"]).toEqual({
-      type: "enabled",
-      budget_tokens: 256,
-    });
+    expect(enabled["thinking"]).toEqual({ type: "adaptive" });
     expect(enabled).not.toHaveProperty("temperature");
-    expect(enabled).not.toHaveProperty("output_config");
+    expect(enabled["output_config"]).toEqual({ effort: "high" });
 
     const adaptive = build({
       ...baseInput(),
@@ -580,18 +577,16 @@ describe("request body capability and freeze behavior", () => {
     expect(adaptive).not.toHaveProperty("temperature");
   });
 
-  it("rejects adaptive thinking when the model lacks the capability", () => {
-    expectWireCode(
-      () =>
-        build(
-          { ...baseInput(), thinking: { type: "adaptive" } },
-          {
-            ...model,
-            capabilities: { ...model.capabilities, adaptiveThinking: false },
-          },
-        ),
-      "INVALID_THINKING",
+  it("resolves adaptive thinking to enabled when the model lacks the capability", () => {
+    const result = build(
+      { ...baseInput(), thinking: { type: "adaptive" } },
+      {
+        ...model,
+        capabilities: { ...model.capabilities, adaptiveThinking: false },
+      },
     );
+    expect(result["thinking"]).toMatchObject({ type: "enabled" });
+    expect(result["thinking"]).toHaveProperty("budget_tokens");
   });
 
   it("deep-freezes the full canonical result without treating primitives as objects", () => {
@@ -622,6 +617,7 @@ describe("beta composition mutants", () => {
     rawModel: "claude-opus-4-8",
     normalizedId: "claude-opus-4-8",
     capabilities: capabilities(),
+    thinkingDisplayActive: false,
   } as const;
 
   it("returns the exact emergent defaults without optional builder pushes", () => {
