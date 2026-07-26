@@ -105,22 +105,22 @@ describe("request properties", () => {
       cursor = next;
     }
     const pollution = pollutionFixture();
-    const invalidValues: unknown[] = [
-      cyclic,
-      deep,
-      "\ud800",
-      "\udc00",
-      "trailing\ud800",
-      "trailing\udc00",
-      "x".repeat(10_000_001),
-      pollution,
+    const invalidValues: readonly (readonly [unknown, string])[] = [
+      [cyclic, "CYCLIC_INPUT"],
+      [deep, "INPUT_TOO_DEEP"],
+      ["\ud800", "INVALID_UNICODE"],
+      ["\udc00", "INVALID_UNICODE"],
+      ["trailing\ud800", "INVALID_UNICODE"],
+      ["trailing\udc00", "INVALID_UNICODE"],
+      ["x".repeat(10_000_001), "INPUT_TOO_LARGE"],
+      [pollution, "INVALID_INPUT"],
     ];
-    for (const metadata of invalidValues) {
+    for (const [metadata, code] of invalidValues) {
       await expect(
         Reflect.apply(buildClaudeCodeRequest, undefined, [
           { ...base, metadata },
         ]),
-      ).rejects.toBeDefined();
+      ).rejects.toMatchObject({ code });
     }
     await expect(
       Reflect.apply(buildClaudeCodeRequest, undefined, [
@@ -132,7 +132,7 @@ describe("request properties", () => {
           ],
         },
       ]),
-    ).rejects.toBeDefined();
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
     expect(JSON.parse('{"key":1,"key":2}')).toEqual({ key: 2 });
   });
 
