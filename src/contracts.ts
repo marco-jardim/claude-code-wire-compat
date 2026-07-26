@@ -628,6 +628,21 @@ export interface ClaudeCodeCapabilities {
   readonly rejectsDisabledThinking: boolean;
 }
 
+/** Host-state beta gates pinned for a default first-party environment. */
+export interface ClaudeCodeBetaPolicy {
+  readonly oauthAuthenticated: boolean;
+  readonly experimentalBetasEnabled: boolean;
+  readonly oneMillionContextEnabled: boolean;
+  readonly interleavedThinkingEnabled: boolean;
+  readonly interactive: boolean;
+  readonly thinkingSummariesShown: boolean;
+  readonly thinkingTokenCountEnabled: boolean;
+  readonly narrationSummariesEnabled: boolean;
+  readonly structuredOutputsEnabled: boolean;
+  readonly afkModeEnabled: boolean;
+  readonly cacheDiagnosisEnabled: boolean;
+}
+
 /**
  * Substitutes protocol-identity fields of the pinned profile.
  *
@@ -649,6 +664,7 @@ export interface ClaudeCodeProfileOverride {
   readonly gitSha?: string;
   readonly attributionHeaderEnabled?: boolean;
   readonly contextHintEnabled?: boolean;
+  readonly betaPolicy?: ClaudeCodeBetaPolicy;
   readonly supportedModels?: ClaudeCodeProtocolProfile["supportedModels"];
   readonly orderedBetas?: readonly string[];
 }
@@ -751,7 +767,12 @@ export interface ClaudeCodeProtocolProfile {
   /** Pins the upstream `anthropic-version` request header. */
   readonly anthropicVersion: "2023-06-01";
   readonly contextHintEnabled: boolean;
+  readonly betaPolicy: ClaudeCodeBetaPolicy;
   readonly supportedModels: Readonly<Record<string, ClaudeCodeCatalogueEntry>>;
+  /**
+   * Retained only as a drift-detection anchor against the upstream plugin.
+   * It does not influence emitted betas; `src/betas.ts` is authoritative.
+   */
   readonly orderedBetas: readonly string[];
 }
 

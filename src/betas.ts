@@ -1,73 +1,98 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { BETA_REGISTRY } from "./beta-registry.js";
 import type {
   ClaudeCodeCapabilities,
   ClaudeCodeProtocolProfile,
 } from "./contracts.js";
-import { ClaudeCodeWireError } from "./contracts.js";
+import {
+  supportsMidConversationSystem,
+  supportsStructuredOutputs,
+} from "./model-capabilities.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
 export interface ComposeBetasInput {
+  readonly rawModel: string;
+  readonly normalizedId: string;
   readonly capabilities: ClaudeCodeCapabilities;
-  readonly effortRequested: boolean;
-  readonly contextHintRequested?: boolean;
+  readonly cacheTtl?: "5m" | "1h" | null;
+  readonly speed?: "standard" | "fast" | null;
 }
-
-const ALWAYS_ENABLED_BETAS: ReadonlySet<string> = new Set([
-  "oauth-2025-04-20",
-  "claude-code-20250219",
-  "prompt-caching-scope-2026-01-05",
-  "extended-cache-ttl-2025-04-11",
-  "context-management-2025-06-27",
-  "web-search-2025-03-05",
-  "advisor-tool-2026-03-01",
-  "redact-thinking-2026-02-12",
-  "thinking-token-count-2026-05-13",
-]);
-
-const INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14";
-const EFFORT_BETA = "effort-2025-11-24";
-const CONTEXT_HINT_BETA = "context-hint-2026-04-09";
 
 export function composeBetas(
   input: ComposeBetasInput,
   profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
 ): readonly string[] {
-  if (typeof input.effortRequested !== "boolean") {
-    throw new ClaudeCodeWireError("INVALID_EFFORT");
+  const out: string[] = [];
+  const policy = profile.betaPolicy;
+  const experimental = policy.experimentalBetasEnabled;
+
+  if (!input.normalizedId.includes("haiku"))
+    out.push(BETA_REGISTRY.CLAUDE_CODE.header);
+  if (policy.oauthAuthenticated) out.push(BETA_REGISTRY.OAUTH_AUTH.header);
+  if (policy.oneMillionContextEnabled && /\[1m\]/iu.test(input.rawModel)) {
+    out.push(BETA_REGISTRY.LONG_CONTEXT.header);
   }
   if (
-    input.contextHintRequested !== undefined &&
-    typeof input.contextHintRequested !== "boolean"
+    policy.interleavedThinkingEnabled &&
+    input.capabilities.interleavedThinking
   ) {
-    throw new ClaudeCodeWireError("UNSUPPORTED_CAPABILITY", {
-      capability: "contextHint",
-    });
+    out.push(BETA_REGISTRY.INTERLEAVED_THINKING.header);
+  }
+  if (
+    experimental &&
+    input.capabilities.interleavedThinking &&
+    policy.interactive &&
+    !policy.thinkingSummariesShown
+  ) {
+    out.push(BETA_REGISTRY.REDACT_THINKING.header);
+  }
+  if (
+    policy.thinkingTokenCountEnabled &&
+    experimental &&
+    input.capabilities.interleavedThinking
+  ) {
+    out.push(BETA_REGISTRY.THINKING_TOKEN_COUNT.header);
+  }
+  if (experimental && policy.narrationSummariesEnabled)
+    out.push(BETA_REGISTRY.NARRATION_SUMMARIES.header);
+  if (experimental && input.capabilities.contextManagement)
+    out.push(BETA_REGISTRY.CONTEXT_MANAGEMENT.header);
+  if (
+    experimental &&
+    supportsStructuredOutputs(input.normalizedId) &&
+    policy.structuredOutputsEnabled
+  ) {
+    out.push(BETA_REGISTRY.STRUCTURED_OUTPUTS.header);
   }
 
-  if (input.effortRequested && !input.capabilities.effort) {
-    throw new ClaudeCodeWireError("UNSUPPORTED_CAPABILITY", {
-      capability: "effort",
-    });
+  // No web-search beta: upstream pushes it only for vertex and foundry.
+  if (experimental) out.push(BETA_REGISTRY.PROMPT_CACHING_SCOPE.header);
+  if (supportsMidConversationSystem(input.normalizedId))
+    out.push(BETA_REGISTRY.MID_CONVERSATION_SYSTEM.header);
+  if (input.capabilities.effort) out.push(BETA_REGISTRY.EFFORT.header);
+
+  if (input.speed === "fast" && !out.includes(BETA_REGISTRY.SPEED.header)) {
+    out.push(BETA_REGISTRY.SPEED.header);
   }
-  const selected = new Set(ALWAYS_ENABLED_BETAS);
-  if (input.capabilities.interleavedThinking) {
-    selected.add(INTERLEAVED_THINKING_BETA);
+  if (policy.afkModeEnabled && !out.includes(BETA_REGISTRY.AFK_MODE.header)) {
+    out.push(BETA_REGISTRY.AFK_MODE.header);
   }
-  if (input.effortRequested) {
-    selected.add(EFFORT_BETA);
+  if (
+    input.cacheTtl === "1h" &&
+    experimental &&
+    !out.includes(BETA_REGISTRY.EXTENDED_CACHE_TTL.header)
+  ) {
+    out.push(BETA_REGISTRY.EXTENDED_CACHE_TTL.header);
   }
-  if (input.contextHintRequested === true && profile.contextHintEnabled) {
-    selected.add(CONTEXT_HINT_BETA);
+  if (profile.contextHintEnabled) out.push(BETA_REGISTRY.CONTEXT_HINT.header);
+  if (
+    policy.cacheDiagnosisEnabled &&
+    !out.includes(BETA_REGISTRY.CACHE_DIAGNOSIS.header)
+  ) {
+    out.push(BETA_REGISTRY.CACHE_DIAGNOSIS.header);
   }
 
-  const ordered: string[] = [];
-  const emitted = new Set<string>();
-  for (const beta of profile.orderedBetas) {
-    if (selected.has(beta) && !emitted.has(beta)) {
-      ordered.push(beta);
-      emitted.add(beta);
-    }
-  }
-  return Object.freeze(ordered);
+  // No advisor-tool beta: upstream has no observed unconditional push site.
+  return Object.freeze(out);
 }

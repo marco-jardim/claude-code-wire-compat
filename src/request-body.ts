@@ -29,9 +29,6 @@ import { classifySurrogateAt } from "./unicode.js";
 const MAX_DEPTH = 100;
 const MAX_ITEMS = 100_000;
 const MAX_SIZE = 1_000_000;
-const CONTEXT_HINT_BETA = "context-hint-2026-04-09";
-const TASK_BUDGET_BETA = "task-budgets-2026-03-13";
-const FAST_MODE_BETA = "fast-mode-2026-02-01";
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const MESSAGE_KEYS = new Set(["role", "content"]);
 const CACHE_CONTROL_KEYS = new Set(["type", "ttl"]);
@@ -1539,11 +1536,8 @@ function toolChoice(value: unknown): Readonly<Record<string, unknown>> {
   return Object.fromEntries(entries);
 }
 
-function betaEnabled(
-  profile: ClaudeCodeProtocolProfile | undefined,
-  beta: string,
-): boolean {
-  return profile?.orderedBetas.includes(beta) === true;
+function betaEnabled(profile: ClaudeCodeProtocolProfile | undefined): boolean {
+  return profile?.betaPolicy.experimentalBetasEnabled === true;
 }
 
 function outputConfig(
@@ -1578,8 +1572,7 @@ function outputConfig(
       }
       entries.push([key, item]);
     } else {
-      if (!betaEnabled(profile, TASK_BUDGET_BETA))
-        fail("UNSUPPORTED_CAPABILITY");
+      if (!betaEnabled(profile)) fail("UNSUPPORTED_CAPABILITY");
       entries.push([
         "max_output_tokens",
         item === null ? null : requirePositiveInteger(item),
@@ -1601,23 +1594,8 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-function contextHintEnabled(
-  input: Record<string, unknown>,
-  model: ModelResolution,
-  profile: unknown,
-): boolean {
-  const requested = isRecord(input["capabilities"])
-    ? input["capabilities"]["contextHint"] === true
-    : false;
-  if (
-    !requested ||
-    !isRecord(profile) ||
-    profile["contextHintEnabled"] !== true
-  ) {
-    return false;
-  }
-  const betas = profile["orderedBetas"];
-  return Array.isArray(betas) && betas.includes(CONTEXT_HINT_BETA);
+function contextHintEnabled(profile: unknown): boolean {
+  return isRecord(profile) && profile["contextHintEnabled"] === true;
 }
 
 export function buildCanonicalBody(
@@ -1743,7 +1721,7 @@ export function buildCanonicalBody(
     else if (key === "speed") {
       if (item !== null && item !== "standard" && item !== "fast")
         fail("INVALID_INPUT");
-      if (item === "fast" && !betaEnabled(profile, FAST_MODE_BETA))
+      if (item === "fast" && !betaEnabled(profile))
         fail("UNSUPPORTED_CAPABILITY");
       result["speed"] = item;
     } else if (key === "serviceTier") {
@@ -1759,7 +1737,7 @@ export function buildCanonicalBody(
     else if (key === "stream") result["stream"] = requireBoolean(item);
   }
 
-  if (contextHintEnabled(input, resolvedModel, profile)) {
+  if (contextHintEnabled(profile)) {
     result["context_hint"] = { enabled: true };
   }
   result["metadata"] = metadata(rawMetadata);

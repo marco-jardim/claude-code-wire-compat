@@ -191,6 +191,44 @@ export function supportsContextManagement(normalizedId: string): boolean {
 }
 
 /**
+ * Upstream `j4e` at byte offset 227385302.
+ *
+ * Elided: the unconditionally true `ZO` provider gate.
+ * This beta-only gate is intentionally absent from `ClaudeCodeCapabilities`.
+ */
+export function supportsStructuredOutputs(normalizedId: string): boolean {
+  return !(
+    normalizedId.includes("claude-3-") ||
+    normalizedId === "claude-opus-4-0" ||
+    normalizedId === "claude-sonnet-4-0"
+  );
+}
+
+/**
+ * Upstream `RCn` at byte offset 227387413.
+ *
+ * Elided: host-state gates, the `W9` override, the unobservable `JB`/mythos
+ * clause, and the unconditionally true `ZO` fallback. This exclusion list
+ * differs from `rejectsDisabledThinking` by one member: that predicate also
+ * excludes `claude-opus-4-8`. Do not merge them.
+ * This beta-only gate is intentionally absent from `ClaudeCodeCapabilities`.
+ */
+export function supportsMidConversationSystem(normalizedId: string): boolean {
+  return !(
+    normalizedId.includes("claude-3-") ||
+    normalizedId === "claude-opus-4-0" ||
+    normalizedId === "claude-opus-4-1" ||
+    normalizedId === "claude-opus-4-5" ||
+    normalizedId === "claude-opus-4-6" ||
+    normalizedId === "claude-opus-4-7" ||
+    normalizedId === "claude-sonnet-4-0" ||
+    normalizedId === "claude-sonnet-4-5" ||
+    normalizedId === "claude-sonnet-4-6" ||
+    normalizedId === "claude-haiku-4-5"
+  );
+}
+
+/**
  * Upstream `LCn` at byte offset 227385451.
  *
  * INVERTED POLARITY relative to every other predicate in this module: this

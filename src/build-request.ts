@@ -103,6 +103,7 @@ const OVERRIDE_KEYS = new Set([
   "gitSha",
   "attributionHeaderEnabled",
   "contextHintEnabled",
+  "betaPolicy",
   "supportedModels",
   "orderedBetas",
 ]);
@@ -111,6 +112,19 @@ const MODEL_KEYS = new Set([
   "context",
   "capabilities",
   "defaultEffort",
+]);
+const BETA_POLICY_KEYS = new Set([
+  "oauthAuthenticated",
+  "experimentalBetasEnabled",
+  "oneMillionContextEnabled",
+  "interleavedThinkingEnabled",
+  "interactive",
+  "thinkingSummariesShown",
+  "thinkingTokenCountEnabled",
+  "narrationSummariesEnabled",
+  "structuredOutputsEnabled",
+  "afkModeEnabled",
+  "cacheDiagnosisEnabled",
 ]);
 
 type UnknownRecord = Readonly<Record<string, unknown>>;
@@ -324,6 +338,43 @@ function parseBoolean(value: unknown): boolean {
   return value;
 }
 
+function parseBetaPolicy(
+  value: unknown,
+): ClaudeCodeProtocolProfile["betaPolicy"] {
+  if (!isRecord(value)) fail();
+  assertExactKeys(value, BETA_POLICY_KEYS);
+  if (Reflect.ownKeys(value).length !== BETA_POLICY_KEYS.size) fail();
+  return Object.freeze({
+    oauthAuthenticated: parseBoolean(ownValue(value, "oauthAuthenticated")),
+    experimentalBetasEnabled: parseBoolean(
+      ownValue(value, "experimentalBetasEnabled"),
+    ),
+    oneMillionContextEnabled: parseBoolean(
+      ownValue(value, "oneMillionContextEnabled"),
+    ),
+    interleavedThinkingEnabled: parseBoolean(
+      ownValue(value, "interleavedThinkingEnabled"),
+    ),
+    interactive: parseBoolean(ownValue(value, "interactive")),
+    thinkingSummariesShown: parseBoolean(
+      ownValue(value, "thinkingSummariesShown"),
+    ),
+    thinkingTokenCountEnabled: parseBoolean(
+      ownValue(value, "thinkingTokenCountEnabled"),
+    ),
+    narrationSummariesEnabled: parseBoolean(
+      ownValue(value, "narrationSummariesEnabled"),
+    ),
+    structuredOutputsEnabled: parseBoolean(
+      ownValue(value, "structuredOutputsEnabled"),
+    ),
+    afkModeEnabled: parseBoolean(ownValue(value, "afkModeEnabled")),
+    cacheDiagnosisEnabled: parseBoolean(
+      ownValue(value, "cacheDiagnosisEnabled"),
+    ),
+  });
+}
+
 function parseSupportedModels(
   value: unknown,
 ): ClaudeCodeProtocolProfile["supportedModels"] {
@@ -421,6 +472,9 @@ function validateProfileOverride(value: unknown): ClaudeCodeProfileOverride {
             ownValue(value, "contextHintEnabled"),
           ),
         }
+      : {}),
+    ...(Object.hasOwn(value, "betaPolicy")
+      ? { betaPolicy: parseBetaPolicy(ownValue(value, "betaPolicy")) }
       : {}),
     ...(Object.hasOwn(value, "supportedModels")
       ? {
@@ -880,9 +934,15 @@ export async function buildClaudeCodeRequest(
     );
     const betas = composeBetas(
       {
+        rawModel: validated.source.model,
+        normalizedId: resolvedModel.id,
         capabilities,
-        effortRequested: validated.source.effort !== undefined,
-        contextHintRequested: effectiveProfile.contextHintEnabled,
+        ...(validated.source.cacheControl?.ttl === undefined
+          ? {}
+          : { cacheTtl: validated.source.cacheControl.ttl }),
+        ...(validated.source.speed === undefined
+          ? {}
+          : { speed: validated.source.speed }),
       },
       effectiveProfile,
     );

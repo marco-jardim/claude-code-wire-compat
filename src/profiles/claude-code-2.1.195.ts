@@ -26,10 +26,22 @@ export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
     provider: "anthropic",
     anthropicVersion: "2023-06-01",
     contextHintEnabled: false,
+    betaPolicy: {
+      oauthAuthenticated: true,
+      experimentalBetasEnabled: true,
+      oneMillionContextEnabled: true,
+      interleavedThinkingEnabled: true,
+      interactive: true,
+      thinkingSummariesShown: false,
+      thinkingTokenCountEnabled: true,
+      narrationSummariesEnabled: false,
+      structuredOutputsEnabled: false,
+      afkModeEnabled: false,
+      cacheDiagnosisEnabled: false,
+    },
     /**
-     * This is the full ordering vocabulary. Which subset is actually emitted
-     * is decided per request in Wave 2 by capability gates;
-     * `context-hint-2026-04-09` and `effort-2025-11-24` are conditional.
+     * Retained only as a drift-detection anchor against the upstream plugin.
+     * It does not influence emitted betas; `src/betas.ts` is authoritative.
      */
     orderedBetas: [
       "oauth-2025-04-20",

@@ -618,86 +618,74 @@ describe("request body capability and freeze behavior", () => {
 });
 
 describe("beta composition mutants", () => {
-  const alwaysEnabled = [
-    "oauth-2025-04-20",
-    "claude-code-20250219",
-    "prompt-caching-scope-2026-01-05",
-    "extended-cache-ttl-2025-04-11",
-    "context-management-2025-06-27",
-    "web-search-2025-03-05",
-    "advisor-tool-2026-03-01",
-    "redact-thinking-2026-02-12",
-    "thinking-token-count-2026-05-13",
-  ];
+  const input = {
+    rawModel: "claude-opus-4-8",
+    normalizedId: "claude-opus-4-8",
+    capabilities: capabilities(),
+  } as const;
 
-  it("returns the exact ordered defaults without context hint", () => {
-    expect(
-      composeBetas({ capabilities: capabilities(), effortRequested: false }),
-    ).toEqual(alwaysEnabled);
-  });
-
-  it("places effort immediately after context management when requested", () => {
-    const result = composeBetas({
-      capabilities: capabilities({ effort: true }),
-      effortRequested: true,
-    });
-    expect(result).toEqual([
-      ...alwaysEnabled.slice(0, 5),
-      "effort-2025-11-24",
-      ...alwaysEnabled.slice(5),
+  it("returns the exact emergent defaults without optional builder pushes", () => {
+    expect(composeBetas(input)).toEqual([
+      "claude-code-20250219",
+      "oauth-2025-04-20",
+      "prompt-caching-scope-2026-01-05",
+      "mid-conversation-system-2026-04-07",
     ]);
   });
 
-  it("returns exact ordered optional betas for all capabilities", () => {
+  it("places effort after the base-set pushes whenever capability is present", () => {
     const result = composeBetas({
+      ...input,
+      capabilities: capabilities({ effort: true }),
+    });
+    expect(result).toEqual([
+      "claude-code-20250219",
+      "oauth-2025-04-20",
+      "prompt-caching-scope-2026-01-05",
+      "mid-conversation-system-2026-04-07",
+      "effort-2025-11-24",
+    ]);
+  });
+
+  it("returns exact ordered base betas for all relevant capabilities", () => {
+    const result = composeBetas({
+      ...input,
       capabilities: capabilities({
-        contextHint: true,
         effort: true,
         interleavedThinking: true,
+        contextManagement: true,
       }),
-      effortRequested: true,
-      contextHintRequested: true,
     });
     expect(result).toEqual([
-      ...alwaysEnabled.slice(0, 2),
+      "claude-code-20250219",
+      "oauth-2025-04-20",
       "interleaved-thinking-2025-05-14",
-      ...alwaysEnabled.slice(2, 5),
+      "redact-thinking-2026-02-12",
+      "thinking-token-count-2026-05-13",
+      "context-management-2025-06-27",
+      "prompt-caching-scope-2026-01-05",
+      "mid-conversation-system-2026-04-07",
       "effort-2025-11-24",
-      ...alwaysEnabled.slice(5, 7),
-      ...alwaysEnabled.slice(7),
     ]);
   });
 
-  it("rejects malformed context-hint requests with exact safe details", () => {
-    const input = {
-      capabilities: capabilities({ contextHint: true }),
-      effortRequested: false,
-      contextHintRequested: false,
+  it("gates context hint on the profile", () => {
+    const profile = {
+      ...CLAUDE_CODE_2_1_195_PROFILE,
+      contextHintEnabled: true,
     };
-    Object.defineProperty(input, "contextHintRequested", { value: "yes" });
-    const error = expectWireCode(
-      () => composeBetas(input),
-      "UNSUPPORTED_CAPABILITY",
-    );
-    expect(error.safeDetails).toEqual({ capability: "contextHint" });
+    expect(composeBetas(input, profile)).toContain("context-hint-2026-04-09");
+    expect(composeBetas(input)).not.toContain("context-hint-2026-04-09");
   });
 
-  it.each([
-    ["effort", { capabilities: capabilities(), effortRequested: true }],
-    [
-      "effort",
-      {
-        capabilities: capabilities(),
-        effortRequested: true,
-        contextHintRequested: false,
-      },
-    ],
-  ])("reports the exact unsupported capability %s", (_capability, input) => {
-    const error = expectWireCode(
-      () => composeBetas(input),
-      "UNSUPPORTED_CAPABILITY",
-    );
-    expect(error.safeDetails).toEqual({ capability: "effort" });
+  it("does not duplicate guarded builder betas", () => {
+    const result = composeBetas({ ...input, cacheTtl: "1h", speed: "fast" });
+    expect(
+      result.filter((beta) => beta === "fast-mode-2026-02-01"),
+    ).toHaveLength(1);
+    expect(
+      result.filter((beta) => beta === "extended-cache-ttl-2025-04-11"),
+    ).toHaveLength(1);
   });
 });
 

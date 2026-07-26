@@ -14,6 +14,7 @@
 
 export type {
   BuiltClaudeCodeRequest,
+  ClaudeCodeBetaPolicy,
   ClaudeCodeCapabilities,
   ClaudeCodeCatalogueEntry,
   ClaudeCodeEffort,

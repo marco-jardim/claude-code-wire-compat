@@ -1,212 +1,166 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-/**
- * Wave 1 RED specification for the betas module.
- *
- * Wave 2 export expected:
- * - `composeBetas(input: { readonly capabilities: ClaudeCodeCapabilities; readonly effortRequested: boolean; readonly contextHintRequested: boolean }, profile?: ClaudeCodeProtocolProfile): readonly string[]`
- */
-
-import { readFileSync } from "node:fs";
-
 import { describe, expect, it } from "vitest";
 
-import type {
-  ClaudeCodeCapabilities,
-  ClaudeCodeProtocolProfile,
-} from "../src/contracts.js";
-import { CLAUDE_CODE_2_1_195_PROFILE } from "../src/profiles/claude-code-2.1.195.js";
+import { composeBetas } from "../src/betas.js";
+import type { ClaudeCodeProtocolProfile } from "../src/contracts.js";
 import { resolveModel } from "../src/models.js";
-import {
-  expectModuleUnimplemented,
-  loadWave2Function,
-} from "./support/wave2-modules.js";
+import { CLAUDE_CODE_2_1_195_PROFILE } from "../src/profiles/claude-code-2.1.195.js";
 
-interface ComposeBetasInput {
-  readonly capabilities: ClaudeCodeCapabilities;
-  readonly effortRequested: boolean;
-  readonly contextHintRequested: boolean;
-}
-
-type ComposeBetas = (
-  input: ComposeBetasInput,
-  profile?: ClaudeCodeProtocolProfile,
-) => readonly string[];
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function findBetaHeader(value: unknown): readonly string[] | undefined {
-  if (typeof value === "string" && value.includes("oauth-2025-04-20")) {
-    return value.split(",");
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = findBetaHeader(item);
-      if (found !== undefined) return found;
-    }
-  } else if (isRecord(value)) {
-    for (const item of Object.values(value)) {
-      const found = findBetaHeader(item);
-      if (found !== undefined) return found;
-    }
-  }
-  return undefined;
-}
-
-function fixtureBetas(fileName: string): readonly string[] {
-  const fixture: unknown = JSON.parse(
-    readFileSync(
-      new URL(`fixtures/golden/${fileName}`, import.meta.url),
-      "utf8",
-    ),
-  );
-  const betas = findBetaHeader(fixture);
-  if (betas === undefined) {
-    throw new Error(`No beta header found in golden fixture ${fileName}.`);
-  }
-  return betas;
-}
-
-function capabilitiesFor(model: string): ClaudeCodeCapabilities {
-  const definition = CLAUDE_CODE_2_1_195_PROFILE.supportedModels[model];
-  if (definition === undefined)
-    throw new Error(`Missing profile model ${model}.`);
-  return resolveModel(model).capabilities;
-}
-
-describe("betas (Wave 1 RED specification)", () => {
-  it("the Wave 2 module is implemented", async () => {
-    expect(await expectModuleUnimplemented("betas")).toBe(false);
-  });
-
-  it("matches the non-effort foreground golden exactly", async () => {
-    const composeBetas = await loadWave2Function<ComposeBetas>(
-      "betas",
-      "composeBetas",
-    );
-    // The foreground golden was generated for claude-sonnet-4-5, which the
-    // pinned profile marks effort-incapable, so its beta list omits
-    // effort-2025-11-24. Context hint is off in both goldens.
-    const expected = fixtureBetas("outgoing-foreground.json");
-
-    expect(
-      composeBetas({
-        capabilities: capabilitiesFor("claude-sonnet-4-5"),
-        effortRequested: false,
-        contextHintRequested: false,
-      }),
-    ).toEqual(expected);
-    expect(expected).toEqual([
-      "oauth-2025-04-20",
-      "claude-code-20250219",
-      "interleaved-thinking-2025-05-14",
-      "prompt-caching-scope-2026-01-05",
-      "extended-cache-ttl-2025-04-11",
-      "context-management-2025-06-27",
-      "web-search-2025-03-05",
-      "advisor-tool-2026-03-01",
-      "redact-thinking-2026-02-12",
-      "thinking-token-count-2026-05-13",
-    ]);
-  });
-
-  it("matches the effort-enabled canary golden exactly", async () => {
-    const composeBetas = await loadWave2Function<ComposeBetas>(
-      "betas",
-      "composeBetas",
-    );
-    // The canary golden was generated for claude-opus-4-8 with adaptive
-    // thinking and effort=high, so its beta list carries effort-2025-11-24
-    // immediately after context-management-2025-06-27.
-    const expected = fixtureBetas("outgoing-canary-context-hint-off.json");
-    const actual = composeBetas({
-      capabilities: capabilitiesFor("claude-opus-4-8"),
-      effortRequested: true,
-      contextHintRequested: false,
-    });
-
-    expect(actual).toEqual(expected);
-    expect(actual.indexOf("effort-2025-11-24")).toBe(
-      actual.indexOf("context-management-2025-06-27") + 1,
-    );
-  });
-
-  it("emits context hint only when explicitly requested and supported", async () => {
-    const composeBetas = await loadWave2Function<ComposeBetas>(
-      "betas",
-      "composeBetas",
-    );
-    const capabilities = capabilitiesFor("claude-opus-4-8");
-
-    expect(
-      composeBetas({
-        capabilities,
-        effortRequested: false,
-        contextHintRequested: false,
-      }),
-    ).not.toContain("context-hint-2026-04-09");
-    expect(
-      composeBetas({
-        capabilities,
-        effortRequested: false,
-        contextHintRequested: true,
-      }),
-    ).not.toContain("context-hint-2026-04-09");
-  });
-
-  it.each([
-    ["context hint", false, true],
-    ["effort", true, false],
-  ] as const)(
-    "rejects unsupported %s requests",
-    async (_name, effortRequested, contextHintRequested) => {
-      const composeBetas = await loadWave2Function<ComposeBetas>(
-        "betas",
-        "composeBetas",
-      );
-      const capabilities = {
-        ...capabilitiesFor("claude-sonnet-4-5"),
-        contextHint: false,
-      };
-
-      const operation = () =>
-        composeBetas({
-          capabilities,
-          effortRequested,
-          contextHintRequested,
-        });
-      if (_name === "effort") {
-        expect(operation).toThrow(
-          expect.objectContaining({ code: "UNSUPPORTED_CAPABILITY" }),
-        );
-      } else {
-        expect(operation()).not.toContain("context-hint-2026-04-09");
-      }
+function betasFor(
+  model: string,
+  options: Readonly<{
+    cacheTtl?: "5m" | "1h" | null;
+    speed?: "standard" | "fast" | null;
+  }> = {},
+  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+): readonly string[] {
+  const resolved = resolveModel(model, profile);
+  return composeBetas(
+    {
+      rawModel: model,
+      normalizedId: resolved.id,
+      capabilities: resolved.capabilities,
+      ...options,
     },
+    profile,
   );
+}
 
-  it("is frozen, deterministic, duplicate-free, and profile-ordered", async () => {
-    const composeBetas = await loadWave2Function<ComposeBetas>(
-      "betas",
-      "composeBetas",
+function withPolicy(
+  override: Partial<ClaudeCodeProtocolProfile["betaPolicy"]>,
+): ClaudeCodeProtocolProfile {
+  return {
+    ...CLAUDE_CODE_2_1_195_PROFILE,
+    betaPolicy: {
+      ...CLAUDE_CODE_2_1_195_PROFILE.betaPolicy,
+      ...override,
+    },
+  };
+}
+
+describe("composeBetas", () => {
+  it.each([
+    [
+      "claude-3-5-haiku",
+      ["oauth-2025-04-20", "prompt-caching-scope-2026-01-05"],
+    ],
+    [
+      "claude-haiku-4-5",
+      [
+        "oauth-2025-04-20",
+        "interleaved-thinking-2025-05-14",
+        "redact-thinking-2026-02-12",
+        "thinking-token-count-2026-05-13",
+        "context-management-2025-06-27",
+        "prompt-caching-scope-2026-01-05",
+      ],
+    ],
+    [
+      "claude-opus-4-5",
+      [
+        "claude-code-20250219",
+        "oauth-2025-04-20",
+        "interleaved-thinking-2025-05-14",
+        "redact-thinking-2026-02-12",
+        "thinking-token-count-2026-05-13",
+        "context-management-2025-06-27",
+        "prompt-caching-scope-2026-01-05",
+        "effort-2025-11-24",
+      ],
+    ],
+    [
+      "claude-opus-4-8",
+      [
+        "claude-code-20250219",
+        "oauth-2025-04-20",
+        "interleaved-thinking-2025-05-14",
+        "redact-thinking-2026-02-12",
+        "thinking-token-count-2026-05-13",
+        "context-management-2025-06-27",
+        "prompt-caching-scope-2026-01-05",
+        "mid-conversation-system-2026-04-07",
+        "effort-2025-11-24",
+      ],
+    ],
+  ] as const)("pins the full emergent beta order for %s", (model, expected) => {
+    expect(betasFor(model)).toEqual(expected);
+  });
+
+  it("D1: suppresses claude-code for haiku models", () => {
+    expect(betasFor("claude-haiku-4-5")).not.toContain("claude-code-20250219");
+  });
+
+  it("D3: emits oauth only when the pinned authentication gate is enabled", () => {
+    expect(
+      betasFor(
+        "claude-opus-4-8",
+        {},
+        withPolicy({ oauthAuthenticated: false }),
+      ),
+    ).not.toContain("oauth-2025-04-20");
+  });
+
+  it("D9: structured outputs requires both its model predicate and policy gate", () => {
+    const profile = withPolicy({ structuredOutputsEnabled: true });
+    expect(betasFor("claude-opus-4-8", {}, profile)).toContain(
+      "structured-outputs-2025-12-15",
     );
-    const input: ComposeBetasInput = {
-      capabilities: capabilitiesFor("claude-opus-4-8"),
-      effortRequested: true,
-      contextHintRequested: true,
-    };
-    const first = composeBetas(input);
-    const second = composeBetas(input);
+    expect(betasFor("claude-opus-4-0", {}, profile)).not.toContain(
+      "structured-outputs-2025-12-15",
+    );
+  });
 
+  it("D10: never emits web search on the pinned first-party profile", () => {
+    expect(betasFor("claude-opus-4-8")).not.toContain("web-search-2025-03-05");
+  });
+
+  it("D11: emits effort for every effort-capable model without a request gate", () => {
+    expect(betasFor("claude-opus-4-8")).toContain("effort-2025-11-24");
+  });
+
+  it("extended-cache-ttl: emits only for 1h cache TTL with experimental betas", () => {
+    expect(betasFor("claude-opus-4-8", { cacheTtl: "5m" })).not.toContain(
+      "extended-cache-ttl-2025-04-11",
+    );
+    expect(betasFor("claude-opus-4-8", { cacheTtl: "1h" })).toContain(
+      "extended-cache-ttl-2025-04-11",
+    );
+    expect(
+      betasFor(
+        "claude-opus-4-8",
+        { cacheTtl: "1h" },
+        withPolicy({ experimentalBetasEnabled: false }),
+      ),
+    ).not.toContain("extended-cache-ttl-2025-04-11");
+  });
+
+  it("emits the 1m marker beta from the raw caller model", () => {
+    expect(betasFor("claude-opus-4-8[1m]")).toContain("context-1m-2025-08-07");
+  });
+
+  it("emits fast mode in builder-push order", () => {
+    const result = betasFor("claude-opus-4-8", { speed: "fast" });
+    expect(result.at(-1)).toBe("fast-mode-2026-02-01");
+  });
+
+  it("never emits advisor tool without an observed push site", () => {
+    expect(betasFor("claude-opus-4-8")).not.toContain(
+      "advisor-tool-2026-03-01",
+    );
+  });
+
+  it("returns a frozen, deterministic, duplicate-free array", () => {
+    const first = betasFor("claude-opus-4-8", {
+      cacheTtl: "1h",
+      speed: "fast",
+    });
+    const second = betasFor("claude-opus-4-8", {
+      cacheTtl: "1h",
+      speed: "fast",
+    });
     expect(Object.isFrozen(first)).toBe(true);
     expect(first).toEqual(second);
     expect(new Set(first).size).toBe(first.length);
-    expect(first).toEqual(
-      CLAUDE_CODE_2_1_195_PROFILE.orderedBetas.filter((beta) =>
-        first.includes(beta),
-      ),
-    );
   });
 });

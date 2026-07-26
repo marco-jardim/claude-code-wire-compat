@@ -311,11 +311,59 @@ describe("protocol profile override", () => {
 
   it("uses a context-hint override", async () => {
     const result = await buildWithOverride({ contextHintEnabled: true });
+    expect(JSON.parse(result.body)).toHaveProperty("context_hint", {
+      enabled: true,
+    });
     expect(result.headers).toEqual(
       expect.arrayContaining([
         expect.arrayContaining(["anthropic-beta", expect.any(String)]),
       ]),
     );
+  });
+
+  it.each([
+    ["narrationSummariesEnabled", "summarize-connector-text-2026-03-13", 5],
+    ["afkModeEnabled", "afk-mode-2026-01-31", 8],
+    ["cacheDiagnosisEnabled", "cache-diagnosis-2026-04-07", 8],
+  ] as const)(
+    "emits %s at its upstream push position",
+    async (flag, expectedBeta, expectedIndex) => {
+      const result = await buildWithOverride({
+        betaPolicy: {
+          ...CLAUDE_CODE_2_1_195_PROFILE.betaPolicy,
+          [flag]: true,
+        },
+      });
+
+      expect(result.evidence.betaFeatures).toContain(expectedBeta);
+      expect(result.evidence.betaFeatures.indexOf(expectedBeta)).toBe(
+        expectedIndex,
+      );
+    },
+  );
+
+  it.each([
+    ["a non-record value", null],
+    [
+      "a missing key",
+      Object.fromEntries(
+        Object.entries(CLAUDE_CODE_2_1_195_PROFILE.betaPolicy).filter(
+          ([key]) => key !== "cacheDiagnosisEnabled",
+        ),
+      ),
+    ],
+    [
+      "an extra key",
+      { ...CLAUDE_CODE_2_1_195_PROFILE.betaPolicy, unexpected: true },
+    ],
+    [
+      "a non-boolean value",
+      { ...CLAUDE_CODE_2_1_195_PROFILE.betaPolicy, afkModeEnabled: "false" },
+    ],
+  ])("rejects betaPolicy with %s", async (_description, betaPolicy) => {
+    await expect(buildWithOverride({ betaPolicy })).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
   });
 
   it.each([

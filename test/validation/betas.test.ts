@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { composeBetas } from "../../src/betas.js";
@@ -21,95 +23,54 @@ const CAPABILITIES: ClaudeCodeCapabilities = {
   rejectsDisabledThinking: false,
 };
 
-describe("composeBetas validation", () => {
-  it("rejects a non-boolean effort request", () => {
-    // Intentional invalid-input fixture: the public type must be defended at runtime.
-    const input = {
-      capabilities: CAPABILITIES,
-      effortRequested: "yes",
-    } as unknown as Parameters<typeof composeBetas>[0];
+const INPUT = {
+  rawModel: "claude-opus-4-8",
+  normalizedId: "claude-opus-4-8",
+  capabilities: CAPABILITIES,
+} as const;
 
-    expect(() => composeBetas(input)).toThrow(
-      expect.objectContaining({ code: "INVALID_EFFORT" }),
-    );
-  });
-
-  it("rejects a non-boolean context-hint request", () => {
-    // Intentional invalid-input fixture: the public type must be defended at runtime.
-    const input = {
-      capabilities: CAPABILITIES,
-      effortRequested: false,
-      contextHintRequested: "yes",
-    } as unknown as Parameters<typeof composeBetas>[0];
-
-    expect(() => composeBetas(input)).toThrow(
-      expect.objectContaining({ code: "UNSUPPORTED_CAPABILITY" }),
-    );
-  });
-
-  it.each([
-    {
-      name: "effort",
-      input: {
-        capabilities: { ...CAPABILITIES, effort: false },
-        effortRequested: true,
-      },
-    },
-    {
-      name: "context hint",
-      input: {
-        capabilities: { ...CAPABILITIES, contextHint: false },
-        effortRequested: false,
-        contextHintRequested: true,
-      },
-    },
-  ])(
-    "handles an unsupported $name capability combination",
-    ({ name, input }) => {
-      if (name === "effort") {
-        expect(() => composeBetas(input)).toThrow(
-          expect.objectContaining({ code: "UNSUPPORTED_CAPABILITY" }),
-        );
-      } else {
-        expect(composeBetas(input)).not.toContain("context-hint-2026-04-09");
-      }
-    },
-  );
-
-  it("emits interleaved thinking and preserves profile order exactly", () => {
+describe("composeBetas policy combinations", () => {
+  it("uses push order and ignores the retained orderedBetas field", () => {
     const profile: ClaudeCodeProtocolProfile = {
       ...CLAUDE_CODE_2_1_195_PROFILE,
-      orderedBetas: [
-        "not-selected",
-        "interleaved-thinking-2025-05-14",
-        "oauth-2025-04-20",
-        "interleaved-thinking-2025-05-14",
-      ],
+      orderedBetas: ["effort-2025-11-24", "oauth-2025-04-20"],
     };
-
-    expect(
-      composeBetas(
-        {
-          capabilities: CAPABILITIES,
-          effortRequested: false,
-          contextHintRequested: false,
-        },
-        profile,
-      ),
-    ).toEqual(["interleaved-thinking-2025-05-14", "oauth-2025-04-20"]);
+    expect(composeBetas(INPUT, profile)).toEqual(
+      composeBetas(INPUT, CLAUDE_CODE_2_1_195_PROFILE),
+    );
   });
 
-  it("emits effort and context-hint betas when both are requested", () => {
-    const result = composeBetas(
-      {
-        capabilities: CAPABILITIES,
-        effortRequested: true,
-        contextHintRequested: true,
-      },
-      { ...CLAUDE_CODE_2_1_195_PROFILE, contextHintEnabled: true },
+  it("emits context hint when the profile enables it", () => {
+    const profile = {
+      ...CLAUDE_CODE_2_1_195_PROFILE,
+      contextHintEnabled: true,
+    };
+    expect(composeBetas(INPUT, profile)).toContain("context-hint-2026-04-09");
+    expect(composeBetas(INPUT, CLAUDE_CODE_2_1_195_PROFILE)).not.toContain(
+      "context-hint-2026-04-09",
     );
+  });
 
-    expect(result).toContain("effort-2025-11-24");
-    expect(result).toContain("context-hint-2026-04-09");
+  it("keeps the retained beta vocabulary out of the composer source", () => {
+    const source = readFileSync(
+      new URL("../../src/betas.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).not.toContain("orderedBetas");
+  });
+
+  it("keeps experimental base pushes disabled as one policy unit", () => {
+    const profile = {
+      ...CLAUDE_CODE_2_1_195_PROFILE,
+      betaPolicy: {
+        ...CLAUDE_CODE_2_1_195_PROFILE.betaPolicy,
+        experimentalBetasEnabled: false,
+      },
+    };
+    const result = composeBetas(INPUT, profile);
+    expect(result).not.toContain("redact-thinking-2026-02-12");
+    expect(result).not.toContain("thinking-token-count-2026-05-13");
+    expect(result).not.toContain("context-management-2025-06-27");
+    expect(result).not.toContain("prompt-caching-scope-2026-01-05");
   });
 });

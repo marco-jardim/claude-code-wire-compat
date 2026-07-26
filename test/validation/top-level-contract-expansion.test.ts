@@ -26,11 +26,17 @@ const BASE_INPUT = {
   maxTokens: 1024,
   messages: [{ role: "user", content: "hello" }],
 };
-const TASK_BUDGET_BETA = "task-budgets-2026-03-13";
-const FAST_MODE_BETA = "fast-mode-2026-02-01";
 
-function profileWithBetas(betas: readonly string[]): ClaudeCodeProtocolProfile {
-  return { ...CLAUDE_CODE_2_1_195_PROFILE, orderedBetas: betas };
+function profileWithExperimentalBetas(
+  experimentalBetasEnabled: boolean,
+): ClaudeCodeProtocolProfile {
+  return {
+    ...CLAUDE_CODE_2_1_195_PROFILE,
+    betaPolicy: {
+      ...CLAUDE_CODE_2_1_195_PROFILE.betaPolicy,
+      experimentalBetasEnabled,
+    },
+  };
 }
 
 function build(
@@ -269,15 +275,10 @@ describe("output controls", () => {
   });
 
   it("preserves output effort and beta-only token budget in input order", () => {
-    const profile = profileWithBetas([
-      ...CLAUDE_CODE_2_1_195_PROFILE.orderedBetas,
-      TASK_BUDGET_BETA,
-    ]);
-    const result = buildField(
-      "outputConfig",
-      { maxOutputTokens: 2048, effort: "xhigh" },
-      profile,
-    );
+    const result = buildField("outputConfig", {
+      maxOutputTokens: 2048,
+      effort: "xhigh",
+    });
     expect(result["output_config"]).toEqual({
       max_output_tokens: 2048,
       effort: "xhigh",
@@ -291,9 +292,8 @@ describe("output controls", () => {
   it.each(["effort", "maxOutputTokens"] as const)(
     "distinguishes absent and null outputConfig.%s",
     (key) => {
-      const profile = profileWithBetas([TASK_BUDGET_BETA]);
-      const absent = buildField("outputConfig", {}, profile)["output_config"];
-      const present = buildField("outputConfig", { [key]: null }, profile)[
+      const absent = buildField("outputConfig", {})["output_config"];
+      const present = buildField("outputConfig", { [key]: null })[
         "output_config"
       ];
       expect(absent).not.toHaveProperty(
@@ -306,33 +306,27 @@ describe("output controls", () => {
     },
   );
 
-  it("requires the task-budget beta for maxOutputTokens", () => {
+  it("requires experimental betas for maxOutputTokens", () => {
     expect(() =>
       buildField(
         "outputConfig",
         { maxOutputTokens: 1024 },
-        profileWithBetas([]),
+        profileWithExperimentalBetas(false),
       ),
     ).toThrow(expect.objectContaining({ code: "UNSUPPORTED_CAPABILITY" }));
     expect(
-      buildField(
-        "outputConfig",
-        { maxOutputTokens: Number.MAX_SAFE_INTEGER },
-        profileWithBetas([TASK_BUDGET_BETA]),
-      )["output_config"],
+      buildField("outputConfig", { maxOutputTokens: Number.MAX_SAFE_INTEGER })[
+        "output_config"
+      ],
     ).toEqual({ max_output_tokens: Number.MAX_SAFE_INTEGER });
   });
 
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
     "rejects invalid maxOutputTokens %#",
     (maxOutputTokens) => {
-      expect(() =>
-        buildField(
-          "outputConfig",
-          { maxOutputTokens },
-          profileWithBetas([TASK_BUDGET_BETA]),
-        ),
-      ).toThrow(expect.objectContaining({ code: "INVALID_INPUT" }));
+      expect(() => buildField("outputConfig", { maxOutputTokens })).toThrow(
+        expect.objectContaining({ code: "INVALID_INPUT" }),
+      );
     },
   );
 
@@ -367,13 +361,11 @@ describe("output controls", () => {
     ).not.toHaveProperty("temperature");
   });
 
-  it("couples fast speed to the supported fast-mode beta", () => {
-    expect(() => buildField("speed", "fast", profileWithBetas([]))).toThrow(
-      expect.objectContaining({ code: "UNSUPPORTED_CAPABILITY" }),
-    );
-    expect(
-      buildField("speed", "fast", profileWithBetas([FAST_MODE_BETA]))["speed"],
-    ).toBe("fast");
+  it("couples fast speed to experimental betas", () => {
+    expect(() =>
+      buildField("speed", "fast", profileWithExperimentalBetas(false)),
+    ).toThrow(expect.objectContaining({ code: "UNSUPPORTED_CAPABILITY" }));
+    expect(buildField("speed", "fast")["speed"]).toBe("fast");
   });
 
   it.each([
