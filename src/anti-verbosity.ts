@@ -196,10 +196,24 @@ export function antiVerbosityText(
   policy: AntiVerbosityPolicy = DEFAULT_ANTI_VERBOSITY_POLICY,
   profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
 ): string {
+  // Validated eagerly, and for every section rather than only the one that
+  // reads it, so a malformed policy fails the same way regardless of which
+  // model it is paired with. `selectAntiVerbositySection` validates its own
+  // argument the same way despite the declared types, because callers reach
+  // this module across an untyped boundary.
+  const candidate: unknown = policy;
+  if (candidate === null || typeof candidate !== "object") {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  const brief: unknown = Reflect.get(candidate, "briefModeEnabled");
+  const pewterOwl: unknown = Reflect.get(candidate, "pewterOwlToolEnabled");
+  if (typeof brief !== "boolean" || typeof pewterOwl !== "boolean") {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
   const section = selectAntiVerbositySection(rawModel, profile);
   if (section === "lean") return LEAN_SECTION;
   if (section === "text-output") return TEXT_OUTPUT_SECTION;
-  return policy.briefModeEnabled || policy.pewterOwlToolEnabled
+  return brief || pewterOwl
     ? COMMUNICATING_WITH_THE_USER_CONDENSED
     : COMMUNICATING_WITH_THE_USER_FULL;
 }

@@ -3,10 +3,30 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CLAUDE_CODE_2_1_195_PROFILE,
   ClaudeCodeWireError,
   antiVerbosityText,
   selectAntiVerbositySection,
 } from "../../src/index.js";
+import type { ClaudeCodeProtocolProfile } from "../../src/index.js";
+
+/** Rebuilds the pinned profile with one catalogue entry's capabilities replaced. */
+function withCapabilities(
+  modelId: string,
+  capabilities: readonly string[],
+): ClaudeCodeProtocolProfile {
+  const entry = CLAUDE_CODE_2_1_195_PROFILE.supportedModels[modelId];
+  if (entry === undefined) {
+    throw new TypeError(`Missing catalogue entry for ${modelId}.`);
+  }
+  return {
+    ...CLAUDE_CODE_2_1_195_PROFILE,
+    supportedModels: {
+      ...CLAUDE_CODE_2_1_195_PROFILE.supportedModels,
+      [modelId]: { ...entry, capabilities },
+    },
+  };
+}
 
 function expectInvalidModel(rawModel: string): void {
   try {
@@ -58,12 +78,68 @@ describe("anti-verbosity selector", () => {
     "claude-sonnet-4-5-EAP",
   ])("applies the raw -eap rule to %s", (model) => {
     expect(selectAntiVerbositySection(model)).toBe("lean");
+  });
+
+  it("keeps the -eap control case distinct", () => {
     expect(selectAntiVerbositySection("claude-sonnet-4-5")).toBe("text-output");
   });
 
   it("rejects invalid model identifiers", () => {
     expectInvalidModel("");
     expectInvalidModel(42 as unknown as string);
+  });
+});
+
+describe("anti-verbosity catalogue dependence", () => {
+  // WP-2 established that the catalogue `capabilities` array never influences
+  // the nine model-capability predicates, because each one falls back to a
+  // provider test that is unconditionally true on first party. The selector is
+  // the opposite case: upstream `Mte` and `Kkd` have no such fallback, so the
+  // array genuinely decides the branch. These two tests pin that contrast, so
+  // that nobody generalises the WP-2 finding and deletes the arrays.
+  it("loses the communicating-with-the-user branch without fable_5_mitigations", () => {
+    expect(selectAntiVerbositySection("claude-fable-5")).toBe(
+      "communicating-with-the-user",
+    );
+    expect(
+      selectAntiVerbositySection(
+        "claude-fable-5",
+        withCapabilities("claude-fable-5", []),
+      ),
+    ).toBe("lean");
+  });
+
+  it("grants the communicating-with-the-user branch via fable_5_mitigations", () => {
+    expect(selectAntiVerbositySection("claude-haiku-4-5")).toBe("text-output");
+    expect(
+      selectAntiVerbositySection(
+        "claude-haiku-4-5",
+        withCapabilities("claude-haiku-4-5", ["fable_5_mitigations"]),
+      ),
+    ).toBe("communicating-with-the-user");
+  });
+
+  it("drives the lean branch from lean_prompt", () => {
+    // Deliberately exercised on Haiku rather than on one of the two models that
+    // actually carry `lean_prompt`. Under the pinned catalogue the clause is
+    // unobservable: `claude-fable-5` is claimed earlier by `Mte`, and
+    // `claude-opus-4-8` is absent from the upstream allowlist below the clause,
+    // so it reaches the lean branch with or without the capability. Haiku is in
+    // that allowlist, so granting it `lean_prompt` is the only way to show the
+    // clause carries weight. Upstream keeps it for the same reason.
+    expect(selectAntiVerbositySection("claude-haiku-4-5")).toBe("text-output");
+    expect(
+      selectAntiVerbositySection(
+        "claude-haiku-4-5",
+        withCapabilities("claude-haiku-4-5", ["lean_prompt"]),
+      ),
+    ).toBe("lean");
+    expect(
+      selectAntiVerbositySection(
+        "claude-opus-4-8",
+        withCapabilities("claude-opus-4-8", []),
+      ),
+    ).toBe("lean");
   });
 });
 
@@ -82,6 +158,32 @@ describe("anti-verbosity policy", () => {
     expect(full).toBe(antiVerbosityText("claude-mythos-5"));
     expect(brief).not.toBe(full);
     expect(pewterOwl).toBe(brief);
+  });
+
+  it.each([
+    ["null", null],
+    ["a number", 7],
+    ["a missing field", { briefModeEnabled: true }],
+    [
+      "a non-boolean field",
+      { briefModeEnabled: "yes", pewterOwlToolEnabled: false },
+    ],
+    [
+      "a non-boolean second field",
+      { briefModeEnabled: false, pewterOwlToolEnabled: 1 },
+    ],
+  ])("rejects a policy that is %s", (_name, policy) => {
+    // Rejected for every model, not only the one branch that reads the policy,
+    // so a malformed policy fails identically regardless of the model paired
+    // with it.
+    for (const model of ["claude-fable-5", "claude-opus-4-8", "gpt-4o"]) {
+      expect(() =>
+        antiVerbosityText(
+          model,
+          policy as unknown as Parameters<typeof antiVerbosityText>[1],
+        ),
+      ).toThrow(ClaudeCodeWireError);
+    }
   });
 
   it("does not apply policy to lean or text-output models", () => {
