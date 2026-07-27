@@ -74,15 +74,18 @@ describe("CI policy", () => {
     // assertion has to be that the name is absent from the file entirely, not
     // that it is unset or blank.
     //
-    // The NPM_TOKEN repository secret is intentionally retained as a one-line
-    // recovery path; this guard is what stops that line from creeping back in
-    // silently and quietly downgrading the release path to token auth.
+    // There is no token fallback to fall back to: the package has
+    // "Require two-factor authentication and disallow tokens" enabled on
+    // npmjs.com and the publish token was revoked. A token line reintroduced
+    // here would not merely downgrade the release path, it would break it
+    // outright — which this guard catches at lint time rather than at release
+    // time.
     //
     // The match is deliberately anchored to an active YAML assignment rather
-    // than the bare identifier. The workflow's own comments name the variable —
-    // both to explain why it is absent and to record the recovery line verbatim
-    // — so a substring search would flag the documentation that exists to
-    // prevent the very regression being guarded against.
+    // than the bare identifier. The workflow's own comments name the variable
+    // in order to explain why it is absent, so a substring search would flag
+    // the documentation that exists to prevent the very regression being
+    // guarded against.
     const activeAssignments = publish
       .split("\n")
       .map((line) => line.trim())

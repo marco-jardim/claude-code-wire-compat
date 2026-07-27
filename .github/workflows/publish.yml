@@ -65,14 +65,20 @@ jobs:
         # than E401 on the scoped package, because the registry hides a package's
         # existence from unauthorised callers. If publishing breaks again with
         # E404 or ENEEDAUTH, that is an authentication failure, not a missing
-        # package, and the fastest recovery is to restore
-        # `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` on this step. The secret is
-        # deliberately left in place for exactly that reason.
+        # package.
+        #
+        # There is no token fallback. The package has "Require two-factor
+        # authentication and disallow tokens" enabled on npmjs.com and the
+        # publish token was revoked, so restoring a token line here cannot work
+        # until that setting is turned off and a fresh token is minted. Recovery
+        # from an auth failure means repairing the trusted-publisher
+        # configuration (repository name, workflow filename, `id-token: write`),
+        # not reaching for a credential.
         env:
           # Trusted publishing generates provenance on its own, so this is
-          # belt-and-braces rather than load-bearing. It is kept because it also
-          # covers the token fallback described above, where provenance is NOT
-          # automatic.
+          # belt-and-braces rather than load-bearing. Kept as an explicit
+          # declaration of intent: provenance is required for this package, and
+          # a future change to the publish path must not silently drop it.
           NPM_CONFIG_PROVENANCE: true
         shell: bash
         run: |
