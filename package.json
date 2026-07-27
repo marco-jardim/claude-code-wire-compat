@@ -1,6 +1,6 @@
 {
   "name": "@tormentalabs/claude-code-wire-compat",
-  "version": "0.1.0-rc.1",
+  "version": "0.1.0-rc.9",
   "description": "Runtime-neutral Claude Code Messages wire compatibility primitives",
   "type": "module",
   "private": false,
@@ -28,6 +28,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./profiles/claude-code-2.1.195": {
+      "types": "./dist/profiles/claude-code-2.1.195.d.ts",
+      "import": "./dist/profiles/claude-code-2.1.195.js"
     }
   },
   "types": "./dist/index.d.ts",
@@ -37,14 +41,15 @@
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.types.json --noEmit",
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:mutation": "stryker run",
-    "pack:check": "npm pack --dry-run && publint && attw --pack .",
-    "drift:check": "node -e \"console.log('Offline drift verification is introduced with the frozen profile')\""
+    "test:pack": "node scripts/verify-packed-consumers.mjs",
+    "pack:check": "npm pack --dry-run && publint && attw --pack . --profile esm-only",
+    "drift:check": "node scripts/verify-drift.mjs"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
@@ -55,6 +60,7 @@
     "@vitest/coverage-v8": "4.1.10",
     "eslint": "10.8.0",
     "fast-check": "4.9.0",
+    "globals": "17.7.0",
     "license-checker-rseidelsohn": "5.0.1",
     "miniflare": "4.20260722.0",
     "prettier": "3.9.6",

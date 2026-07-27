@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: publish
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:coverage
+      - run: npm run build
+      - run: npm run pack:check
+      - name: Publish with npm provenance
+        env:
+          # setup-node writes an .npmrc containing
+          # //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}, so the token has
+          # to reach this step under that exact name. Omitting it leaves the
+          # placeholder empty and npm answers E404 on a scoped package rather
+          # than E401, because the registry hides existence from unauthorised
+          # callers. That is what failed the v0.1.0-rc.8 and v0.1.0-rc.9 runs.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$VERSION" == *-* ]]; then
+            npm publish --access public --tag beta
+          else
+            npm publish --access public --tag latest
+          fi

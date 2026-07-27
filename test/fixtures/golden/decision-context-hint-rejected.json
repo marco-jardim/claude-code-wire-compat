@@ -1,0 +1,10 @@
+{
+  "$schema": "claude-code-wire-compat/decision/v1",
+  "name": "context-hint-rejected",
+  "profileId": "claude-code-2.1.195-sdk-0.94.0",
+  "betaFeature": "context-hint-2026-04-09",
+  "observedStatus": 400,
+  "errorCategory": "invalid_request_error",
+  "decision": "context hint is disabled by default in the pinned profile",
+  "notes": "Status and category only. No response body, headers, prompt, or credential content is recorded."
+}

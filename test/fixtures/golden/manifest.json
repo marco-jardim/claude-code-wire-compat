@@ -1,0 +1,12 @@
+{
+  "sourceCommit": "466d500084b59651798bf38bf24d21f3cb850db6",
+  "models": {
+    "outgoing-foreground.json": "claude-sonnet-4-5",
+    "outgoing-canary-context-hint-off.json": "claude-opus-4-8"
+  },
+  "fixtures": {
+    "outgoing-foreground.json": "62748f01fcc20ae48f40dc4b628a094db5e06cd809d64d0c9163c0e69b0a98ea",
+    "outgoing-canary-context-hint-off.json": "af9fa1a299ba9b3cf493e1e5b2e0bb8b935e1089c2679ead615fe87c459bf3db",
+    "decision-context-hint-rejected.json": "6957d363e1e9512eb1a8d2c7170fa208b92e28460e7fb3b8576aa3814cdf4582"
+  }
+}

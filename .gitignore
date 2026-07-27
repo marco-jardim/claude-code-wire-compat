@@ -144,3 +144,13 @@ vite.config.ts.timestamp-*
 
 # Local execution evidence (never commit)
 .com466-evidence/
+
+# Local agent/tooling scratch state (never commit to the public repository)
+.opencode/
+
+# Generated mutation-testing and coverage output
+.stryker-tmp/
+coverage-*/
+
+# Stryker mutation reports
+reports/

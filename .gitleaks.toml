@@ -1,0 +1,18 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Repository-wide false positives and generated output"
+regexTarget = "match"
+paths = [
+  '''(?:^|/)\.stryker-tmp(?:/|$)''',
+  '''(?:^|/)coverage(?:/|$)''',
+  '''(?:^|/)coverage-[^/]+(?:/|$)''',
+  '''(?:^|/)reports(?:/|$)''',
+  '''(?:^|/)dist(?:/|$)''',
+  '''(?:^|/)node_modules(?:/|$)''',
+]
+regexes = [
+  # Public Anthropic `anthropic-beta` protocol flag name, not a credential.
+  '''oauth-2025-04-20''',
+]

@@ -1,0 +1,66 @@
+{
+  "$schema": "claude-code-wire-compat/golden/v1",
+  "name": "outgoing-foreground",
+  "profileId": "claude-code-2.1.195-sdk-0.94.0",
+  "url": "https://api.anthropic.com/v1/messages?beta=true",
+  "method": "POST",
+  "headers": [
+    [
+      "anthropic-beta",
+      "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05"
+    ],
+    ["anthropic-dangerous-direct-browser-access", "true"],
+    ["anthropic-version", "2023-06-01"],
+    ["authorization", "Bearer REDACTED_SYNTHETIC_TOKEN"],
+    ["content-type", "application/json"],
+    ["user-agent", "claude-cli/2.1.195 (external, cli)"],
+    ["x-app", "cli"],
+    ["x-claude-code-session-id", "00000000-0000-4000-8000-000000000001"],
+    ["x-client-request-id", "00000000-0000-4000-8000-000000000002"],
+    ["x-stainless-arch", "x64"],
+    ["x-stainless-lang", "js"],
+    ["x-stainless-os", "Windows"],
+    ["x-stainless-package-version", "0.94.0"],
+    ["x-stainless-retry-count", "0"],
+    ["x-stainless-runtime", "node"],
+    ["x-stainless-runtime-version", "v24.15.0"],
+    ["x-stainless-timeout", "600"]
+  ],
+  "body": {
+    "model": "claude-sonnet-4-5",
+    "max_tokens": 8192,
+    "system": [
+      {
+        "type": "text",
+        "text": "x-anthropic-billing-header: cc_version=2.1.195.0f6; cc_entrypoint=cli; cch=00000;"
+      },
+      {
+        "type": "text",
+        "text": "You are Claude Code, Anthropic's official CLI for Claude.",
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl": "1h"
+        }
+      },
+      {
+        "type": "text",
+        "text": "SYNTHETIC INTERACTIVE BASE PROMPT FIXTURE. This deterministic placeholder stands in for host-supplied system prompt text. The wire contract depends on block position and cache_control, not on this content.",
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl": "1h"
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "hello wire compat"
+      }
+    ],
+    "temperature": 1,
+    "metadata": {
+      "user_id": "{\"device_id\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"account_uuid\":\"00000000-0000-4000-8000-000000000000\",\"session_id\":\"00000000-0000-4000-8000-000000000001\"}"
+    }
+  },
+  "notes": "Generated offline by the pinned compatibility harness with deterministic synthetic inputs."
+}

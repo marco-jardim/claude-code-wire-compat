@@ -1,0 +1,5 @@
+const FALLBACK_CLAUDE_CLI_VERSION = "2.1.195";
+const ANTHROPIC_SDK_VERSION = "0.94.0";
+const CLI_TO_SDK_VERSION = new Map([["2.1.195", "0.94.0"]]);
+const ANTHROPIC_MESSAGES_ENDPOINT =
+  "https://api.anthropic.com/v1/messages?beta=true";
