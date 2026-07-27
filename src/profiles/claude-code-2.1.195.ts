@@ -42,24 +42,6 @@ export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
       cacheDiagnosisEnabled: false,
     },
     /**
-     * Retained only as a drift-detection anchor against the upstream plugin.
-     * It does not influence emitted betas; `src/betas.ts` is authoritative.
-     */
-    orderedBetas: [
-      "oauth-2025-04-20",
-      "claude-code-20250219",
-      "interleaved-thinking-2025-05-14",
-      "prompt-caching-scope-2026-01-05",
-      "extended-cache-ttl-2025-04-11",
-      "context-management-2025-06-27",
-      "effort-2025-11-24",
-      "web-search-2025-03-05",
-      "advisor-tool-2026-03-01",
-      "context-hint-2026-04-09",
-      "redact-thinking-2026-02-12",
-      "thinking-token-count-2026-05-13",
-    ],
-    /**
      * Verbatim genuine-client catalogue at byte offset 226599191.
      * `defaultEffort` is policy exposed as catalogue data; this package must
      * never apply it to a request.

@@ -26,6 +26,8 @@ const goldenManifestPath = path.join(
   "golden",
   "manifest.json",
 );
+const betaRegistryPath = path.join(repositoryRoot, "src", "beta-registry.ts");
+const countTokensPath = path.join(repositoryRoot, "src", "count-tokens.ts");
 
 const canonicalHeaderNames = [
   "anthropic-beta",
@@ -76,9 +78,6 @@ function quotedArray(source, name) {
 }
 
 function profileValues(profileSource) {
-  const orderedBetasMatch = profileSource.match(
-    /orderedBetas:\s*\[([\s\S]*?)\],/,
-  );
   return {
     id:
       quotedConstant(profileSource, "id") ??
@@ -86,36 +85,52 @@ function profileValues(profileSource) {
     cliVersion: profileSource.match(/\bcliVersion:\s*["']([^"']+)["']/)?.[1],
     sdkVersion: profileSource.match(/\bsdkVersion:\s*["']([^"']+)["']/)?.[1],
     endpoint: profileSource.match(/\bendpoint:\s*["']([^"']+)["']/)?.[1],
-    orderedBetas:
-      orderedBetasMatch?.[1] === undefined
-        ? undefined
-        : [...orderedBetasMatch[1].matchAll(/["']([^"']+)["']/g)].map(
-            (item) => item[1],
-          ),
   };
 }
 
-function upstreamOrderedBetas(headers, expectedValues) {
+/*
+ * Every beta identifier this package can put on the wire. That is the genuine
+ * client's beta registry plus the count-tokens identifier, which is deliberately
+ * NOT a registry entry: the vendored SDK appends it inside its countTokens
+ * transport rather than the client composing it, so it is modelled separately in
+ * src/count-tokens.ts. Upstream pushes it into the same array, so the drift
+ * check has to know about both sources or it reports a false positive.
+ */
+function knownBetaHeaders(registrySource, countTokensSource) {
+  const headers = new Set(
+    [...registrySource.matchAll(/\bheader:\s*["']([^"']+)["']/g)].map(
+      (match) => match[1],
+    ),
+  );
+  const tokenCounting = quotedConstant(
+    countTokensSource,
+    "TOKEN_COUNTING_BETA",
+  );
+  if (tokenCounting !== undefined) headers.add(tokenCounting);
+  return headers;
+}
+
+/*
+ * Collect every beta identifier the upstream source can emit. Emission ORDER is
+ * deliberately not compared: this package composes betas as a sequence of
+ * guarded pushes whose order is emergent from the model and host state, so no
+ * single canonical ordering exists to compare against. What still carries a
+ * drift signal is membership -- an upstream beta absent from this package's
+ * registry means upstream has adopted a feature this package cannot express.
+ */
+function upstreamBetaHeaders(headers) {
   const explicit = quotedArray(headers, "ORDERED_BETAS");
   if (explicit !== undefined) return explicit;
 
-  if (!Array.isArray(expectedValues)) return undefined;
-
-  const expected = new Set(expectedValues);
-  const ordered = [];
+  const collected = [];
   const initialBetas = headers.match(
     /\bconst\s+betas\s*=\s*\[([\s\S]*?)\]/,
   )?.[1];
-  const signaturePushStart = headers.indexOf(
-    "betas.push(CLAUDE_CODE_BETA_FLAG)",
-  );
-  const orderedPushSource =
-    signaturePushStart < 0 ? "" : headers.slice(signaturePushStart);
   const pushArguments = [
     ...(initialBetas === undefined
       ? []
       : initialBetas.matchAll(/["']([^"']+)["']/g)),
-    ...orderedPushSource.matchAll(
+    ...headers.matchAll(
       /\bbetas\.push\(\s*(?:["']([^"']+)["']|([A-Z_]+))\s*\)/g,
     ),
   ];
@@ -124,15 +139,11 @@ function upstreamOrderedBetas(headers, expectedValues) {
     const value =
       match[1] ??
       (match[2] === undefined ? undefined : quotedConstant(headers, match[2]));
-    if (
-      value !== undefined &&
-      expected.has(value) &&
-      !ordered.includes(value)
-    ) {
-      ordered.push(value);
+    if (value !== undefined && !collected.includes(value)) {
+      collected.push(value);
     }
   }
-  return ordered;
+  return collected;
 }
 
 function cliSdkPairMatches(requestHeaders, cliVersion, sdkVersion) {
@@ -171,15 +182,6 @@ function endpointMatches(
     /searchParams\.set\(\s*["']beta["']\s*,\s*["']true["']\s*\)/.test(
       indexSource,
     )
-  );
-}
-
-function sameOrderedValues(left, right) {
-  return (
-    Array.isArray(left) &&
-    Array.isArray(right) &&
-    left.length === right.length &&
-    left.every((value, index) => value === right[index])
   );
 }
 
@@ -239,6 +241,8 @@ async function verify(sourceRoot) {
 
   const [
     profileSource,
+    registrySource,
+    countTokensSource,
     localManifestSource,
     requestHeaders,
     headers,
@@ -246,6 +250,8 @@ async function verify(sourceRoot) {
     indexSource,
   ] = await Promise.all([
     readFile(profilePath, "utf8"),
+    readFile(betaRegistryPath, "utf8"),
+    readFile(countTokensPath, "utf8"),
     readFile(goldenManifestPath, "utf8"),
     readFile(sourceFile(sourceRoot, "lib", "request-headers.mjs"), "utf8"),
     readFile(sourceFile(sourceRoot, "lib", "mimicry", "headers.mjs"), "utf8"),
@@ -288,13 +294,13 @@ async function verify(sourceRoot) {
     endpointMatches(profile.endpoint, requestHeaders, headers, indexSource),
     "endpoint",
   );
+  const upstreamBetas = upstreamBetaHeaders(headers);
+  const knownHeaders = knownBetaHeaders(registrySource, countTokensSource);
   recordDrift(
     drifts,
-    sameOrderedValues(
-      upstreamOrderedBetas(headers, profile.orderedBetas),
-      profile.orderedBetas,
-    ),
-    "orderedBetas",
+    upstreamBetas.length > 0 &&
+      upstreamBetas.every((beta) => knownHeaders.has(beta)),
+    "betaRegistry",
   );
   recordDrift(
     drifts,

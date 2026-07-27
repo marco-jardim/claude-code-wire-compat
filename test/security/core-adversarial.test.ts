@@ -75,7 +75,7 @@ function headerInput(extraHeaders: readonly HeaderPair[]): unknown {
     accessToken: input["accessToken"],
     runtime: input["runtime"],
     clientRequestId: input["clientRequestId"],
-    betaFeatures: CLAUDE_CODE_2_1_195_PROFILE.orderedBetas,
+    betaFeatures: ["oauth-2025-04-20", "claude-code-20250219"],
     extraHeaders,
     profile: CLAUDE_CODE_2_1_195_PROFILE,
   };

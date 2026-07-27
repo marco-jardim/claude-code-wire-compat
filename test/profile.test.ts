@@ -4,21 +4,6 @@ import { describe, expect, it } from "vitest";
 
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../src/profiles/claude-code-2.1.195.js";
 
-const EXPECTED_BETAS = [
-  "oauth-2025-04-20",
-  "claude-code-20250219",
-  "interleaved-thinking-2025-05-14",
-  "prompt-caching-scope-2026-01-05",
-  "extended-cache-ttl-2025-04-11",
-  "context-management-2025-06-27",
-  "effort-2025-11-24",
-  "web-search-2025-03-05",
-  "advisor-tool-2026-03-01",
-  "context-hint-2026-04-09",
-  "redact-thinking-2026-02-12",
-  "thinking-token-count-2026-05-13",
-] as const;
-
 const EXPECTED_MODELS = {
   "claude-3-5-haiku": {
     family: "haiku",
@@ -174,10 +159,6 @@ describe("CLAUDE_CODE_2_1_195_PROFILE", () => {
     );
   });
 
-  it("pins the complete beta ordering vocabulary", () => {
-    expect(CLAUDE_CODE_2_1_195_PROFILE.orderedBetas).toEqual(EXPECTED_BETAS);
-  });
-
   it("pins exactly the exhaustive supported-model allowlist", () => {
     expect(Object.keys(CLAUDE_CODE_2_1_195_PROFILE.supportedModels)).toEqual([
       "claude-3-5-haiku",
@@ -223,9 +204,6 @@ describe("CLAUDE_CODE_2_1_195_PROFILE", () => {
 
   it("deep-freezes the complete profile", () => {
     expect(Object.isFrozen(CLAUDE_CODE_2_1_195_PROFILE)).toBe(true);
-    expect(Object.isFrozen(CLAUDE_CODE_2_1_195_PROFILE.orderedBetas)).toBe(
-      true,
-    );
 
     for (const model of Object.values(
       CLAUDE_CODE_2_1_195_PROFILE.supportedModels,

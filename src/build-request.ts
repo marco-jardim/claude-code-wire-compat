@@ -134,7 +134,6 @@ const OVERRIDE_KEYS = new Set([
   "contextHintEnabled",
   "betaPolicy",
   "supportedModels",
-  "orderedBetas",
 ]);
 const MODEL_KEYS = new Set([
   "family",
@@ -289,13 +288,6 @@ function validateCrypto(value: unknown): Pick<Crypto, "subtle"> | undefined {
 function requireNonEmptyString(value: unknown): string {
   if (typeof value !== "string" || value.length === 0) fail();
   return value;
-}
-
-function parseNonEmptyUniqueStrings(value: unknown): readonly string[] {
-  if (!Array.isArray(value) || value.length === 0) fail();
-  const result = value.map(requireNonEmptyString);
-  if (new Set(result).size !== result.length) fail();
-  return Object.freeze(result);
 }
 
 function parseCatalogueCapabilities(value: unknown): readonly string[] {
@@ -509,13 +501,6 @@ function validateProfileOverride(value: unknown): ClaudeCodeProfileOverride {
       ? {
           supportedModels: parseSupportedModels(
             ownValue(value, "supportedModels"),
-          ),
-        }
-      : {}),
-    ...(Object.hasOwn(value, "orderedBetas")
-      ? {
-          orderedBetas: parseNonEmptyUniqueStrings(
-            ownValue(value, "orderedBetas"),
           ),
         }
       : {}),

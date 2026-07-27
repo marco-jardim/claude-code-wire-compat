@@ -234,7 +234,6 @@ describe("build-request surviving input-validation mutants", () => {
             ],
           },
         },
-        orderedBetas: ["fresh-beta"],
       },
     });
 

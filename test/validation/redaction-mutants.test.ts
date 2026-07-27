@@ -107,7 +107,6 @@ function profile(): ClaudeCodeProtocolProfile {
       interleavedThinking: true,
     },
     supportedModels: {},
-    orderedBetas: [],
   };
 }
 

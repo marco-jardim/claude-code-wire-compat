@@ -168,6 +168,10 @@ describe("protocol profile override", () => {
     },
   );
 
+  // Each case is wrapped in its own array because `it.each` SPREADS array
+  // elements as arguments: a bare `[]` case supplies zero arguments, so
+  // `profileOverride` would arrive as `undefined` rather than as the empty
+  // array under test. Wrapping keeps every case a single argument.
   it.each([[null], [[]], ["2.1.196"], [new Date()]])(
     "rejects a non-record override %#",
     async (profileOverride) => {
@@ -190,19 +194,6 @@ describe("protocol profile override", () => {
       code: "INVALID_INPUT",
     });
   });
-
-  // Each case is wrapped in its own array because `it.each` SPREADS array
-  // elements as arguments: a bare `[]` supplies zero arguments and a bare
-  // `["beta-one", "beta-one"]` supplies two, so neither reaches the callback
-  // as the array value under test.
-  it.each([[[]], [["beta-one", "beta-one"]]])(
-    "rejects an invalid ordered beta list %#",
-    async (orderedBetas) => {
-      await expect(buildWithOverride({ orderedBetas })).rejects.toMatchObject({
-        code: "INVALID_INPUT",
-      });
-    },
-  );
 
   it("uses an overridden supported-model table for model resolution", async () => {
     const model = "claude-emergency-5-0";
@@ -365,6 +356,23 @@ describe("protocol profile override", () => {
       code: "INVALID_INPUT",
     });
   });
+
+  it.each([
+    // `orderedBetas` was a real protocol field on the public contract until it
+    // was removed in this work package; `composeBetas` now derives beta order
+    // from model and host state. The key must never be silently accepted
+    // again, so it is pinned here alongside never-existing names.
+    "orderedBetas",
+    "notAProfileField",
+    "betaOrder",
+  ])(
+    "rejects an unrecognised top-level override key %s",
+    async (unrecognisedKey) => {
+      await expect(
+        buildWithOverride({ [unrecognisedKey]: ["effort-2025-11-24"] }),
+      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    },
+  );
 
   it.each([
     null,
@@ -573,23 +581,5 @@ describe("protocol profile override", () => {
     await expect(buildWithOverride({ supportedModels })).rejects.toMatchObject({
       code: "INVALID_INPUT",
     });
-  });
-
-  it.each([[null], ["beta"], [[""]], [[7]], [["beta", "beta"]]])(
-    "rejects malformed ordered betas %#",
-    async (orderedBetas) => {
-      await expect(buildWithOverride({ orderedBetas })).rejects.toMatchObject({
-        code: "INVALID_INPUT",
-      });
-    },
-  );
-
-  it("preserves a valid ordered beta override", async () => {
-    const result = await buildWithOverride({
-      orderedBetas: ["override-beta-one", "override-beta-two"],
-    });
-
-    expect(result.method).toBe("POST");
-    expect(Object.isFrozen(result)).toBe(true);
   });
 });

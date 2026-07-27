@@ -48,10 +48,10 @@ describe("offline protocol drift verifier", () => {
       forbidden: "example.invalid",
     },
     {
-      fixture: "beta-order",
-      field: "orderedBetas",
+      fixture: "unknown-beta",
+      field: "betaRegistry",
       category: "protocol",
-      forbidden: "oauth-2025-04-20",
+      forbidden: "unmodelled-upstream-beta-2099-01-01",
     },
     {
       fixture: "header-name",

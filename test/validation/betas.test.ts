@@ -5,10 +5,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { composeBetas } from "../../src/betas.js";
-import type {
-  ClaudeCodeCapabilities,
-  ClaudeCodeProtocolProfile,
-} from "../../src/contracts.js";
+import type { ClaudeCodeCapabilities } from "../../src/contracts.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
 
 const CAPABILITIES: ClaudeCodeCapabilities = {
@@ -31,16 +28,6 @@ const INPUT = {
 } as const;
 
 describe("composeBetas policy combinations", () => {
-  it("uses push order and ignores the retained orderedBetas field", () => {
-    const profile: ClaudeCodeProtocolProfile = {
-      ...CLAUDE_CODE_2_1_195_PROFILE,
-      orderedBetas: ["effort-2025-11-24", "oauth-2025-04-20"],
-    };
-    expect(composeBetas(INPUT, profile)).toEqual(
-      composeBetas(INPUT, CLAUDE_CODE_2_1_195_PROFILE),
-    );
-  });
-
   it("emits context hint when the profile enables it", () => {
     const profile = {
       ...CLAUDE_CODE_2_1_195_PROFILE,

@@ -684,7 +684,6 @@ export interface ClaudeCodeProfileOverride {
   readonly contextHintEnabled?: boolean;
   readonly betaPolicy?: ClaudeCodeBetaPolicy;
   readonly supportedModels?: ClaudeCodeProtocolProfile["supportedModels"];
-  readonly orderedBetas?: readonly string[];
 }
 
 export interface ClaudeCodeRuntimeIdentity {
@@ -822,11 +821,6 @@ export interface ClaudeCodeProtocolProfile {
   readonly contextHintEnabled: boolean;
   readonly betaPolicy: ClaudeCodeBetaPolicy;
   readonly supportedModels: Readonly<Record<string, ClaudeCodeCatalogueEntry>>;
-  /**
-   * Retained only as a drift-detection anchor against the upstream plugin.
-   * It does not influence emitted betas; `src/betas.ts` is authoritative.
-   */
-  readonly orderedBetas: readonly string[];
 }
 
 export type ClaudeCodeWireErrorCode =
