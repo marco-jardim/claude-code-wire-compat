@@ -1,0 +1,13 @@
+# Verbatim GPL-3.0-or-later material ported from opencode-anthropic-fix at
+# commit 466d500. Reformatting these files would edit third-party content whose
+# provenance headers assert a byte-faithful port, so Prettier must not touch
+# them. See docs/ATTRIBUTION.md.
+docs/protocol/
+
+# Build output and dependency trees.
+dist/
+coverage/
+node_modules/
+
+# Evidence artefacts are captured verbatim, not authored.
+.com466-evidence/
