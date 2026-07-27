@@ -2,7 +2,96 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.9] - Unreleased
+## [0.1.0-rc.10] - Unreleased
+
+This release rebuilds the request model against the genuine client's own
+predicates rather than against a reimplementation of them. Several `0.1.0-rc.9`
+decisions are reversed below; where they are, the reversal is the corrected one.
+
+### Removed
+
+- `UNSUPPORTED_MODEL` and the hand-written alias table. The genuine client never
+  rejects a model identifier: it lowercases the string, runs an ordered
+  `includes()` chain to classify it, and sends the caller's string on the wire.
+  Rejecting `claude-sonnet-4-5-20250929` and silently rewriting `opus-4.5` onto
+  `claude-opus-4-5` were both divergences, and the rewrite put a different
+  identifier on the wire than the caller asked for.
+- `contextHint` from `ClaudeCodeCapabilities`. It was never a model capability
+  upstream — the client gates it on host state and a feature flag, never on the
+  model — and nothing read the per-model value.
+- `defaultCapabilities` from the protocol profile, replaced by
+  `contextHintEnabled` and `betaPolicy`.
+- `orderedBetas` from the profile and from `profileOverride`. A flat ordered
+  array cannot express the client's beta selection, which is emergent from
+  seventeen guarded pushes. Protocol drift is now detected by checking upstream's
+  beta identifiers against the 28-entry registry instead of against an ordering.
+
+### Changed
+
+- The model identifier reaches the wire verbatim, minus any `[1m]`/`[2m]`
+  marker, exactly as the client sends it. Classification into a known identifier
+  still happens, but only to resolve capabilities.
+- `ClaudeCodeCapabilities` carries nine booleans instead of four:
+  `thinking`, `adaptiveThinking`, `interleavedThinking`, `effort`, `maxEffort`,
+  `xhighEffort`, `contextManagement`, `temperature` and
+  `rejectsDisabledThinking`. Each is a port of one client predicate, cited by
+  name and byte offset in the source.
+- **`claude-opus-4-5` is effort-capable again**, reversing `0.1.0-rc.9`. That
+  release read catalogue membership as the whole rule. It is only one of four
+  tests in the client's predicate, and the fallback returns true on the
+  first-party provider, so the model reaches effort support without a catalogue
+  grant. The predicates governing effort and temperature use different exclusion
+  lists, and `claude-opus-4-5` appears in one but not the other.
+- **The model family union regains `mythos` and gains `unknown`**, reversing
+  `0.1.0-rc.9`. `claude-mythos-5` has no catalogue entry but is recognised by the
+  client's classifier and named in six of its predicates.
+- `temperature` is now model-gated. The client emits it only when extended
+  thinking is inactive _and_ the model is on an allowlist, so Opus 4.7, Opus 4.8,
+  Fable 5 and Mythos 5 never receive it. A caller value supplied outside that
+  window is discarded rather than rejected, matching the client.
+- Extended thinking now resolves the way the client resolves it. Whether a
+  request becomes `adaptive` or `enabled` is decided by the model's capability,
+  not by the caller's `type`; a caller asking for `enabled` on an
+  adaptive-capable model gets `adaptive` and their `budgetTokens` is discarded.
+  Budgets are clamped to `max_tokens - 1`.
+- `thinking` accepts `disabled` and an optional `display` of `summarized` or
+  `omitted`. `budgetTokens` is now optional on `enabled`.
+- `tool_choice` of type `tool` is demoted to `auto` while extended thinking is
+  active.
+- Beta identifiers are emitted in the client's push order, which is emergent and
+  must not be sorted. `claude-code-20250219` is no longer sent for Haiku models,
+  and `web-search-2025-03-05` is no longer sent at all, because the client
+  pushes it only on Vertex and Foundry.
+- `extended-cache-ttl-2025-04-11` is now conditional on a one-hour cache TTL.
+
+### Added
+
+- `buildClaudeCodeCountTokensRequest`, targeting
+  `/v1/messages/count_tokens?beta=true`. Its beta set is the intersection of the
+  request beta set with the four the client's transport permits, and the
+  transport's own `token-counting-2024-11-01` is appended to the header. It
+  applies the same input canonicalisation and the same fail-closed guarantees as
+  the messages endpoint.
+- `selectAntiVerbositySection` and `antiVerbosityText`, exposing the client's
+  three-way anti-verbosity prompt selection. The prompt text is extracted
+  byte-exactly from the client and is never injected into a request; callers
+  assemble their own system prompt.
+- `betaPolicy` on the profile: eleven booleans, each standing for one upstream
+  gate that depends on host state this package cannot observe, each pinned to its
+  default first-party value and overridable.
+- The pinned catalogue now carries each entry's `context` object and
+  `defaultEffort`. `defaultEffort` is exposed, never applied — the client reads
+  it only in its model picker, not in its request builder.
+- `xhigh` joins the effort union.
+
+### Fixed
+
+- The publish workflow passes the npm auth token to the publish step. Without it
+  the token placeholder expanded empty and the registry answered `E404` on a
+  scoped package rather than `E401`, which is what failed the `0.1.0-rc.8` and
+  `0.1.0-rc.9` publishes.
+
+## [0.1.0-rc.9] - 2026-07-26
 
 ### Fixed
 
