@@ -47,14 +47,32 @@ jobs:
           # leaking a variable into the environment of every later step.
           echo "tarball=$(npm pack --silent)" >> "$GITHUB_OUTPUT"
       - name: Publish with npm provenance
+        # Authentication is npm trusted publishing over OIDC, not a token. The
+        # trust is configured on npmjs.com against this repository and this
+        # workflow filename, and the `id-token: write` permission above is what
+        # lets the runner mint the OIDC token npm validates.
+        #
+        # NODE_AUTH_TOKEN must NOT be set here, not even to an empty string.
+        # setup-node writes an .npmrc containing
+        # //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}; if that variable
+        # exists at all, npm authenticates with its value and never attempts the
+        # OIDC exchange. An empty value is still a value, which is why this is a
+        # deletion rather than a blank assignment.
+        #
+        # History worth keeping: v0.1.0-rc.8 and v0.1.0-rc.9 failed because the
+        # variable was absent while the .npmrc placeholder still expected it, and
+        # no trusted publisher existed to fall back to. npm answered E404 rather
+        # than E401 on the scoped package, because the registry hides a package's
+        # existence from unauthorised callers. If publishing breaks again with
+        # E404 or ENEEDAUTH, that is an authentication failure, not a missing
+        # package, and the fastest recovery is to restore
+        # `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` on this step. The secret is
+        # deliberately left in place for exactly that reason.
         env:
-          # setup-node writes an .npmrc containing
-          # //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}, so the token has
-          # to reach this step under that exact name. Omitting it leaves the
-          # placeholder empty and npm answers E404 on a scoped package rather
-          # than E401, because the registry hides existence from unauthorised
-          # callers. That is what failed the v0.1.0-rc.8 and v0.1.0-rc.9 runs.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Trusted publishing generates provenance on its own, so this is
+          # belt-and-braces rather than load-bearing. It is kept because it also
+          # covers the token fallback described above, where provenance is NOT
+          # automatic.
           NPM_CONFIG_PROVENANCE: true
         shell: bash
         run: |
