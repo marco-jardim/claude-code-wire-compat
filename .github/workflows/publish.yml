@@ -8,7 +8,9 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  # contents: write, not read: the release-asset upload below is a write against
+  # the release that triggered this workflow.
+  contents: write
 
 jobs:
   publish:
@@ -28,6 +30,22 @@ jobs:
       - run: npm run test:coverage
       - run: npm run build
       - run: npm run pack:check
+      - name: Pack the release artefact once
+        id: pack
+        # This is the ONLY npm pack that produces a real file in this workflow;
+        # pack:check above is --dry-run. Both the registry publish and the
+        # GitHub release upload consume this exact tarball, because a downstream
+        # consumer pins the GitHub asset by URL and must receive byte-for-byte
+        # the artefact the registry received, not a second pack that merely
+        # ought to match. It runs after npm run build so dist/ is present.
+        shell: bash
+        run: |
+          # npm pack --silent prints only the filename, so no version is
+          # hardcoded. The name is passed on as a step output rather than via
+          # $GITHUB_ENV: it is consumed by two named steps, so an explicit
+          # steps.pack.outputs reference documents the dataflow instead of
+          # leaking a variable into the environment of every later step.
+          echo "tarball=$(npm pack --silent)" >> "$GITHUB_OUTPUT"
       - name: Publish with npm provenance
         env:
           # setup-node writes an .npmrc containing
@@ -40,9 +58,29 @@ jobs:
           NPM_CONFIG_PROVENANCE: true
         shell: bash
         run: |
+          # Publishing the prebuilt tarball by path, rather than letting npm
+          # pack implicitly, is what makes the registry artefact and the release
+          # asset the same bytes.
           VERSION="$(node -p "require('./package.json').version")"
+          TARBALL="${{ steps.pack.outputs.tarball }}"
           if [[ "$VERSION" == *-* ]]; then
-            npm publish --access public --tag beta
+            npm publish "$TARBALL" --access public --tag beta
           else
-            npm publish --access public --tag latest
+            npm publish "$TARBALL" --access public --tag latest
           fi
+      - name: Attach the packed tarball to the GitHub release
+        # Uploads the identical file the publish step just sent to the registry,
+        # taken from steps.pack rather than repacked, so the two artefacts cannot
+        # drift. A downstream consumer pins this package by its GitHub release
+        # tarball URL rather than by registry version, so a release published
+        # without the .tgz asset breaks that consumer: v0.1.0-rc.10 shipped to npm
+        # with an empty release and had to be patched by hand. Only a release
+        # event carries a tag to upload against, so workflow_dispatch runs skip
+        # this step while still packing and publishing above.
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            "${{ steps.pack.outputs.tarball }}" --clobber

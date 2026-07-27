@@ -54,9 +54,9 @@ describe("CI policy", () => {
     expect(publish).toContain("workflow_dispatch:");
     expect(publish).toContain("release:");
     expect(publish).toContain("id-token: write");
-    expect(publish).toContain("contents: read");
+    expect(publish).toContain("contents: write");
     expect(publish).toContain("NPM_CONFIG_PROVENANCE: true");
-    expect(publish).toContain("npm publish --access public");
+    expect(publish).toContain('npm publish "$TARBALL" --access public');
     expect(publish).toContain("--tag beta");
     expect(publish).toContain("--tag latest");
   });
