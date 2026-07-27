@@ -93,3 +93,53 @@ package and is therefore not listed as a ported file.
 the one every count in this file was verified against. A raw newline count
 (`wc -l`) is larger for every file because blank lines are excluded from this
 metric.
+
+## Intentionally not ported
+
+The upstream `docs/` tree contains more than the protocol corpus. The documents
+below were reviewed and **deliberately left behind**: none of them carries
+protocol knowledge that a future maintainer would need to re-derive the wire
+contract. Recording them here is what makes the port auditable — a reader can
+distinguish an intentional exclusion from an oversight.
+
+| Excluded path                             | Source lines | Category           | Reason                                                                                                                                      |
+| ----------------------------------------- | -----------: | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/LATENCY_ANALYSIS_REPORT.md`         |          363 | plugin-operational | Measures latency of the upstream plugin's own runtime, not the wire contract.                                                               |
+| `docs/EXPLORATION_COMPLETE.md`            |          307 | planning material  | Status report closing an exploration effort; supersedes nothing in the corpus.                                                              |
+| `docs/EXPLORATION_EXECUTIVE_SUMMARY.md`   |          314 | planning material  | Management summary of that exploration; its protocol findings live in the ported corpus.                                                    |
+| `docs/EXPLORATION_INDEX.md`               |          327 | planning material  | Index over upstream-only documents; every link would dangle in this repository.                                                             |
+| `docs/EXPLORATION_SUMMARY.md`             |          345 | planning material  | Second summary of the same exploration effort; duplicates ported findings.                                                                  |
+| `docs/fork-customizations.md`             |          148 | plugin-operational | Describes fork-specific plugin behaviour and configuration, not Claude Code's wire contract.                                                |
+| `docs/future-improvements.md`             |          280 | planning material  | Backlog of proposed upstream plugin work; speculative rather than observed.                                                                 |
+| `docs/agent-native-audit.md`              |          209 | plugin-operational | Audits the upstream plugin's agent-native surface, which this package does not implement.                                                   |
+| `docs/plan-b-new-plugins-feasibility.md`  |          526 | planning material  | Feasibility study for alternative plugin architectures; contains no wire observation.                                                       |
+| `docs/mimicry/strategy-decision-table.md` |           45 | plugin-operational | Encodes the plugin's account-selection strategy, an operational concern outside this package.                                               |
+| `docs/plans/`                             |     20 files | planning material  | Whole planning tree: 13 files in `docs/plans/` plus 7 files under `docs/plans/qa/`; execution plans and QA reviews, not protocol knowledge. |
+
+Counts were verified against commit `466d500` on 2026-07-27. **Correction to the
+COM-466 plan:** for the planning tree the plan stated 14 files in `docs/plans/`
+plus 7 under `docs/plans/qa/`; the verified count is **13** files directly in
+`docs/plans/` (12 Markdown files plus `afcw-upstream-watcher.json`) plus **7**
+files under `docs/plans/qa/`, for 20 files in total. The verified numbers are
+what `test/docs/provenance.test.ts` pins.
+
+## Known corpus drift
+
+The port is pinned to commit `466d500`. The upstream extraction branch
+(`refactor/extract-wire-compat`, at the time of the port `8f1d954`) has since
+edited six documents that are part of this corpus or its exclusion list:
+
+| Upstream document                               | Line delta since `466d500` |
+| ----------------------------------------------- | -------------------------- |
+| `docs/mimese-http-header-system-prompt.md`      | +21                        |
+| `docs/anti-verbosity-and-cache-transparency.md` | +15                        |
+| `docs/claude-code-2.1.143-analysis.md`          | +9                         |
+| `docs/claude-code-2.1.150-analysis.md`          | +4                         |
+| `docs/claude-code-2.1.159-analysis.md`          | +3                         |
+| `docs/EXPLORATION_EXECUTIVE_SUMMARY.md`         | +3 (not ported)            |
+
+That newer content is **not** included here, because `466d500` is the commit
+that `NOTICE`, [`docs/source-trace.md`](./source-trace.md), and this file all
+declare, and porting from an unmerged branch would break that single pinned
+provenance chain. This is recorded as known drift for a future corpus refresh,
+which must re-pin the commit in every provenance header, in `NOTICE`, and here.
