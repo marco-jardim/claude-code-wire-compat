@@ -65,6 +65,94 @@ describe("CI policy", () => {
     expect(publish).toContain("--tag latest");
   });
 
+  it("authenticates publication with OIDC rather than a long-lived token", () => {
+    // npm trusted publishing is configured on npmjs.com against this repository
+    // and `publish.yml`. The npm CLI only attempts the OIDC exchange when no
+    // token is present: setup-node writes an .npmrc whose auth line expands
+    // ${NODE_AUTH_TOKEN}, and if that variable is defined at all — an empty
+    // string included — npm authenticates with its value instead. So the
+    // assertion has to be that the name is absent from the file entirely, not
+    // that it is unset or blank.
+    //
+    // The NPM_TOKEN repository secret is intentionally retained as a one-line
+    // recovery path; this guard is what stops that line from creeping back in
+    // silently and quietly downgrading the release path to token auth.
+    //
+    // The match is deliberately anchored to an active YAML assignment rather
+    // than the bare identifier. The workflow's own comments name the variable —
+    // both to explain why it is absent and to record the recovery line verbatim
+    // — so a substring search would flag the documentation that exists to
+    // prevent the very regression being guarded against.
+    const activeAssignments = publish
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => !line.startsWith("#"));
+    expect(
+      activeAssignments.filter((line) => line.startsWith("NODE_AUTH_TOKEN:")),
+    ).toEqual([]);
+    expect(
+      activeAssignments.filter((line) => line.includes("secrets.NPM_TOKEN")),
+    ).toEqual([]);
+    // Trusted publishing requires the runner to mint an OIDC token, and npm
+    // requires CLI >= 11.5.1 to perform the exchange. Node 24 ships npm 11.
+    expect(publish).toContain("id-token: write");
+    expect(publish).toContain("node-version: 24");
+  });
+
+  it("detects a token assignment that is actually active", () => {
+    // Proves the narrowed matcher in the test above is not vacuously true. A
+    // guard that only ever sees a clean file cannot distinguish "no token" from
+    // "matcher is broken", so the matcher is exercised against both forms here.
+    const activeLines = (workflow: string) =>
+      workflow
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => !line.startsWith("#"));
+
+    const withToken = [
+      "        env:",
+      "          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}",
+      "          NPM_CONFIG_PROVENANCE: true",
+    ].join("\n");
+    expect(
+      activeLines(withToken).filter((line) =>
+        line.startsWith("NODE_AUTH_TOKEN:"),
+      ),
+    ).toHaveLength(1);
+    expect(
+      activeLines(withToken).filter((line) =>
+        line.includes("secrets.NPM_TOKEN"),
+      ),
+    ).toHaveLength(1);
+
+    // An empty assignment must also be caught: npm treats a defined-but-blank
+    // variable as a credential and skips the OIDC exchange entirely.
+    const withBlankToken = ["        env:", "          NODE_AUTH_TOKEN:"].join(
+      "\n",
+    );
+    expect(
+      activeLines(withBlankToken).filter((line) =>
+        line.startsWith("NODE_AUTH_TOKEN:"),
+      ),
+    ).toHaveLength(1);
+
+    // Prose naming the variable must NOT be caught, which is the whole reason
+    // the matcher is anchored rather than a substring search.
+    const commentedOnly = [
+      "        # NODE_AUTH_TOKEN must not be set here.",
+      "        # Recovery: NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}",
+      "        env:",
+      "          NPM_CONFIG_PROVENANCE: true",
+    ].join("\n");
+    expect(
+      activeLines(commentedOnly).filter(
+        (line) =>
+          line.startsWith("NODE_AUTH_TOKEN:") ||
+          line.includes("secrets.NPM_TOKEN"),
+      ),
+    ).toEqual([]);
+  });
+
   it("pins every GitHub Action to an immutable commit SHA", () => {
     for (const workflow of [ci, publish]) {
       const refs = [...workflow.matchAll(/uses:\s*(\S+)/gu)].map(
