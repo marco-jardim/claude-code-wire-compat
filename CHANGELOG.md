@@ -2,7 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.10] - Unreleased
+## [0.1.0-rc.11] - Unreleased
+
+### Changed
+
+- `max_tokens` is now capped at the model's own default output limit before it
+  reaches the wire (D16). The genuine client computes
+  `Fi = Math.min(callerValue, qct(model))` and sends `Fi`; `qct` resolves to
+  `Xxe(model).default` for any caller that reads no environment, which is every
+  caller of this package. Asking for 100000 tokens on `claude-opus-4-8` now
+  sends 64000, where previously the caller's value went out unchanged.
+
+  The cap is silent, matching the client: an oversized request is lowered, never
+  rejected. Requests at or below the model default are unaffected, so callers
+  already sending sane values see no change.
+
+  The bound is the model **default**, not its upper limit. Upstream only ever
+  compares the `CLAUDE_CODE_MAX_OUTPUT_TOKENS` environment value against
+  `upperLimit`, and this package reads no environment.
+
+  This also moves the thinking budget, because upstream feeds the same clamped
+  `Fi` into `Tr = Math.min(Fi - 1, Tr)`. On a non-adaptive model an enabled
+  thinking request with no explicit budget now resolves against the capped
+  ceiling rather than the caller's original number.
+
+## [0.1.0-rc.10] - 2026-07-27
 
 This release rebuilds the request model against the genuine client's own
 predicates rather than against a reimplementation of them. Several `0.1.0-rc.9`

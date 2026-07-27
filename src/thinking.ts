@@ -34,6 +34,14 @@ import type {
  * This package reproduces that. Rejecting the mismatch instead — which is what
  * it used to do — would make its traffic distinguishable from the real client's,
  * which is the one thing it exists to avoid.
+ *
+ * This module also owns `modelOutputTokenLimits` and `clampMaxTokens`, which
+ * bound `max_tokens` rather than anything thinking-specific. They live here
+ * because upstream derives both from one table (`Xxe`) and feeds one clamped
+ * value (`Fi`) into both the emitted `max_tokens` and the thinking budget, so
+ * splitting them would separate two things that must not drift apart. If a
+ * third consumer of the limit table ever appears, extract all three into their
+ * own module at that point.
  */
 
 /** Permitted values of the `display` property, from the schema at 241453966. */
@@ -45,7 +53,7 @@ export interface ThinkingRequest {
   readonly display?: ThinkingDisplay;
 }
 
-export interface ThinkingBudgetLimits {
+export interface ModelOutputTokenLimits {
   readonly default: number;
   readonly upperLimit: number;
 }
@@ -64,18 +72,27 @@ export interface ResolvedThinking {
 }
 
 /**
- * Per-model thinking budget limits, ported from upstream `Xxe` at byte offset
+ * Per-model output token limits, ported from upstream `Xxe` at byte offset
  * 227378240. Keyed on the NORMALISED model id, and deliberately independent of
  * the catalogue: `claude-3-opus`, `claude-3-sonnet` and `claude-3-haiku` are
  * reachable through the normaliser but have no catalogue entry.
  *
- * Upstream additionally consults `Vkd` and `bvi`, but both adjust only
- * `default`, never `upperLimit`, and `bvi` sits behind `_vi()` which returns
- * false. Only `upperLimit` is consumed here, so neither is modelled.
+ * Both fields are load-bearing. `upperLimit` seeds the thinking budget when the
+ * caller supplies none (upstream `wvi = Xxe(e).upperLimit - 1`); `default` caps
+ * the emitted `max_tokens` (upstream `qct`, see `clampMaxTokens`).
+ *
+ * Upstream additionally consults `Vkd` and `bvi`, neither of which is modelled:
+ *
+ *   - `Vkd(e)` lowers `default` from the host config object `heather_vale`.
+ *     That object is absent on a default install, so it returns null and makes
+ *     no adjustment. Same class as `W9` in `model-capabilities.ts`: a host-side
+ *     override this package cannot observe.
+ *   - `bvi(e)` adjusts BOTH fields, but sits behind `_vi()`, which returns a
+ *     hard `false`. Dead code upstream.
  */
-export function thinkingBudgetLimits(
+export function modelOutputTokenLimits(
   normalizedId: string,
-): ThinkingBudgetLimits {
+): ModelOutputTokenLimits {
   if (normalizedId === "claude-fable-5" || normalizedId === "claude-mythos-5") {
     return { default: 64000, upperLimit: 128000 };
   }
@@ -124,6 +141,33 @@ export function thinkingBudgetLimits(
     return { default: 32000, upperLimit: 64000 };
   }
   return { default: 32000, upperLimit: 128000 };
+}
+
+/**
+ * Caps the caller's `max_tokens` at the model's default output limit, porting
+ * upstream `Fi = Math.min(En?.maxTokensOverride || s.maxOutputTokensOverride
+ * || la, la)` where `la = qct(u)`.
+ *
+ * `qct` is `Fue("CLAUDE_CODE_MAX_OUTPUT_TOKENS", <env>, t.default,
+ * t.upperLimit).effective` over `t = Xxe(model)`. `Fue` returns `t.default`
+ * untouched whenever the environment variable is unset, and only ever clamps
+ * the ENVIRONMENT value against `t.upperLimit` — never the default. This
+ * package reads no environment, so `qct` reduces to `Xxe(model).default` and
+ * `upperLimit` plays no part in this bound.
+ *
+ * The result is load-bearing twice over: it is the emitted `max_tokens`, and it
+ * is the `Fi` that `resolveThinking` clamps the thinking budget against via
+ * `Tr = Math.min(Fi - 1, Tr)`. Both call sites must receive the CLAMPED value.
+ *
+ * Upstream uses `||`, not `??`, so a zero override would fall back to the
+ * default. Unreachable here: `max_tokens` is validated as a positive integer
+ * before this runs.
+ */
+export function clampMaxTokens(
+  requested: number,
+  normalizedId: string,
+): number {
+  return Math.min(requested, modelOutputTokenLimits(normalizedId).default);
 }
 
 /**
@@ -194,7 +238,7 @@ export function resolveThinking(
       // `Tr = Math.min(Fi - 1, Tr)` where `Fi` is the emitted `max_tokens`.
       const requested =
         request.budgetTokens ??
-        thinkingBudgetLimits(normalizedId).upperLimit - 1;
+        modelOutputTokenLimits(normalizedId).upperLimit - 1;
       emitted = { budget_tokens: Math.min(maxTokens - 1, requested) };
       emitted["type"] = "enabled";
       if (display !== undefined) emitted["display"] = display;

@@ -124,6 +124,30 @@ describe("thinking wire contract", () => {
     });
   });
 
+  it("emits display on the enabled branch too", async () => {
+    // claude-opus-4-5 has thinking and interleavedThinking but NOT
+    // adaptiveThinking, so it is the only shape that reaches `display` through
+    // the enabled branch rather than the adaptive one.
+    const built = await buildClaudeCodeRequest({
+      ...base,
+      model: "claude-opus-4-5",
+      maxTokens: 5000,
+      thinking: { type: "enabled", display: "summarized" },
+    });
+    const result = JSON.parse(built.body) as Record<string, unknown>;
+    expect(result["thinking"]).toEqual({
+      budget_tokens: 4999,
+      type: "enabled",
+      display: "summarized",
+    });
+    expect(built.body.indexOf('"budget_tokens":4999')).toBeLessThan(
+      built.body.indexOf('"type":"enabled"'),
+    );
+    expect(built.body.indexOf('"type":"enabled"')).toBeLessThan(
+      built.body.indexOf('"display":"summarized"'),
+    );
+  });
+
   it("serializes budget_tokens before type", async () => {
     const built = await buildClaudeCodeRequest({
       ...base,

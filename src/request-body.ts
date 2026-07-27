@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
-import { resolveThinking } from "./thinking.js";
+import { clampMaxTokens, resolveThinking } from "./thinking.js";
 import type { ThinkingDisplay, ThinkingRequest } from "./thinking.js";
 
 import { ClaudeCodeWireError } from "./contracts.js";
@@ -1665,7 +1665,14 @@ export function buildCanonicalBody(
     }
   }
 
-  const maxTokens = requirePositiveInteger(input["maxTokens"]);
+  // D16. The genuine client never sends a `max_tokens` above the model's own
+  // default output limit; a larger caller value is silently capped, not
+  // rejected. The clamped result is reused for the thinking budget below,
+  // because upstream feeds the same `Fi` into both.
+  const maxTokens = clampMaxTokens(
+    requirePositiveInteger(input["maxTokens"]),
+    resolvedModel.id,
+  );
   const result: Record<string, unknown> = {
     model: resolvedModel.wireId,
     max_tokens: maxTokens,
