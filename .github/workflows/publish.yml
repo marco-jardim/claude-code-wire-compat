@@ -30,6 +30,13 @@ jobs:
       - run: npm run pack:check
       - name: Publish with npm provenance
         env:
+          # setup-node writes an .npmrc containing
+          # //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}, so the token has
+          # to reach this step under that exact name. Omitting it leaves the
+          # placeholder empty and npm answers E404 on a scoped package rather
+          # than E401, because the registry hides existence from unauthorised
+          # callers. That is what failed the v0.1.0-rc.8 and v0.1.0-rc.9 runs.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
         shell: bash
         run: |
