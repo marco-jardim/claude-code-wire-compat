@@ -11,6 +11,17 @@ import {
 } from "./model-capabilities.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
+/*
+ * Provenance. The emitted order is a port of the genuine client's base beta set
+ * `$9r` (byte offset 227387921), followed by the gated pushes the request
+ * builder performs afterwards (bytes 238153535-238155672). The identifiers
+ * themselves come from registry `Udd`, ported verbatim as `BETA_REGISTRY`.
+ *
+ * The order is EMERGENT, not declared: upstream neither sorts the array nor
+ * keeps a canonical list, so the sequence below is load-bearing and must not be
+ * reordered for tidiness. `docs/source-trace.md` records the same fact under
+ * "Beta registry and push order".
+ */
 export interface ComposeBetasInput {
   readonly rawModel: string;
   readonly normalizedId: string;
