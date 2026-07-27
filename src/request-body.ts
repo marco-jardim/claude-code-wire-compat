@@ -1602,6 +1602,28 @@ function contextHintEnabled(profile: unknown): boolean {
   return isRecord(profile) && profile["contextHintEnabled"] === true;
 }
 
+/**
+ * Canonicalises the message and tool lists for the count-tokens endpoint.
+ *
+ * The count-tokens body shares no other field with the messages body, but it
+ * MUST share these two canonicalisers. Reimplementing them would give the two
+ * public entry points different fail-closed guarantees for the same caller
+ * input, which is precisely the class of divergence this package exists to
+ * prevent.
+ */
+export function canonicalCountTokensLists(
+  rawMessages: unknown,
+  rawTools: unknown,
+): {
+  readonly messages: readonly Message[];
+  readonly tools: readonly ToolDefinition[];
+} {
+  return {
+    messages: messages(rawMessages),
+    tools: rawTools === undefined ? Object.freeze([]) : tools(rawTools),
+  };
+}
+
 export function buildCanonicalBody(
   rawInput: unknown,
   rawResolvedModel: unknown,

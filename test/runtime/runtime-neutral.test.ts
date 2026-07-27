@@ -67,6 +67,7 @@ describe("runtime/runtime-neutral (Wave 1 RED specification)", () => {
       "ClaudeCodeWireError",
       "DEFAULT_ANTI_VERBOSITY_POLICY",
       "antiVerbosityText",
+      "buildClaudeCodeCountTokensRequest",
       "buildClaudeCodeRequest",
       "parseBuiltClaudeCodeRequest",
       "selectAntiVerbositySection",

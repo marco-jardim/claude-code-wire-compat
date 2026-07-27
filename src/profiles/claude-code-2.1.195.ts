@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { ClaudeCodeProtocolProfile } from "../contracts.js";
+import { COUNT_TOKENS_ENDPOINT } from "../count-tokens.js";
 
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === "object") {
@@ -18,6 +19,7 @@ export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
     cliVersion: "2.1.195",
     sdkVersion: "0.94.0",
     endpoint: "https://api.anthropic.com/v1/messages?beta=true",
+    countTokensEndpoint: COUNT_TOKENS_ENDPOINT,
     entrypoint: "cli",
     userAgent: "claude-cli/2.1.195 (external, cli)",
     buildTime: "2026-06-26T01:00:56Z",

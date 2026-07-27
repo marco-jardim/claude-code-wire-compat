@@ -761,7 +761,41 @@ export interface ClaudeCodeRequestInput {
   readonly crypto?: Pick<Crypto, "subtle">;
 }
 
+/**
+ * Narrower than `ClaudeCodeRequestInput` by design. Upstream `P5e` derives the
+ * beta set from the model alone, so there is deliberately no `capabilities`
+ * field, and the count-tokens body carries no `system`, `metadata`, or
+ * `maxTokens`.
+ */
+export type ClaudeCodeCountTokensInput = Pick<
+  ClaudeCodeRequestInput,
+  | "accessToken"
+  | "model"
+  | "messages"
+  | "tools"
+  | "runtime"
+  | "clientRequestId"
+  | "profileOverride"
+  | "crypto"
+  | "app"
+  | "stainlessRetryCount"
+  | "stainlessHelper"
+  | "claudeRemoteContainerId"
+  | "claudeRemoteSessionId"
+  | "clientApp"
+  | "anthropicAdditionalProtection"
+  | "extraHeaders"
+>;
+
+export interface BuiltClaudeCodeCountTokensRequest extends Omit<
+  BuiltClaudeCodeRequest,
+  "url"
+> {
+  readonly url: "https://api.anthropic.com/v1/messages/count_tokens?beta=true";
+}
+
 export interface ClaudeCodeProtocolProfile {
+  readonly countTokensEndpoint: "https://api.anthropic.com/v1/messages/count_tokens?beta=true";
   readonly id: string;
   readonly cliVersion: string;
   readonly sdkVersion: string;

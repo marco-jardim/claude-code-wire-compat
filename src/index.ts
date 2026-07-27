@@ -15,6 +15,7 @@
 export type {
   AntiVerbosityPolicy,
   AntiVerbositySection,
+  BuiltClaudeCodeCountTokensRequest,
   BuiltClaudeCodeRequest,
   ClaudeCodeBetaPolicy,
   ClaudeCodeCapabilities,
@@ -22,6 +23,7 @@ export type {
   ClaudeCodeEffort,
   ClaudeCodeModelFamily,
   ClaudeCodeProtocolProfile,
+  ClaudeCodeCountTokensInput,
   ClaudeCodeRequestInput,
   ClaudeCodeRuntimeIdentity,
   ClaudeCodeWireErrorCode,
@@ -48,6 +50,7 @@ export {
 } from "./anti-verbosity.js";
 
 export {
+  buildClaudeCodeCountTokensRequest,
   buildClaudeCodeRequest,
   parseBuiltClaudeCodeRequest,
 } from "./build-request.js";

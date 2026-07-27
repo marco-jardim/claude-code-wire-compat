@@ -2,15 +2,22 @@
 
 import { composeBetas } from "./betas.js";
 import type {
+  BuiltClaudeCodeCountTokensRequest,
   BuiltClaudeCodeRequest,
   ClaudeCodeCapabilities,
   ClaudeCodeProfileOverride,
   ClaudeCodeProtocolProfile,
+  ClaudeCodeCountTokensInput,
   ClaudeCodeRequestInput,
   HeaderPair,
   RedactedRequestEvidence,
 } from "./contracts.js";
 import { ClaudeCodeWireError } from "./contracts.js";
+import {
+  buildCountTokensBody,
+  filterCountTokensBetas,
+  TOKEN_COUNTING_BETA,
+} from "./count-tokens.js";
 import { createBillingBlock } from "./fingerprint.js";
 import { buildOrderedHeaders } from "./headers.js";
 import {
@@ -21,7 +28,10 @@ import { resolveModel } from "./models.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 import type { NormalizedRequestInput } from "./redaction.js";
 import { buildRedactedEvidence, toSafeErrorDetails } from "./redaction.js";
-import { buildCanonicalBody } from "./request-body.js";
+import {
+  buildCanonicalBody,
+  canonicalCountTokensLists,
+} from "./request-body.js";
 import { sha256Hex } from "./sha256.js";
 import { buildCanonicalSystem } from "./system-prompt.js";
 import { isThinkingDisplayActive } from "./thinking.js";
@@ -67,6 +77,24 @@ const INPUT_KEYS = new Set([
   "anthropicAdditionalProtection",
   "extraHeaders",
   "crypto",
+]);
+const COUNT_TOKENS_INPUT_KEYS = new Set([
+  "accessToken",
+  "model",
+  "messages",
+  "tools",
+  "runtime",
+  "clientRequestId",
+  "profileOverride",
+  "crypto",
+  "app",
+  "stainlessRetryCount",
+  "stainlessHelper",
+  "claudeRemoteContainerId",
+  "claudeRemoteSessionId",
+  "clientApp",
+  "anthropicAdditionalProtection",
+  "extraHeaders",
 ]);
 const BUILT_KEYS = new Set(["url", "method", "headers", "body", "evidence"]);
 const EVIDENCE_KEYS = new Set([
@@ -569,6 +597,61 @@ function validateInput(input: ClaudeCodeRequestInput): {
   };
 }
 
+function validateCountTokensInput(input: ClaudeCodeCountTokensInput): {
+  readonly source: ClaudeCodeCountTokensInput;
+  readonly clientRequestId: string;
+  readonly crypto: Pick<Crypto, "subtle"> | undefined;
+  readonly profileOverride: ClaudeCodeProfileOverride | undefined;
+} {
+  if (!isRecord(input)) fail();
+  assertExactKeys(input, COUNT_TOKENS_INPUT_KEYS);
+  const graph: Record<string, unknown> = {};
+  for (const key of Reflect.ownKeys(input)) {
+    if (key !== "crypto" && typeof key === "string") {
+      graph[key] = ownValue(input, key);
+    }
+  }
+  inspectGraph(graph);
+  const accessToken = ownValue(input, "accessToken");
+  const tools = Object.hasOwn(input, "tools")
+    ? ownValue(input, "tools")
+    : undefined;
+  if (
+    typeof accessToken !== "string" ||
+    typeof ownValue(input, "model") !== "string" ||
+    !Array.isArray(ownValue(input, "messages")) ||
+    (tools !== undefined && !Array.isArray(tools))
+  ) {
+    fail();
+  }
+  for (const key of Reflect.ownKeys(input)) {
+    if (
+      typeof key === "string" &&
+      key !== "accessToken" &&
+      key !== "crypto" &&
+      containsString(ownValue(input, key), accessToken)
+    ) {
+      fail();
+    }
+  }
+  const clientRequestId = ownValue(input, "clientRequestId");
+  if (typeof clientRequestId !== "string" || clientRequestId.length === 0) {
+    fail();
+  }
+  const cryptoValue = Object.hasOwn(input, "crypto")
+    ? validateCrypto(ownValue(input, "crypto"))
+    : undefined;
+  const profileOverride = Object.hasOwn(input, "profileOverride")
+    ? validateProfileOverride(ownValue(input, "profileOverride"))
+    : undefined;
+  return {
+    source: input,
+    clientRequestId,
+    crypto: cryptoValue,
+    profileOverride,
+  };
+}
+
 function requestedCapabilities(
   input: ClaudeCodeRequestInput,
   supported: ClaudeCodeCapabilities,
@@ -877,6 +960,108 @@ function evidenceRequest(
   if (Object.hasOwn(input, "temperature"))
     request.temperature = present(input.temperature);
   return request;
+}
+
+function countTokensEvidenceRequest(
+  input: ClaudeCodeCountTokensInput,
+  capabilities: ClaudeCodeCapabilities,
+): NormalizedRequestInput {
+  return {
+    accessToken: input.accessToken,
+    model: input.model,
+    maxTokens: 1,
+    messages: input.messages,
+    ...(input.tools === undefined ? {} : { tools: input.tools }),
+    runtime: input.runtime,
+    capabilities,
+  };
+}
+
+/** Builds a canonical Claude Code count-tokens request. */
+export async function buildClaudeCodeCountTokensRequest(
+  input: ClaudeCodeCountTokensInput,
+  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+): Promise<BuiltClaudeCodeCountTokensRequest> {
+  try {
+    const pinnedProfile = validateProfile(profile);
+    const validated = validateCountTokensInput(input);
+    const effectiveProfile = createEffectiveProfile(
+      pinnedProfile,
+      validated.profileOverride,
+    );
+    const identity = validateRuntimeIdentity(validated.source.runtime);
+    const resolvedModel = resolveModel(
+      validated.source.model,
+      effectiveProfile,
+    );
+    const countTokensBetas = filterCountTokensBetas(
+      composeBetas(
+        {
+          rawModel: validated.source.model,
+          normalizedId: resolvedModel.id,
+          capabilities: resolvedModel.capabilities,
+          thinkingDisplayActive: false,
+        },
+        effectiveProfile,
+      ),
+    );
+    const betas = Object.freeze([...countTokensBetas, TOKEN_COUNTING_BETA]);
+    const headers = applyEffectiveProfileHeaders(
+      buildOrderedHeaders({
+        accessToken: validated.source.accessToken,
+        runtime: identity,
+        clientRequestId: validated.clientRequestId,
+        betaFeatures: betas,
+        app: validated.source.app ?? effectiveProfile.entrypoint,
+        stainlessRetryCount: validated.source.stainlessRetryCount ?? 0,
+        stainlessHelper: validated.source.stainlessHelper,
+        claudeRemoteContainerId: validated.source.claudeRemoteContainerId,
+        claudeRemoteSessionId: validated.source.claudeRemoteSessionId,
+        clientApp: validated.source.clientApp,
+        anthropicAdditionalProtection:
+          validated.source.anthropicAdditionalProtection,
+        extraHeaders: validated.source.extraHeaders ?? [],
+        profile: pinnedProfile,
+      }),
+      effectiveProfile,
+    );
+    const canonical = canonicalCountTokensLists(
+      validated.source.messages,
+      validated.source.tools,
+    );
+    const body = JSON.stringify(
+      buildCountTokensBody(
+        resolvedModel.wireId,
+        canonical.messages,
+        canonical.tools,
+      ),
+    );
+    const evidenceRequestInput = countTokensEvidenceRequest(
+      validated.source,
+      resolvedModel.capabilities,
+    );
+    const evidence = await buildRedactedEvidence(
+      {
+        profile: pinnedProfile,
+        effectiveProfile,
+        request: evidenceRequestInput,
+        modelFamily: resolvedModel.family,
+        logicalHeaders: headers,
+        betaFeatures: betas,
+        body,
+      },
+      validated.crypto,
+    );
+    return deepFreeze({
+      url: effectiveProfile.countTokensEndpoint,
+      method: METHOD,
+      headers,
+      body,
+      evidence,
+    });
+  } catch (error: unknown) {
+    return sanitizeError(error);
+  }
 }
 
 /**
