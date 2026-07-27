@@ -68,6 +68,26 @@ reworded.
 | `docs/protocol/cache-transparency.md`             | `docs/anti-verbosity-and-cache-transparency.md` |          111 | Ported verbatim; provenance header prepended |
 | `docs/protocol/beta-decision-table.md`            | `docs/mimicry/beta-decision-table.md`           |           72 | Ported verbatim; provenance header prepended |
 
+## Ported per-version wire analyses
+
+Each Claude Code release may change the wire contract; these documents are the
+historical record of that drift. See
+[`docs/protocol/versions/README.md`](./protocol/versions/README.md) for the rule
+that a new analysis is required whenever a new profile is added to
+`src/profiles/`.
+
+| Ported file                                              | Source path                            | Source lines | Modification                                 |
+| -------------------------------------------------------- | -------------------------------------- | -----------: | -------------------------------------------- |
+| `docs/protocol/versions/claude-code-2.1.119-analysis.md` | `docs/claude-code-2.1.119-analysis.md` |           77 | Ported verbatim; provenance header prepended |
+| `docs/protocol/versions/claude-code-2.1.133-analysis.md` | `docs/claude-code-2.1.133-analysis.md` |          101 | Ported verbatim; provenance header prepended |
+| `docs/protocol/versions/claude-code-2.1.143-analysis.md` | `docs/claude-code-2.1.143-analysis.md` |          452 | Ported verbatim; provenance header prepended |
+| `docs/protocol/versions/claude-code-2.1.150-analysis.md` | `docs/claude-code-2.1.150-analysis.md` |          142 | Ported verbatim; provenance header prepended |
+| `docs/protocol/versions/claude-code-2.1.159-analysis.md` | `docs/claude-code-2.1.159-analysis.md` |          155 | Ported verbatim; provenance header prepended |
+| `docs/protocol/versions/claude-code-2.1.195-analysis.md` | `docs/claude-code-2.1.195-analysis.md` |          334 | Ported verbatim; provenance header prepended |
+
+`docs/protocol/versions/README.md` is first-party material written for this
+package and is therefore not listed as a ported file.
+
 `Source lines` counts the **non-empty** lines of the source file at commit
 `466d500`, which is the metric recorded in the COM-466 pre-flight inventory and
 the one every count in this file was verified against. A raw newline count

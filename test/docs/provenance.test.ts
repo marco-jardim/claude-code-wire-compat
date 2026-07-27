@@ -94,12 +94,82 @@ const PROTOCOL_CORPUS: readonly PortedDocument[] = [
   },
 ];
 
+/**
+ * The per-version wire analyses. Each Claude Code release may change the wire
+ * contract, so every pinned version keeps its own analysis document.
+ */
+const VERSION_ANALYSES: readonly PortedDocument[] = [
+  {
+    destination: "versions/claude-code-2.1.119-analysis.md",
+    source: "docs/claude-code-2.1.119-analysis.md",
+    sourceLines: 77,
+  },
+  {
+    destination: "versions/claude-code-2.1.133-analysis.md",
+    source: "docs/claude-code-2.1.133-analysis.md",
+    sourceLines: 101,
+  },
+  {
+    destination: "versions/claude-code-2.1.143-analysis.md",
+    source: "docs/claude-code-2.1.143-analysis.md",
+    sourceLines: 452,
+  },
+  {
+    destination: "versions/claude-code-2.1.150-analysis.md",
+    source: "docs/claude-code-2.1.150-analysis.md",
+    sourceLines: 142,
+  },
+  {
+    destination: "versions/claude-code-2.1.159-analysis.md",
+    source: "docs/claude-code-2.1.159-analysis.md",
+    sourceLines: 155,
+  },
+  {
+    destination: "versions/claude-code-2.1.195-analysis.md",
+    source: "docs/claude-code-2.1.195-analysis.md",
+    sourceLines: 334,
+  },
+];
+
+const PORTED_DOCUMENTS: readonly PortedDocument[] = [
+  ...PROTOCOL_CORPUS,
+  ...VERSION_ANALYSES,
+];
+
 /** Documents that are authored for this package rather than ported. */
-const FIRST_PARTY_PROTOCOL_DOCUMENTS: readonly string[] = [];
+const FIRST_PARTY_PROTOCOL_DOCUMENTS: readonly string[] = ["versions/README.md"];
 
 const portedDestinations = new Set(
-  PROTOCOL_CORPUS.map((entry) => entry.destination),
+  PORTED_DOCUMENTS.map((entry) => entry.destination),
 );
+
+const profilesDirectory = join(root, "src", "profiles");
+
+/**
+ * Every profile the package can pin is derived from a specific Claude Code
+ * release, so the analysis for that release must be part of the corpus.
+ */
+const declaredProfileVersions = (): string[] => {
+  const ids = readdirSync(profilesDirectory)
+    .filter((name) => name.endsWith(".ts"))
+    .flatMap((name) => {
+      const source = readFileSync(join(profilesDirectory, name), "utf8");
+
+      return [...source.matchAll(/\bid:\s*"([^"]+)"/gu)].map(
+        (match) => match[1],
+      );
+    });
+
+  return [
+    ...new Set(
+      ids.flatMap((id) => {
+        const version = /(\d+\.\d+\.\d+)/u.exec(id);
+
+        return version ? [version[1]] : [];
+      }),
+    ),
+  ].sort();
+};
 
 const listMarkdown = (directory: string): string[] => {
   if (!existsSync(directory)) {
@@ -133,7 +203,7 @@ describe("protocol documentation provenance", () => {
     expect(attribution).toContain("GPL-3.0 section 5(a)");
   });
 
-  it.each(PROTOCOL_CORPUS.map((entry) => [entry.destination, entry] as const))(
+  it.each(PORTED_DOCUMENTS.map((entry) => [entry.destination, entry] as const))(
     "ports %s with a complete provenance header",
     (_destination, entry) => {
       const path = join(protocolDirectory, entry.destination);
@@ -158,7 +228,7 @@ describe("protocol documentation provenance", () => {
     },
   );
 
-  it.each(PROTOCOL_CORPUS.map((entry) => [entry.destination, entry] as const))(
+  it.each(PORTED_DOCUMENTS.map((entry) => [entry.destination, entry] as const))(
     "records %s in the attribution table",
     (destination, entry) => {
       const attribution = readAttribution();
@@ -184,7 +254,7 @@ describe("protocol documentation provenance", () => {
   });
 
   it("keeps the ported body faithful to the source line count", () => {
-    const shortfall = PROTOCOL_CORPUS.filter((entry) => {
+    const shortfall = PORTED_DOCUMENTS.filter((entry) => {
       const path = join(protocolDirectory, entry.destination);
 
       if (!existsSync(path)) {
@@ -200,5 +270,38 @@ describe("protocol documentation provenance", () => {
     }).map((entry) => entry.destination);
 
     expect(shortfall).toEqual([]);
+  });
+});
+
+describe("per-version wire analyses", () => {
+  it("explains why the versioned analyses exist and when a new one is required", () => {
+    const readme = join(protocolDirectory, "versions", "README.md");
+
+    expect(existsSync(readme)).toBe(true);
+
+    const contents = readFileSync(readme, "utf8");
+
+    expect(contents).toContain("wire contract");
+    expect(contents).toContain("src/profiles/");
+    expect(contents).toContain("REQUIRED");
+  });
+
+  it("covers every profile version declared in src/profiles/", () => {
+    const versions = declaredProfileVersions();
+
+    expect(versions.length).toBeGreaterThan(0);
+
+    const uncovered = versions.filter(
+      (version) =>
+        !existsSync(
+          join(
+            protocolDirectory,
+            "versions",
+            `claude-code-${version}-analysis.md`,
+          ),
+        ),
+    );
+
+    expect(uncovered).toEqual([]);
   });
 });
