@@ -5,5 +5,5 @@
     "rootDir": "."
   },
   "include": ["src/**/*.ts", "test/types/**/*.ts"],
-  "exclude": ["dist", "node_modules", "coverage", ".stryker-tmp"]
+  "exclude": ["dist", "node_modules", "coverage"]
 }

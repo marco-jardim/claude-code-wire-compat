@@ -49,7 +49,6 @@ describe("public governance files", () => {
       "src/index.ts",
       "eslint.config.js",
       "vitest.config.ts",
-      "stryker.config.mjs",
       ".github/workflows/ci.yml",
       ".github/workflows/publish.yml",
     ];

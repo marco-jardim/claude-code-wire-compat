@@ -1,18 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
 const ci = readFileSync(join(root, ".github", "workflows", "ci.yml"), "utf8");
-const mutation = readFileSync(
-  join(root, ".github", "workflows", "mutation.yml"),
-  "utf8",
-);
 const publish = readFileSync(
   join(root, ".github", "workflows", "publish.yml"),
   "utf8",
 );
+const packageJson = readFileSync(join(root, "package.json"), "utf8");
 
 describe("CI policy", () => {
   it.each(["node-20:", "node-22:", "node-24:", "bun:", "workerd:", "quality:"])(
@@ -36,12 +33,19 @@ describe("CI policy", () => {
     expect(ci).toContain(gate);
   });
 
-  it("defines the scheduled and on-demand mutation gate", () => {
-    expect(mutation).toContain("jobs:\n  mutation:");
-    expect(mutation).toContain("workflow_dispatch:");
-    expect(mutation).toContain("schedule:");
-    expect(mutation).toContain("npm run test:mutation");
-    expect(mutation).not.toContain("secrets.");
+  it("has fully removed the Stryker mutation-testing gate", () => {
+    // Stryker mutation testing was retired: a CI run exceeded 2.5 hours and was
+    // too costly. Its cheaper replacement is the @vitest/eslint-plugin rule set
+    // (run inside `npm run lint`) plus the coverage thresholds in
+    // vitest.config.ts. This guard prevents the slow gate from silently
+    // returning.
+    expect(existsSync(join(root, ".github", "workflows", "mutation.yml"))).toBe(
+      false,
+    );
+    expect(existsSync(join(root, "stryker.config.mjs"))).toBe(false);
+    expect(existsSync(join(root, "vitest.mutation.config.ts"))).toBe(false);
+    expect(packageJson).not.toContain("test:mutation");
+    expect(packageJson).not.toContain("stryker");
     expect(ci).not.toContain("npm run test:mutation");
   });
 
@@ -62,7 +66,7 @@ describe("CI policy", () => {
   });
 
   it("pins every GitHub Action to an immutable commit SHA", () => {
-    for (const workflow of [ci, mutation, publish]) {
+    for (const workflow of [ci, publish]) {
       const refs = [...workflow.matchAll(/uses:\s*(\S+)/gu)].map(
         (match) => match[1],
       );

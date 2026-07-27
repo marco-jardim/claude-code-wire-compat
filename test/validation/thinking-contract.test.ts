@@ -165,5 +165,5 @@ describe("thinking validation", () => {
     { type: "enabled", budgetTokens: 1.5 },
     { type: "enabled", display: "full" },
     { type: "disabled", display: "omitted" },
-  ])("rejects malformed thinking %#", expectInvalid);
+  ])("rejects malformed thinking %#", (thinking) => expectInvalid(thinking));
 });

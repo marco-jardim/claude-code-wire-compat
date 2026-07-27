@@ -134,7 +134,10 @@ describe("top-level request controls", () => {
   ] as const)("maps %s to %s", (inputKey, wireKey, value) => {
     const result = buildField(inputKey, value);
     expect(result[wireKey]).toEqual(value);
-    if (inputKey !== wireKey) expect(result).not.toHaveProperty(inputKey);
+    // The caller-facing key must survive on the wire only when it is also the
+    // wire key; a renamed field must not leak its input name. Asserted
+    // unconditionally so the check cannot be silently skipped.
+    expect(Object.hasOwn(result, inputKey)).toBe(inputKey === wireKey);
   });
 
   it.each([

@@ -148,9 +148,5 @@ vite.config.ts.timestamp-*
 # Local agent/tooling scratch state (never commit to the public repository)
 .opencode/
 
-# Generated mutation-testing and coverage output
-.stryker-tmp/
+# Generated coverage output
 coverage-*/
-
-# Stryker mutation reports
-reports/

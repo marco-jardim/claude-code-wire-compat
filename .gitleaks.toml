@@ -5,10 +5,8 @@ useDefault = true
 description = "Repository-wide false positives and generated output"
 regexTarget = "match"
 paths = [
-  '''(?:^|/)\.stryker-tmp(?:/|$)''',
   '''(?:^|/)coverage(?:/|$)''',
   '''(?:^|/)coverage-[^/]+(?:/|$)''',
-  '''(?:^|/)reports(?:/|$)''',
   '''(?:^|/)dist(?:/|$)''',
   '''(?:^|/)node_modules(?:/|$)''',
 ]
