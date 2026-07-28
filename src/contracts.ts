@@ -774,6 +774,29 @@ export interface ClaudeCodeMetadataOverrides {
   readonly userIdFields?: Readonly<Record<string, JsonValue>>;
 }
 
+/**
+ * Decides what happens when `extraHeaders` collides with a header this package
+ * owns — a canonical name, or a name on the forbidden denylist.
+ *
+ * PACKAGE EXTENSION, not observed Claude Code behaviour. The genuine client
+ * composes its own headers and never merges a foreign header map.
+ *
+ * - `strict` (the default) throws `DUPLICATE_HEADER` for a canonical name and
+ *   `FORBIDDEN_HEADER` for a denylisted one. This is the behaviour that existed
+ *   before the field, byte for byte.
+ * - `dropConflicting` discards the offending pair instead of throwing and
+ *   records its lowercased name in `evidence.droppedExtraHeaderNames`, so a
+ *   consumer can forward a heterogeneous host header map without a single
+ *   inbound `anthropic-beta` destroying the request, and still audit the loss.
+ *
+ * NEITHER policy relaxes header syntax: a control character in a name or a
+ * value raises `HEADER_INJECTION` in both. Header smuggling is never silently
+ * tolerated. A caller that duplicates one of its OWN extra headers also keeps
+ * getting `DUPLICATE_HEADER` in both, because that collision is a caller bug
+ * rather than a conflict with a header this package owns.
+ */
+export type ClaudeCodeExtraHeaderPolicy = "strict" | "dropConflicting";
+
 export interface ClaudeCodeRequestInput {
   readonly accessToken: string;
   readonly model: string;
@@ -859,6 +882,16 @@ export interface ClaudeCodeRequestInput {
   readonly metadataOverrides?: ClaudeCodeMetadataOverrides;
   /** Appends validated non-canonical headers in caller order. */
   readonly extraHeaders?: readonly HeaderPair[];
+  /**
+   * Decides how a collision between `extraHeaders` and a header this package
+   * owns is resolved. Defaults to `strict`, the pre-existing behaviour.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour. Omitting the field,
+   * or passing `"strict"`, leaves the emitted request byte-identical, evidence
+   * included: `droppedExtraHeaderNames` is emitted only under
+   * `"dropConflicting"`.
+   */
+  readonly extraHeaderPolicy?: ClaudeCodeExtraHeaderPolicy;
   /** Injects the Web Crypto provider used to hash the request body. */
   readonly crypto?: Pick<Crypto, "subtle">;
 }
@@ -955,6 +988,15 @@ export interface RedactedRequestEvidence {
   readonly messageCount: number;
   readonly systemBlockCount: number;
   readonly capabilityDecisions: ClaudeCodeCapabilityDecisions;
+  /**
+   * Audits the extra headers `extraHeaderPolicy: "dropConflicting"` discarded,
+   * lowercased and in caller order.
+   *
+   * Emitted ONLY under that policy. Under `strict`, and for every request built
+   * before the seam existed, the key is ABSENT rather than present and empty,
+   * so existing evidence stays byte-identical.
+   */
+  readonly droppedExtraHeaderNames?: readonly string[];
 }
 
 /**

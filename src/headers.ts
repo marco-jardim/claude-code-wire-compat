@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { ClaudeCodeProtocolProfile, HeaderPair } from "./contracts.js";
+import type {
+  ClaudeCodeExtraHeaderPolicy,
+  ClaudeCodeProtocolProfile,
+  HeaderPair,
+} from "./contracts.js";
 import { ClaudeCodeWireError } from "./contracts.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
@@ -54,7 +58,19 @@ interface ValidatedInput {
   readonly clientApp?: string;
   readonly anthropicAdditionalProtection?: string;
   readonly extraHeaders: readonly HeaderPair[];
+  readonly extraHeaderPolicy: ClaudeCodeExtraHeaderPolicy;
   readonly profile: ClaudeCodeProtocolProfile;
+}
+
+/** Reports the headers placed on the wire plus what the policy discarded. */
+export interface OrderedHeaderPlan {
+  readonly headers: readonly HeaderPair[];
+  /**
+   * Lists the lowercased names `dropConflicting` discarded, in caller order.
+   *
+   * Always empty under `strict`, which throws instead of dropping.
+   */
+  readonly droppedExtraHeaderNames: readonly string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -137,6 +153,13 @@ function parseExtraHeaders(value: unknown): readonly HeaderPair[] {
   return headers;
 }
 
+function parseExtraHeaderPolicy(value: unknown): ClaudeCodeExtraHeaderPolicy {
+  if (value !== "strict" && value !== "dropConflicting") {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  return value;
+}
+
 function parseProfile(value: unknown): ClaudeCodeProtocolProfile {
   if (value !== CLAUDE_CODE_2_1_195_PROFILE) {
     throw new ClaudeCodeWireError("INVALID_INPUT");
@@ -200,6 +223,9 @@ function parseInput(input: unknown): ValidatedInput {
         : input["stainlessRetryCount"],
     ),
     extraHeaders: parseExtraHeaders(input["extraHeaders"] ?? []),
+    extraHeaderPolicy: parseExtraHeaderPolicy(
+      input["extraHeaderPolicy"] ?? "strict",
+    ),
     profile: parseProfile(input["profile"]),
     ...(stainlessHelper === undefined ? {} : { stainlessHelper }),
     ...(claudeRemoteContainerId === undefined
@@ -213,13 +239,43 @@ function parseInput(input: unknown): ValidatedInput {
   };
 }
 
+/**
+ * Names a caller may never place on the wire through `extraHeaders`.
+ *
+ * Two disjoint reasons, both non-negotiable.
+ *
+ * CREDENTIAL AND ROUTING DISCLOSURE. `x-api-key`, `cookie`, `set-cookie`,
+ * `proxy-*`, `forwarded` and `x-forwarded-*` carry authentication that would
+ * contradict the OAuth bearer this package emits, or disclose the caller's
+ * network topology upstream.
+ *
+ * HOP-BY-HOP AND ENTITY HEADERS (RFC 9110 section 7.6.1). `connection`,
+ * `transfer-encoding`, `te`, `upgrade`, `keep-alive` and `host` govern a single
+ * connection and belong to the transport, not to the caller. `content-length`
+ * is the worst of them: this package RECONSTRUCTS the request body canonically,
+ * so a length copied from an inbound request describes a different byte string.
+ * A wrong `content-length` corrupts the request SILENTLY — no local error is
+ * raised, the peer truncates or stalls. Blocking these is a defect fix, valid
+ * independently of any consumer.
+ */
+const FORBIDDEN_HEADER_NAMES: ReadonlySet<string> = new Set([
+  "x-api-key",
+  "cookie",
+  "set-cookie",
+  "forwarded",
+  "content-length",
+  "host",
+  "connection",
+  "transfer-encoding",
+  "te",
+  "upgrade",
+  "keep-alive",
+]);
+
 function isForbiddenHeader(name: string): boolean {
   return (
-    name === "x-api-key" ||
-    name === "cookie" ||
-    name === "set-cookie" ||
+    FORBIDDEN_HEADER_NAMES.has(name) ||
     name.startsWith("proxy-") ||
-    name === "forwarded" ||
     name.startsWith("x-forwarded-")
   );
 }
@@ -228,27 +284,64 @@ function safeDiagnosticName(name: string, accessToken: string): string {
   return name.includes(accessToken) ? "[redacted]" : name;
 }
 
-function validateExtraHeaders(
+interface ResolvedExtraHeaders {
+  readonly kept: readonly HeaderPair[];
+  readonly droppedNames: readonly string[];
+}
+
+/**
+ * Applies the caller policy to the supplied extra headers.
+ *
+ * `strict` is the original behaviour, unchanged: the first conflict throws, and
+ * nothing reaches the wire. `dropConflicting` discards the offending pair and
+ * records its lowercased name, so a consumer forwarding a heterogeneous host
+ * header map is not defeated by a single header this package owns.
+ *
+ * The relaxation covers OWNERSHIP conflicts only — a canonical name or a
+ * denylisted name. Two guarantees survive in both policies:
+ *
+ * - Header syntax is validated FIRST and never relaxed. A control character in
+ *   a name or a value raises `HEADER_INJECTION` whatever the policy says;
+ *   smuggling is never silently tolerated.
+ * - A caller that duplicates one of ITS OWN extra headers still gets
+ *   `DUPLICATE_HEADER`. That collision is a caller bug, not an ownership
+ *   conflict this package is entitled to resolve on the caller's behalf.
+ */
+function resolveExtraHeaders(
   extraHeaders: readonly HeaderPair[],
   accessToken: string,
-): void {
-  const seen = new Set(CANONICAL_NAMES);
+  policy: ClaudeCodeExtraHeaderPolicy,
+): ResolvedExtraHeaders {
+  const seenExtras = new Set<string>();
+  const kept: HeaderPair[] = [];
+  const droppedNames: string[] = [];
   for (const [name, value] of extraHeaders) {
     assertHeaderText(name, value);
     const normalizedName = name.toLowerCase();
     const safeName = safeDiagnosticName(normalizedName, accessToken);
-    if (isForbiddenHeader(normalizedName)) {
-      throw new ClaudeCodeWireError("FORBIDDEN_HEADER", {
-        headerName: safeName,
-      });
+    const ownershipConflict = isForbiddenHeader(normalizedName)
+      ? "FORBIDDEN_HEADER"
+      : CANONICAL_NAMES.has(normalizedName)
+        ? "DUPLICATE_HEADER"
+        : undefined;
+    if (ownershipConflict !== undefined) {
+      if (policy === "strict") {
+        throw new ClaudeCodeWireError(ownershipConflict, {
+          headerName: safeName,
+        });
+      }
+      droppedNames.push(normalizedName);
+      continue;
     }
-    if (seen.has(normalizedName)) {
+    if (seenExtras.has(normalizedName)) {
       throw new ClaudeCodeWireError("DUPLICATE_HEADER", {
         headerName: safeName,
       });
     }
-    seen.add(normalizedName);
+    seenExtras.add(normalizedName);
+    kept.push([name, value]);
   }
+  return { kept, droppedNames };
 }
 
 function freezePair(name: string, value: string): HeaderPair {
@@ -267,8 +360,13 @@ function assertTokenIsolation(
   }
 }
 
-/** Builds the pinned canonical logical header list. Transport order is not guaranteed. */
-export function buildOrderedHeaders(input: unknown): readonly HeaderPair[] {
+/**
+ * Builds the pinned canonical logical header list together with the audit of
+ * whatever the extra-header policy discarded.
+ *
+ * Transport order is not guaranteed.
+ */
+export function buildOrderedHeaderPlan(input: unknown): OrderedHeaderPlan {
   const appendExtraHeaders =
     isRecord(input) &&
     (Object.hasOwn(input, "app") ||
@@ -279,7 +377,11 @@ export function buildOrderedHeaders(input: unknown): readonly HeaderPair[] {
       Object.hasOwn(input, "clientApp") ||
       Object.hasOwn(input, "anthropicAdditionalProtection"));
   const validated = parseInput(input);
-  validateExtraHeaders(validated.extraHeaders, validated.accessToken);
+  const resolvedExtras = resolveExtraHeaders(
+    validated.extraHeaders,
+    validated.accessToken,
+    validated.extraHeaderPolicy,
+  );
 
   const beta = validated.betaFeatures.join(",");
   const values = [
@@ -323,10 +425,18 @@ export function buildOrderedHeaders(input: unknown): readonly HeaderPair[] {
     pairs.push(freezePair(name, value));
   }
   if (appendExtraHeaders) {
-    for (const [name, value] of validated.extraHeaders) {
+    for (const [name, value] of resolvedExtras.kept) {
       pairs.push(freezePair(name, value));
     }
   }
   assertTokenIsolation(pairs, validated.accessToken);
-  return Object.freeze(pairs);
+  return Object.freeze({
+    headers: Object.freeze(pairs),
+    droppedExtraHeaderNames: Object.freeze([...resolvedExtras.droppedNames]),
+  });
+}
+
+/** Builds the pinned canonical logical header list. Transport order is not guaranteed. */
+export function buildOrderedHeaders(input: unknown): readonly HeaderPair[] {
+  return buildOrderedHeaderPlan(input).headers;
 }

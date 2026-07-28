@@ -26,6 +26,13 @@ export interface BuildRedactedEvidenceInput {
   readonly logicalHeaders: readonly HeaderPair[];
   readonly betaFeatures: readonly string[];
   readonly body: string;
+  /**
+   * Carries the names discarded by `extraHeaderPolicy: "dropConflicting"`.
+   *
+   * Supplied only under that policy, so evidence for every other request keeps
+   * its original shape.
+   */
+  readonly droppedExtraHeaderNames?: readonly string[];
 }
 
 const MAX_INPUT_DEPTH = 100;
@@ -390,6 +397,14 @@ export async function buildRedactedEvidence(
     betaFeatures.push(feature);
   }
 
+  // Dropped names are caller-controlled text that lands in evidence. They get
+  // the same credential screening as the header names that did reach the wire.
+  const droppedExtraHeaderNames: string[] = [];
+  for (const name of input.droppedExtraHeaderNames ?? []) {
+    if (containsCredential(name, credentials)) throw wireError("INVALID_INPUT");
+    droppedExtraHeaderNames.push(name);
+  }
+
   const provider = selectCryptoProvider(cryptoProvider);
   if (!isCryptoProvider(provider)) throw wireError("CRYPTO_UNAVAILABLE");
 
@@ -435,6 +450,11 @@ export async function buildRedactedEvidence(
     messageCount: input.request.messages.length,
     systemBlockCount: input.request.system?.length ?? 0,
     capabilityDecisions: capabilityDecisions(input),
+    // Package extension: emitted only when the caller opted into
+    // `dropConflicting`, so evidence for every other request is unchanged.
+    ...(input.droppedExtraHeaderNames === undefined
+      ? {}
+      : { droppedExtraHeaderNames: Object.freeze(droppedExtraHeaderNames) }),
   };
   return Object.freeze(evidence);
 }

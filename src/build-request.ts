@@ -7,6 +7,7 @@ import type {
   ClaudeCodeBetaOverrides,
   ClaudeCodeCapabilities,
   ClaudeCodeCapabilityDecisions,
+  ClaudeCodeExtraHeaderPolicy,
   ClaudeCodeProfileOverride,
   ClaudeCodeProtocolProfile,
   ClaudeCodeCountTokensInput,
@@ -21,7 +22,7 @@ import {
   TOKEN_COUNTING_BETA,
 } from "./count-tokens.js";
 import { createBillingBlock } from "./fingerprint.js";
-import { buildOrderedHeaders } from "./headers.js";
+import { buildOrderedHeaderPlan, buildOrderedHeaders } from "./headers.js";
 import {
   buildCorrelatedMetadata,
   validateRuntimeIdentity,
@@ -81,6 +82,7 @@ const INPUT_KEYS = new Set([
   "betaOverrides",
   "metadataOverrides",
   "extraHeaders",
+  "extraHeaderPolicy",
   "crypto",
 ]);
 const BETA_OVERRIDE_KEYS = new Set(["use1MContext"]);
@@ -116,6 +118,7 @@ const EVIDENCE_KEYS = new Set([
   "messageCount",
   "systemBlockCount",
   "capabilityDecisions",
+  "droppedExtraHeaderNames",
 ]);
 const CAPABILITY_KEYS = [
   "thinking",
@@ -548,6 +551,21 @@ function validateMetadataOverrides(value: unknown): void {
   assertExactKeys(value, METADATA_OVERRIDE_KEYS);
 }
 
+/**
+ * Validates the package-extension extra-header policy.
+ *
+ * The two literals are the whole domain; anything else, including a casing
+ * variant or a padded string, is a caller mistake rather than a silent fallback
+ * to `strict`, because falling back would emit a request the caller did not ask
+ * for.
+ */
+function validateExtraHeaderPolicy(
+  value: unknown,
+): ClaudeCodeExtraHeaderPolicy {
+  if (value !== "strict" && value !== "dropConflicting") fail();
+  return value;
+}
+
 function createEffectiveProfile(
   pinnedProfile: ClaudeCodeProtocolProfile,
   override: ClaudeCodeProfileOverride | undefined,
@@ -579,6 +597,7 @@ function validateInput(input: ClaudeCodeRequestInput): {
   readonly crypto: Pick<Crypto, "subtle"> | undefined;
   readonly profileOverride: ClaudeCodeProfileOverride | undefined;
   readonly betaOverrides: ClaudeCodeBetaOverrides | undefined;
+  readonly extraHeaderPolicy: ClaudeCodeExtraHeaderPolicy | undefined;
 } {
   if (!isRecord(input)) fail();
   assertExactKeys(input, INPUT_KEYS);
@@ -622,12 +641,16 @@ function validateInput(input: ClaudeCodeRequestInput): {
   if (Object.hasOwn(input, "metadataOverrides")) {
     validateMetadataOverrides(ownValue(input, "metadataOverrides"));
   }
+  const extraHeaderPolicy = Object.hasOwn(input, "extraHeaderPolicy")
+    ? validateExtraHeaderPolicy(ownValue(input, "extraHeaderPolicy"))
+    : undefined;
   return {
     source: input,
     clientRequestId,
     crypto: cryptoValue,
     profileOverride,
     betaOverrides,
+    extraHeaderPolicy,
   };
 }
 
@@ -871,6 +894,15 @@ function parseEvidence(value: unknown): RedactedRequestEvidence {
     capabilityDecisions: parseCapabilityDecisions(
       ownValue(value, "capabilityDecisions"),
     ),
+    // Optional package-extension audit: preserved verbatim when present and
+    // never synthesized, exactly like the `use1MContext` decision key.
+    ...(Object.hasOwn(value, "droppedExtraHeaderNames")
+      ? {
+          droppedExtraHeaderNames: parseStringArray(
+            ownValue(value, "droppedExtraHeaderNames"),
+          ),
+        }
+      : {}),
   };
 }
 
@@ -1189,23 +1221,25 @@ export async function buildClaudeCodeRequest(
       },
       effectiveProfile,
     );
+    const headerPlan = buildOrderedHeaderPlan({
+      accessToken: validated.source.accessToken,
+      runtime: identity,
+      clientRequestId: validated.clientRequestId,
+      betaFeatures: betas,
+      app: validated.source.app ?? effectiveProfile.entrypoint,
+      stainlessRetryCount: validated.source.stainlessRetryCount ?? 0,
+      stainlessHelper: validated.source.stainlessHelper,
+      claudeRemoteContainerId: validated.source.claudeRemoteContainerId,
+      claudeRemoteSessionId: validated.source.claudeRemoteSessionId,
+      clientApp: validated.source.clientApp,
+      anthropicAdditionalProtection:
+        validated.source.anthropicAdditionalProtection,
+      extraHeaders: validated.source.extraHeaders ?? [],
+      extraHeaderPolicy: validated.extraHeaderPolicy ?? "strict",
+      profile: pinnedProfile,
+    });
     const headers = applyEffectiveProfileHeaders(
-      buildOrderedHeaders({
-        accessToken: validated.source.accessToken,
-        runtime: identity,
-        clientRequestId: validated.clientRequestId,
-        betaFeatures: betas,
-        app: validated.source.app ?? effectiveProfile.entrypoint,
-        stainlessRetryCount: validated.source.stainlessRetryCount ?? 0,
-        stainlessHelper: validated.source.stainlessHelper,
-        claudeRemoteContainerId: validated.source.claudeRemoteContainerId,
-        claudeRemoteSessionId: validated.source.claudeRemoteSessionId,
-        clientApp: validated.source.clientApp,
-        anthropicAdditionalProtection:
-          validated.source.anthropicAdditionalProtection,
-        extraHeaders: validated.source.extraHeaders ?? [],
-        profile: pinnedProfile,
-      }),
+      headerPlan.headers,
       effectiveProfile,
     );
     const body = JSON.stringify(canonicalBody);
@@ -1218,6 +1252,11 @@ export async function buildClaudeCodeRequest(
         logicalHeaders: headers,
         betaFeatures: betas,
         body,
+        // Emitted only for the opted-in policy, so evidence for every other
+        // request keeps the shape it had before the seam existed.
+        ...(validated.extraHeaderPolicy === "dropConflicting"
+          ? { droppedExtraHeaderNames: headerPlan.droppedExtraHeaderNames }
+          : {}),
       },
       validated.crypto,
     );
