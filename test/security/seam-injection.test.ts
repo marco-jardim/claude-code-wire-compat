@@ -56,10 +56,9 @@ async function expectRejection(input: unknown, code: string): Promise<void> {
 }
 
 describe("additionalBetas injection surface", () => {
+  // The controls that carry no meaning in any position are still stopped by the
+  // input-graph screen, before header assembly, exactly as before.
   it.each([
-    ["CRLF header split", "evil-beta\r\nx-forged: 1"],
-    ["bare CR", "evil-beta\rx-forged: 1"],
-    ["bare LF", "evil-beta\nx-forged: 1"],
     ["NUL byte", "evil-beta\u0000"],
     ["DEL", "evil-beta\u007f"],
     ["vertical tab", "evil-beta\u000b"],
@@ -72,6 +71,25 @@ describe("additionalBetas injection surface", () => {
       );
     },
   );
+
+  /*
+   * CR, LF and TAB are no longer refused by the input-graph screen, because
+   * they are legitimate BODY content (see `multiline-content.test.ts`). A beta
+   * identifier is not body content, so it is still refused — one layer later,
+   * by the beta grammar, which admits only `[A-Za-z0-9][A-Za-z0-9._-]*`.
+   * The seam remains closed; only the error code moved.
+   */
+  it.each([
+    ["CRLF header split", "evil-beta\r\nx-forged: 1"],
+    ["bare CR", "evil-beta\rx-forged: 1"],
+    ["bare LF", "evil-beta\nx-forged: 1"],
+    ["TAB", "evil-beta\tx-forged: 1"],
+  ])("rejects %s as INVALID_INPUT at the beta grammar", async (_l, beta) => {
+    await expectRejection(
+      { ...BASE, additionalBetas: [beta] },
+      "INVALID_INPUT",
+    );
+  });
 
   it.each([
     ["comma smuggling a second beta", "evil-beta,oauth-2025-04-20"],

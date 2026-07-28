@@ -440,12 +440,21 @@ describe("header injection is never relaxed", () => {
     },
   );
 
-  it("rejects CRLF before the policy is even consulted at the request layer", async () => {
+  it("rejects CRLF at the header layer whatever the policy says", async () => {
+    // Before the multi-line body fix this was caught by the input-graph screen
+    // as INVALID_UNICODE. That screen now admits CR/LF as body content, so the
+    // rejection comes from `assertHeaderText` instead — the same refusal, from
+    // the layer that actually owns the rule.
     expect(
       await failureCode(
         withExtras([["x-meu-header", "v\r\nx-smuggled: 1"]], "dropConflicting"),
       ),
-    ).toBe("INVALID_UNICODE");
+    ).toBe("HEADER_INJECTION");
+    expect(
+      await failureCode(
+        withExtras([["x-meu-header", "v\r\nx-smuggled: 1"]], "strict"),
+      ),
+    ).toBe("HEADER_INJECTION");
   });
 
   it("rejects a forbidden name carrying CRLF instead of dropping it", () => {

@@ -105,40 +105,97 @@ describe("security/core-adversarial (Wave 1 RED specification)", () => {
     );
   });
 
-  it.each(["\r\n", "\u0000"])(
-    "rejects %s injection across string-bearing positions",
-    async (injection) => {
-      const build = await loadWave2Function<BuildRequest>(
-        "build-request",
-        "buildClaudeCodeRequest",
-      );
-      const hostileValues: readonly Record<string, unknown>[] = [
-        { ...baseInput(), accessToken: `token${injection}` },
-        { ...baseInput(), model: `claude-sonnet-4-5${injection}` },
-        {
-          ...baseInput(),
-          messages: [{ role: "user", content: `text${injection}` }],
+  // NUL is meaningless in every position and stays rejected everywhere.
+  it("rejects NUL injection across string-bearing positions", async () => {
+    const injection = "\u0000";
+    const build = await loadWave2Function<BuildRequest>(
+      "build-request",
+      "buildClaudeCodeRequest",
+    );
+    const hostileValues: readonly Record<string, unknown>[] = [
+      { ...baseInput(), accessToken: `token${injection}` },
+      { ...baseInput(), model: `claude-sonnet-4-5${injection}` },
+      {
+        ...baseInput(),
+        messages: [{ role: "user", content: `text${injection}` }],
+      },
+      { ...baseInput(), system: [`system${injection}`] },
+      {
+        ...baseInput(),
+        tools: [
+          { name: `tool${injection}`, description: "x", input_schema: {} },
+        ],
+      },
+      { ...baseInput(), metadata: { value: `metadata${injection}` } },
+      {
+        ...baseInput(),
+        runtime: {
+          ...baseInput()["runtime"],
+          sessionId: `session${injection}`,
         },
-        { ...baseInput(), system: [`system${injection}`] },
-        {
-          ...baseInput(),
-          tools: [
-            { name: `tool${injection}`, description: "x", input_schema: {} },
-          ],
+      },
+    ];
+    for (const hostile of hostileValues)
+      await expect(build(hostile)).rejects.toThrow();
+  });
+
+  /*
+   * CRLF is where this specification was WRONG, and the correction is
+   * deliberate.
+   *
+   * The original case asserted that CRLF is rejected in EVERY string-bearing
+   * position, body content included. That over-generalised a header rule: a
+   * bare CR or LF is request smuggling in a HEADER, but in message text or a
+   * system block it is an ordinary line break that `JSON.stringify` escapes.
+   * Enforcing it on the body made the package reject every realistic prompt —
+   * see `test/validation/multiline-content.test.ts`.
+   *
+   * CRLF therefore stays rejected in every position that reaches a header, an
+   * identity field or a metadata identifier, and is now ACCEPTED as body
+   * content. The injection surface is unchanged; only the body is relaxed.
+   */
+  it("still rejects CRLF in every position that reaches a header", async () => {
+    const injection = "\r\n";
+    const build = await loadWave2Function<BuildRequest>(
+      "build-request",
+      "buildClaudeCodeRequest",
+    );
+    const hostileValues: readonly Record<string, unknown>[] = [
+      { ...baseInput(), accessToken: `token${injection}` },
+      { ...baseInput(), metadata: { value: `metadata${injection}` } },
+      {
+        ...baseInput(),
+        runtime: {
+          ...baseInput()["runtime"],
+          sessionId: `session${injection}`,
         },
-        { ...baseInput(), metadata: { value: `metadata${injection}` } },
-        {
-          ...baseInput(),
-          runtime: {
-            ...baseInput()["runtime"],
-            sessionId: `session${injection}`,
-          },
-        },
-      ];
-      for (const hostile of hostileValues)
-        await expect(build(hostile)).rejects.toThrow();
-    },
-  );
+      },
+    ];
+    for (const hostile of hostileValues)
+      await expect(build(hostile)).rejects.toThrow();
+  });
+
+  it("accepts CRLF as body content, which is the point of the fix", async () => {
+    const injection = "\r\n";
+    const build = await loadWave2Function<BuildRequest>(
+      "build-request",
+      "buildClaudeCodeRequest",
+    );
+    const bodyValues: readonly Record<string, unknown>[] = [
+      {
+        ...baseInput(),
+        messages: [{ role: "user", content: `text${injection}` }],
+      },
+      { ...baseInput(), system: [`system${injection}`] },
+    ];
+    for (const input of bodyValues) {
+      const built = await build(input);
+      // The raw control characters never reach the wire: they are JSON escaped.
+      expect(built.body).not.toContain("\r");
+      expect(built.body).not.toContain("\n");
+      expect(built.body).toContain("\\r\\n");
+    }
+  });
 
   it("rejects case-insensitive duplicate and every forbidden header", async () => {
     const build = await loadWave2Function<BuildHeaders>(
