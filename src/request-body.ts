@@ -28,6 +28,7 @@ import type {
 } from "./contracts.js";
 import { deriveCapabilities } from "./model-capabilities.js";
 import { stripModelMarkers } from "./model-identity.js";
+import { IDENTITY_TEXT } from "./system-prompt.js";
 import { classifySurrogateAt } from "./unicode.js";
 
 const MAX_DEPTH = 100;
@@ -587,11 +588,17 @@ function applySystemCacheControl(
   value: readonly TextBlock[],
   input: ClaudeCodeCacheControlInput,
 ): readonly TextBlock[] {
+  // The identity block sits at index 1 unless `suppressBillingBlock` removed
+  // the billing block, which promotes it to index 0. Matching on the pinned
+  // text keeps both layouts correct without threading the seam down here.
+  const identityIndex = value.findIndex(
+    (block) => block.text === IDENTITY_TEXT,
+  );
   // Package extension: `suppressIdentityBlock` is the only way to emit the
   // identity block without a marker. Default (`undefined`/`false`) keeps the
   // unconditional overwrite the genuine client performs.
   const result = value.map((block, index) => {
-    if (index !== 1) return block;
+    if (index !== identityIndex) return block;
     return input.suppressIdentityBlock === true
       ? withoutCacheControl(block)
       : withBreakpoint(block, breakpoint(input));
@@ -599,7 +606,7 @@ function applySystemCacheControl(
   if (
     input.enabled === true &&
     input.systemBreakpoint === true &&
-    result.length > 2
+    result.length > identityIndex + 1
   ) {
     const index = result.length - 1;
     const block = result[index];

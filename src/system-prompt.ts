@@ -8,7 +8,15 @@ import type {
 import { ClaudeCodeWireError } from "./contracts.js";
 import { classifySurrogateAt } from "./unicode.js";
 
-const IDENTITY_TEXT =
+/**
+ * The pinned identity text, byte-exact.
+ *
+ * It is exported because it is the only reliable discriminator for the length
+ * of the canonical system prefix: a caller block equal to it is dropped, so it
+ * appears at most once in a built body. The parser, which never sees
+ * `suppressBillingBlock`, infers the prefix length from its position.
+ */
+export const IDENTITY_TEXT =
   "You are Claude Code, Anthropic's official CLI for Claude.";
 const MAX_INPUT_DEPTH = 64;
 const MAX_INPUT_SIZE = 1_000_000;
@@ -143,6 +151,7 @@ export function buildCanonicalSystem(
   input: readonly SystemInput[] | undefined,
   billingBlock: TextBlock,
   identity: ClaudeCodeRuntimeIdentity,
+  suppressBillingBlock = false,
 ): readonly TextBlock[] {
   validateStructure(input);
   if (input !== undefined && !Array.isArray(input)) fail("INVALID_INPUT");
@@ -157,14 +166,17 @@ export function buildCanonicalSystem(
   // pinned identity system text itself intentionally contains no identifiers.
   void identity;
 
-  const blocks: TextBlock[] = [
-    canonicalBilling,
+  // Package extension: `suppressBillingBlock` is the only way to omit the
+  // billing block. Default (`false`) keeps the two-block canonical prefix the
+  // genuine client always emits.
+  const blocks: TextBlock[] = suppressBillingBlock ? [] : [canonicalBilling];
+  blocks.push(
     Object.freeze({
       type: "text",
       text: IDENTITY_TEXT,
       cache_control: Object.freeze({ type: "ephemeral", ttl: "1h" }),
     }),
-  ];
+  );
 
   if (input !== undefined) {
     let run: TextBlock | undefined;

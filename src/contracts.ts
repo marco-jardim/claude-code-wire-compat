@@ -888,6 +888,20 @@ export interface ClaudeCodeRequestInput {
    */
   readonly suppressBetas?: readonly string[];
   /**
+   * Omits the canonical billing block (system index 0) from the emitted
+   * request, promoting the identity block to index 0.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour: the genuine client
+   * always emits that block. It exists so a consumer that exposes an
+   * attribution switch to its users can honour it, instead of the switch being
+   * a silent no-op.
+   *
+   * Defaults to `false`. Omitting the field, or passing `false`, leaves the
+   * emitted request byte-identical. Any non-boolean value fails with
+   * `INVALID_INPUT`.
+   */
+  readonly suppressBillingBlock?: boolean;
+  /**
    * Overrides beta-header gates that the genuine client resolves from host
    * state this package cannot observe.
    *
@@ -1031,6 +1045,15 @@ export interface RedactedRequestEvidence {
    * and empty, so existing evidence stays byte-identical.
    */
   readonly suppressedBetaNames?: readonly string[];
+  /**
+   * Records that `suppressBillingBlock` removed the canonical billing block,
+   * which shortens the canonical system prefix from two blocks to one.
+   *
+   * Emitted ONLY when the seam was active. When it is omitted or `false`, the
+   * key is ABSENT rather than present and `false`, so existing evidence stays
+   * byte-identical.
+   */
+  readonly billingBlockSuppressed?: boolean;
 }
 
 /**

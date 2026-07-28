@@ -44,6 +44,11 @@ export interface BuildRedactedEvidenceInput {
    * so the raw length made every merged request unparseable by this package.
    */
   readonly emittedSystemBlockCount?: number;
+  /**
+   * Set only when `suppressBillingBlock` removed the billing block, so evidence
+   * for every request that ignores the seam keeps its original shape.
+   */
+  readonly billingBlockSuppressed?: true;
 }
 
 const MAX_INPUT_DEPTH = 100;
@@ -484,6 +489,11 @@ export async function buildRedactedEvidence(
     ...(suppressedBetaNames.length === 0
       ? {}
       : { suppressedBetaNames: Object.freeze(suppressedBetaNames) }),
+    // Package extension: emitted only when the billing block was actually
+    // suppressed, so evidence for every other request is unchanged.
+    ...(input.billingBlockSuppressed === true
+      ? { billingBlockSuppressed: true }
+      : {}),
   };
   return Object.freeze(evidence);
 }

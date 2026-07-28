@@ -36,7 +36,7 @@ import {
   canonicalCountTokensLists,
 } from "./request-body.js";
 import { sha256Hex } from "./sha256.js";
-import { buildCanonicalSystem } from "./system-prompt.js";
+import { buildCanonicalSystem, IDENTITY_TEXT } from "./system-prompt.js";
 import { isThinkingDisplayActive } from "./thinking.js";
 import { classifySurrogateAt } from "./unicode.js";
 
@@ -80,6 +80,7 @@ const INPUT_KEYS = new Set([
   "anthropicAdditionalProtection",
   "additionalBetas",
   "suppressBetas",
+  "suppressBillingBlock",
   "betaOverrides",
   "metadataOverrides",
   "extraHeaders",
@@ -107,8 +108,10 @@ const COUNT_TOKENS_INPUT_KEYS = new Set([
   "extraHeaders",
 ]);
 const BUILT_KEYS = new Set(["url", "method", "headers", "body", "evidence"]);
-/** Counts the billing and identity blocks the canonical system always emits. */
+/** Counts the billing and identity blocks of the default canonical prefix. */
 const CANONICAL_SYSTEM_BLOCKS = 2;
+/** Counts the identity block alone, once `suppressBillingBlock` removed billing. */
+const CANONICAL_SYSTEM_BLOCKS_WITHOUT_BILLING = 1;
 const EVIDENCE_KEYS = new Set([
   "profileId",
   "url",
@@ -123,6 +126,7 @@ const EVIDENCE_KEYS = new Set([
   "capabilityDecisions",
   "droppedExtraHeaderNames",
   "suppressedBetaNames",
+  "billingBlockSuppressed",
 ]);
 const CAPABILITY_KEYS = [
   "thinking",
@@ -599,6 +603,17 @@ function validateExtraHeaderPolicy(
   return value;
 }
 
+/**
+ * Validates the package-extension billing-block suppression flag.
+ *
+ * Only a boolean states a decision. A truthy string or `0` is a caller mistake
+ * rather than a coercion target, because coercing would silently change what
+ * Anthropic receives for attribution purposes.
+ */
+function validateSuppressBillingBlock(value: unknown): boolean {
+  return parseBoolean(value);
+}
+
 function createEffectiveProfile(
   pinnedProfile: ClaudeCodeProtocolProfile,
   override: ClaudeCodeProfileOverride | undefined,
@@ -631,6 +646,7 @@ function validateInput(input: ClaudeCodeRequestInput): {
   readonly profileOverride: ClaudeCodeProfileOverride | undefined;
   readonly betaOverrides: ClaudeCodeBetaOverrides | undefined;
   readonly extraHeaderPolicy: ClaudeCodeExtraHeaderPolicy | undefined;
+  readonly suppressBillingBlock: boolean;
 } {
   if (!isRecord(input)) fail();
   assertExactKeys(input, INPUT_KEYS);
@@ -677,6 +693,9 @@ function validateInput(input: ClaudeCodeRequestInput): {
   const extraHeaderPolicy = Object.hasOwn(input, "extraHeaderPolicy")
     ? validateExtraHeaderPolicy(ownValue(input, "extraHeaderPolicy"))
     : undefined;
+  const suppressBillingBlock = Object.hasOwn(input, "suppressBillingBlock")
+    ? validateSuppressBillingBlock(ownValue(input, "suppressBillingBlock"))
+    : false;
   return {
     source: input,
     clientRequestId,
@@ -684,6 +703,7 @@ function validateInput(input: ClaudeCodeRequestInput): {
     profileOverride,
     betaOverrides,
     extraHeaderPolicy,
+    suppressBillingBlock,
   };
 }
 
@@ -943,7 +963,42 @@ function parseEvidence(value: unknown): RedactedRequestEvidence {
           ),
         }
       : {}),
+    ...(Object.hasOwn(value, "billingBlockSuppressed")
+      ? {
+          billingBlockSuppressed: parseBoolean(
+            ownValue(value, "billingBlockSuppressed"),
+          ),
+        }
+      : {}),
   };
+}
+
+/** Reads a system block's `text` without asserting the block's shape. */
+function systemBlockText(block: unknown): unknown {
+  return isRecord(block) && Object.hasOwn(block, "text")
+    ? ownValue(block, "text")
+    : undefined;
+}
+
+/**
+ * Infers how many canonical blocks the emitted `system` array carries.
+ *
+ * The prefix used to be the constant `CANONICAL_SYSTEM_BLOCKS`, but
+ * `suppressBillingBlock` makes it either `[billing, identity]` or `[identity]`.
+ * The discriminator is therefore the POSITION of the pinned identity text, not
+ * arithmetic over the array length and never `cache_control`: the
+ * `suppressIdentityBlock` seam can emit the identity block with no cache
+ * marker, so a marker probe would misread a legitimate request. An array whose
+ * identity block sits at neither position was not produced by this package.
+ */
+function canonicalSystemPrefixLength(system: readonly unknown[]): number {
+  if (systemBlockText(system[1]) === IDENTITY_TEXT) {
+    return CANONICAL_SYSTEM_BLOCKS;
+  }
+  if (systemBlockText(system[0]) === IDENTITY_TEXT) {
+    return CANONICAL_SYSTEM_BLOCKS_WITHOUT_BILLING;
+  }
+  return fail();
 }
 
 function parseBody(value: string): UnknownRecord {
@@ -1228,6 +1283,7 @@ export async function buildClaudeCodeRequest(
       validated.source.system,
       billing,
       identity,
+      validated.suppressBillingBlock,
     );
     const canonicalBody = buildCanonicalBody(
       evidenceRequest(validated.source, validated.source.model),
@@ -1299,7 +1355,11 @@ export async function buildClaudeCodeRequest(
         // The canonical system merges adjacent caller blocks and drops any
         // block equal to the identity text, so only the emitted count keeps
         // `systemBlockCount === body.system.length - <canonical>` true.
-        emittedSystemBlockCount: system.length - CANONICAL_SYSTEM_BLOCKS,
+        emittedSystemBlockCount:
+          system.length -
+          (validated.suppressBillingBlock
+            ? CANONICAL_SYSTEM_BLOCKS_WITHOUT_BILLING
+            : CANONICAL_SYSTEM_BLOCKS),
         // Emitted only for the opted-in policy, so evidence for every other
         // request keeps the shape it had before the seam existed.
         ...(validated.extraHeaderPolicy === "dropConflicting"
@@ -1310,6 +1370,12 @@ export async function buildClaudeCodeRequest(
         ...(composedBetas.suppressedBetaNames.length === 0
           ? {}
           : { suppressedBetaNames: composedBetas.suppressedBetaNames }),
+        // Emitted only when the billing block was actually removed, so the
+        // audit records the attribution decision without inventing a key for
+        // every request that leaves the canonical prefix intact.
+        ...(validated.suppressBillingBlock
+          ? { billingBlockSuppressed: true }
+          : {}),
       },
       validated.crypto,
     );
@@ -1399,7 +1465,8 @@ export function parseBuiltClaudeCodeRequest(
           : -1) ||
       evidence.systemBlockCount !==
         (Array.isArray(parsedBody["system"])
-          ? parsedBody["system"].length - CANONICAL_SYSTEM_BLOCKS
+          ? parsedBody["system"].length -
+            canonicalSystemPrefixLength(parsedBody["system"])
           : -1)
     ) {
       fail();
