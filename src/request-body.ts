@@ -609,16 +609,26 @@ function applySystemCacheControl(
   return result;
 }
 
+/**
+ * Normalises tool `cache_control` when caching is enabled.
+ *
+ * The strip is gated on `enabled === true`, exactly like the re-add below it.
+ * It used to be unconditional, which made any OTHER member of
+ * `ClaudeCodeCacheControlInput` destructive: passing
+ * `{ suppressIdentityBlock: true }` — the S3 seam on its own — deleted every
+ * `cache_control` the caller had placed on its tools and restored nothing.
+ *
+ * When caching IS enabled the caller's own breakpoints are still normalised
+ * away, because this package owns breakpoint placement in that mode and two
+ * competing sets of breakpoints cannot both be honoured.
+ */
 function applyToolCacheControl(
   value: readonly ToolDefinition[],
   input: ClaudeCodeCacheControlInput,
 ): readonly ToolDefinition[] {
+  if (input.enabled !== true) return value;
   const result = value.map((tool) => withoutCacheControl(tool));
-  if (
-    input.enabled === true &&
-    input.toolBreakpoint === true &&
-    result.length > 0
-  ) {
+  if (input.toolBreakpoint === true && result.length > 0) {
     const index = result.length - 1;
     const tool = result[index];
     if (tool !== undefined)
@@ -627,10 +637,19 @@ function applyToolCacheControl(
   return result;
 }
 
+/**
+ * Normalises message `cache_control` when caching is enabled.
+ *
+ * Gated on `enabled === true` for the same reason as `applyToolCacheControl`:
+ * the strip used to run unconditionally, so a caller populating any other
+ * member of `ClaudeCodeCacheControlInput` silently lost the `cache_control` it
+ * had placed on its own message blocks.
+ */
 function applyMessageCacheControl(
   value: readonly Message[],
   input: ClaudeCodeCacheControlInput,
 ): readonly Message[] {
+  if (input.enabled !== true) return value;
   const result = value.map((message): Message => ({
     role: message.role,
     content:
@@ -642,7 +661,7 @@ function applyMessageCacheControl(
               : withoutCacheControl(block),
           ),
   }));
-  if (input.enabled !== true || input.messageBreakpoint !== true) return result;
+  if (input.messageBreakpoint !== true) return result;
 
   for (let index = result.length - 1; index >= 0; index -= 1) {
     const message = result[index];
