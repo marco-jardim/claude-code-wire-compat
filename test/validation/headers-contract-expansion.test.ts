@@ -146,9 +146,11 @@ describe("expanded header controls", () => {
       { extraHeaders: [["cookie", "value"]] },
       "FORBIDDEN_HEADER",
     );
+    // Still rejected, one layer later: the input-graph screen now admits CR/LF
+    // as body content, and `assertHeaderText` refuses them for headers.
     await expectCode(
       { extraHeaders: [["x-custom", "line\r\nbreak"]] },
-      "INVALID_UNICODE",
+      "HEADER_INJECTION",
     );
     await expectCode(
       { extraHeaders: [["x-custom", `leak-${ACCESS_TOKEN}`]] },
@@ -161,7 +163,7 @@ describe("expanded header controls", () => {
   it.each([
     ["stainlessHelper", ""],
     ["claudeRemoteContainerId", 1],
-    ["claudeRemoteSessionId", "bad\nvalue", "INVALID_UNICODE"],
+    ["claudeRemoteSessionId", "bad\nvalue", "HEADER_INJECTION"],
     ["clientApp", ""],
     ["anthropicAdditionalProtection", false],
   ])("rejects malformed explicit header %s", async (key, value, code) => {

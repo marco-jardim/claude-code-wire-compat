@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { composeBetas } from "./betas.js";
+import { composeBetas, composeBetasWithAudit } from "./betas.js";
 import type {
   BuiltClaudeCodeCountTokensRequest,
   BuiltClaudeCodeRequest,
+  ClaudeCodeBetaOverrides,
   ClaudeCodeCapabilities,
+  ClaudeCodeCapabilityDecisions,
+  ClaudeCodeExtraHeaderPolicy,
   ClaudeCodeProfileOverride,
   ClaudeCodeProtocolProfile,
   ClaudeCodeCountTokensInput,
@@ -19,7 +22,7 @@ import {
   TOKEN_COUNTING_BETA,
 } from "./count-tokens.js";
 import { createBillingBlock } from "./fingerprint.js";
-import { buildOrderedHeaders } from "./headers.js";
+import { buildOrderedHeaderPlan, buildOrderedHeaders } from "./headers.js";
 import {
   buildCorrelatedMetadata,
   validateRuntimeIdentity,
@@ -33,7 +36,7 @@ import {
   canonicalCountTokensLists,
 } from "./request-body.js";
 import { sha256Hex } from "./sha256.js";
-import { buildCanonicalSystem } from "./system-prompt.js";
+import { buildCanonicalSystem, IDENTITY_TEXT } from "./system-prompt.js";
 import { isThinkingDisplayActive } from "./thinking.js";
 import { classifySurrogateAt } from "./unicode.js";
 
@@ -75,9 +78,19 @@ const INPUT_KEYS = new Set([
   "claudeRemoteSessionId",
   "clientApp",
   "anthropicAdditionalProtection",
+  "additionalBetas",
+  "suppressBetas",
+  "suppressBillingBlock",
+  "suppressIdentityBlock",
+  "preserveThinkingBlockCacheControl",
+  "betaOverrides",
+  "metadataOverrides",
   "extraHeaders",
+  "extraHeaderPolicy",
   "crypto",
 ]);
+const BETA_OVERRIDE_KEYS = new Set(["use1MContext"]);
+const METADATA_OVERRIDE_KEYS = new Set(["userId", "userIdFields"]);
 const COUNT_TOKENS_INPUT_KEYS = new Set([
   "accessToken",
   "model",
@@ -97,6 +110,16 @@ const COUNT_TOKENS_INPUT_KEYS = new Set([
   "extraHeaders",
 ]);
 const BUILT_KEYS = new Set(["url", "method", "headers", "body", "evidence"]);
+/**
+ * The self-describing prefix of the canonical billing block's text.
+ *
+ * `buildBillingBlock` emits
+ * `x-anthropic-billing-header: cc_version=<version>.<fingerprint>; ...`, whose
+ * tail varies per request, so only this fixed head can anchor a structural
+ * check. It is what lets the parser CONFIRM that a request which claims to
+ * carry the billing block actually carries it.
+ */
+const BILLING_BLOCK_TEXT_PREFIX = "x-anthropic-billing-header: cc_version=";
 const EVIDENCE_KEYS = new Set([
   "profileId",
   "url",
@@ -109,6 +132,11 @@ const EVIDENCE_KEYS = new Set([
   "messageCount",
   "systemBlockCount",
   "capabilityDecisions",
+  "droppedExtraHeaderNames",
+  "suppressedBetaNames",
+  "billingBlockSuppressed",
+  "identityBlockSuppressed",
+  "thinkingBlockCacheControlPreserved",
 ]);
 const CAPABILITY_KEYS = [
   "thinking",
@@ -122,6 +150,11 @@ const CAPABILITY_KEYS = [
   "rejectsDisabledThinking",
 ] as const;
 const CAPABILITY_KEY_SET = new Set(CAPABILITY_KEYS);
+/** Adds the optional package-extension override keys carried by evidence. */
+const CAPABILITY_DECISION_KEY_SET = new Set([
+  ...CAPABILITY_KEYS,
+  "use1MContext",
+]);
 const OVERRIDE_KEYS = new Set([
   "id",
   "cliVersion",
@@ -187,10 +220,39 @@ function assertExactKeys(
   }
 }
 
+/**
+ * Screens one string from the caller's input graph.
+ *
+ * TAB (0x09), LF (0x0A) and CR (0x0D) are ALLOWED. This function walks the
+ * whole input graph, which is overwhelmingly BODY content — message text,
+ * system blocks, tool descriptions — where a line break is ordinary prose that
+ * `JSON.stringify` escapes on the way out. Rejecting them here made the package
+ * unusable for real traffic: no genuine prompt is a single line.
+ *
+ * The strict rule those three characters used to be caught by is a HEADER rule,
+ * and it still lives where it belongs and still applies in full:
+ * `assertHeaderText` in `src/headers.ts` rejects every control character,
+ * including these three, because a bare LF in a header is request smuggling.
+ * `src/metadata.ts` is likewise unchanged: `user_id` and metadata keys are
+ * identifiers that travel as JSON inside a header, not prose.
+ *
+ * Every other C0 control (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F) and DEL (0x7F)
+ * stay rejected: they have no meaning in prompt text and are a reliable signal
+ * of a corrupted or hostile input.
+ *
+ * LONE SURROGATES stay rejected in every context, deliberately. `TextEncoder`
+ * silently replaces them with U+FFFD, so an unpaired surrogate would corrupt
+ * the body — and the body hash recorded in evidence — with no error anywhere.
+ */
 function inspectString(value: string): number {
   for (let index = 0; index < value.length; index += 1) {
     const unit = value.charCodeAt(index);
-    if (unit <= 0x1f || unit === 0x7f) fail("INVALID_UNICODE");
+    if (
+      (unit <= 0x1f && unit !== 0x09 && unit !== 0x0a && unit !== 0x0d) ||
+      unit === 0x7f
+    ) {
+      fail("INVALID_UNICODE");
+    }
     const classification = classifySurrogateAt(value, index);
     if (classification === "loneSurrogate") fail("INVALID_UNICODE");
     if (classification === "surrogatePair") index += 1;
@@ -507,6 +569,83 @@ function validateProfileOverride(value: unknown): ClaudeCodeProfileOverride {
   });
 }
 
+/**
+ * Validates the package-extension beta overrides.
+ *
+ * An explicitly present key with an `undefined` value is rejected rather than
+ * silently treated as absent, so the tri-state stays observable: the caller
+ * either states a decision or omits the key.
+ */
+function validateBetaOverrides(value: unknown): ClaudeCodeBetaOverrides {
+  if (!isRecord(value)) fail();
+  assertExactKeys(value, BETA_OVERRIDE_KEYS);
+  return Object.freeze({
+    ...(Object.hasOwn(value, "use1MContext")
+      ? { use1MContext: parseBoolean(ownValue(value, "use1MContext")) }
+      : {}),
+  });
+}
+
+/**
+ * Validates the shape of the package-extension metadata overrides.
+ *
+ * Only the key set is decided here, exactly as `validateBetaOverrides` does.
+ * Member values, and the mutual exclusion between them, are decided by
+ * `buildCorrelatedMetadata`, which owns the correlation rules.
+ */
+function validateMetadataOverrides(value: unknown): void {
+  if (!isRecord(value)) fail();
+  assertExactKeys(value, METADATA_OVERRIDE_KEYS);
+}
+
+/**
+ * Validates the package-extension extra-header policy.
+ *
+ * The two literals are the whole domain; anything else, including a casing
+ * variant or a padded string, is a caller mistake rather than a silent fallback
+ * to `strict`, because falling back would emit a request the caller did not ask
+ * for.
+ */
+function validateExtraHeaderPolicy(
+  value: unknown,
+): ClaudeCodeExtraHeaderPolicy {
+  if (value !== "strict" && value !== "dropConflicting") fail();
+  return value;
+}
+
+/**
+ * Validates the package-extension billing-block suppression flag.
+ *
+ * Only a boolean states a decision. A truthy string or `0` is a caller mistake
+ * rather than a coercion target, because coercing would silently change what
+ * Anthropic receives for attribution purposes.
+ */
+function validateSuppressBillingBlock(value: unknown): boolean {
+  return parseBoolean(value);
+}
+
+/**
+ * Validates the package-extension identity-block suppression flag.
+ *
+ * Same contract as `validateSuppressBillingBlock`: only a boolean states a
+ * decision, because coercing a truthy string would silently drop a canonical
+ * block the genuine client always sends.
+ */
+function validateSuppressIdentityBlock(value: unknown): boolean {
+  return parseBoolean(value);
+}
+
+/**
+ * Validates the package-extension thinking-block `cache_control` seam flag.
+ *
+ * Same contract as the suppression flags: only a boolean states a decision,
+ * because coercing a truthy string would silently widen the thinking-block
+ * allowlist this package pins against the genuine client.
+ */
+function validatePreserveThinkingBlockCacheControl(value: unknown): boolean {
+  return parseBoolean(value);
+}
+
 function createEffectiveProfile(
   pinnedProfile: ClaudeCodeProtocolProfile,
   override: ClaudeCodeProfileOverride | undefined,
@@ -537,6 +676,11 @@ function validateInput(input: ClaudeCodeRequestInput): {
   readonly clientRequestId: string;
   readonly crypto: Pick<Crypto, "subtle"> | undefined;
   readonly profileOverride: ClaudeCodeProfileOverride | undefined;
+  readonly betaOverrides: ClaudeCodeBetaOverrides | undefined;
+  readonly extraHeaderPolicy: ClaudeCodeExtraHeaderPolicy | undefined;
+  readonly suppressBillingBlock: boolean;
+  readonly suppressIdentityBlock: boolean;
+  readonly preserveThinkingBlockCacheControl: boolean;
 } {
   if (!isRecord(input)) fail();
   assertExactKeys(input, INPUT_KEYS);
@@ -574,11 +718,39 @@ function validateInput(input: ClaudeCodeRequestInput): {
   const profileOverride = Object.hasOwn(input, "profileOverride")
     ? validateProfileOverride(ownValue(input, "profileOverride"))
     : undefined;
+  const betaOverrides = Object.hasOwn(input, "betaOverrides")
+    ? validateBetaOverrides(ownValue(input, "betaOverrides"))
+    : undefined;
+  if (Object.hasOwn(input, "metadataOverrides")) {
+    validateMetadataOverrides(ownValue(input, "metadataOverrides"));
+  }
+  const extraHeaderPolicy = Object.hasOwn(input, "extraHeaderPolicy")
+    ? validateExtraHeaderPolicy(ownValue(input, "extraHeaderPolicy"))
+    : undefined;
+  const suppressBillingBlock = Object.hasOwn(input, "suppressBillingBlock")
+    ? validateSuppressBillingBlock(ownValue(input, "suppressBillingBlock"))
+    : false;
+  const suppressIdentityBlock = Object.hasOwn(input, "suppressIdentityBlock")
+    ? validateSuppressIdentityBlock(ownValue(input, "suppressIdentityBlock"))
+    : false;
+  const preserveThinkingBlockCacheControl = Object.hasOwn(
+    input,
+    "preserveThinkingBlockCacheControl",
+  )
+    ? validatePreserveThinkingBlockCacheControl(
+        ownValue(input, "preserveThinkingBlockCacheControl"),
+      )
+    : false;
   return {
     source: input,
     clientRequestId,
     crypto: cryptoValue,
     profileOverride,
+    betaOverrides,
+    extraHeaderPolicy,
+    suppressBillingBlock,
+    suppressIdentityBlock,
+    preserveThinkingBlockCacheControl,
   };
 }
 
@@ -742,9 +914,14 @@ function parseHeaders(value: unknown): readonly HeaderPair[] {
   });
 }
 
-function parseCapabilities(value: unknown): ClaudeCodeCapabilities {
+function parseCapabilityDecisions(
+  value: unknown,
+): ClaudeCodeCapabilityDecisions {
   if (!isRecord(value)) fail();
-  assertExactKeys(value, CAPABILITY_KEY_SET);
+  // The nine capability keys are mandatory; the package-extension override keys
+  // are optional and must survive the round-trip untouched, so they are allowed
+  // here but never synthesized.
+  assertExactKeys(value, CAPABILITY_DECISION_KEY_SET);
   // Read each key through a narrowing helper rather than building a record and
   // re-checking it afterwards. The re-check was unreachable -- every value was
   // already proven boolean -- which cost coverage and produced mutants that
@@ -755,6 +932,9 @@ function parseCapabilities(value: unknown): ClaudeCodeCapabilities {
     return entry;
   };
   return {
+    ...(Object.hasOwn(value, "use1MContext")
+      ? { use1MContext: readBoolean("use1MContext") }
+      : {}),
     thinking: readBoolean("thinking"),
     adaptiveThinking: readBoolean("adaptiveThinking"),
     interleavedThinking: readBoolean("interleavedThinking"),
@@ -811,10 +991,142 @@ function parseEvidence(value: unknown): RedactedRequestEvidence {
     bodyByteLength,
     messageCount,
     systemBlockCount,
-    capabilityDecisions: parseCapabilities(
+    capabilityDecisions: parseCapabilityDecisions(
       ownValue(value, "capabilityDecisions"),
     ),
+    // Optional package-extension audit: preserved verbatim when present and
+    // never synthesized, exactly like the `use1MContext` decision key.
+    ...(Object.hasOwn(value, "droppedExtraHeaderNames")
+      ? {
+          droppedExtraHeaderNames: parseStringArray(
+            ownValue(value, "droppedExtraHeaderNames"),
+          ),
+        }
+      : {}),
+    ...(Object.hasOwn(value, "suppressedBetaNames")
+      ? {
+          suppressedBetaNames: parseStringArray(
+            ownValue(value, "suppressedBetaNames"),
+          ),
+        }
+      : {}),
+    ...(Object.hasOwn(value, "billingBlockSuppressed")
+      ? {
+          billingBlockSuppressed: parseBoolean(
+            ownValue(value, "billingBlockSuppressed"),
+          ),
+        }
+      : {}),
+    ...(Object.hasOwn(value, "identityBlockSuppressed")
+      ? {
+          identityBlockSuppressed: parseBoolean(
+            ownValue(value, "identityBlockSuppressed"),
+          ),
+        }
+      : {}),
+    // Rehydrated here because `assertExactKeys` above already accepts the key:
+    // omitting this branch would silently DROP it, and the round-trip equality
+    // every seam test asserts would fail on an envelope that is entirely legal.
+    ...(Object.hasOwn(value, "thinkingBlockCacheControlPreserved")
+      ? {
+          thinkingBlockCacheControlPreserved: parseBoolean(
+            ownValue(value, "thinkingBlockCacheControlPreserved"),
+          ),
+        }
+      : {}),
   };
+}
+
+/** Reads an own property of a value that is not asserted to be a record. */
+function ownProperty(value: unknown, key: string): unknown {
+  return isRecord(value) && Object.hasOwn(value, key)
+    ? ownValue(value, key)
+    : undefined;
+}
+
+/**
+ * Reports whether the emitted `messages` carry a reasoning block that actually
+ * kept a `cache_control` key.
+ *
+ * This is what makes `evidence.thinkingBlockCacheControlPreserved` a record of
+ * what the seam DID rather than of what it was allowed to do, and it is the
+ * check that refutes an envelope claiming the seam over a body carrying no such
+ * block. Presence of the KEY is the test, not truthiness: `cache_control: null`
+ * is a preserved marker too, exactly as it is on every other block type.
+ */
+function hasThinkingBlockCacheControl(messages: unknown): boolean {
+  if (!Array.isArray(messages)) return false;
+  return messages.some((message) => {
+    const content = ownProperty(message, "content");
+    return (
+      Array.isArray(content) &&
+      content.some((block) => {
+        const type = ownProperty(block, "type");
+        return (
+          (type === "thinking" || type === "redacted_thinking") &&
+          ownProperty(block, "cache_control") !== undefined
+        );
+      })
+    );
+  });
+}
+
+/** Reads a system block's `text` without asserting the block's shape. */
+function systemBlockText(block: unknown): unknown {
+  return ownProperty(block, "text");
+}
+
+/** Recognises the canonical billing block by its fixed, self-describing head. */
+function isBillingBlockText(text: unknown): boolean {
+  return typeof text === "string" && text.startsWith(BILLING_BLOCK_TEXT_PREFIX);
+}
+
+/**
+ * VERIFIES how many canonical blocks the emitted `system` array carries.
+ *
+ * The root seams `suppressBillingBlock` and `suppressIdentityBlock` make four
+ * prefixes legitimate — `[billing, identity]`, `[identity]`, `[billing]` and
+ * `[]` — so no probe over the array alone can tell them apart: an empty prefix
+ * is indistinguishable from a caller-only array. The prefix length is therefore
+ * READ from the evidence flags, which the builder emits only when suppression
+ * actually removed a block.
+ *
+ * Evidence is not trusted blindly. Each block the flags claim is present is
+ * confirmed in place: billing by its `x-anthropic-billing-header: cc_version=`
+ * head (its tail is per-request), identity by the byte-exact `IDENTITY_TEXT`;
+ * a claim that identity was suppressed is confirmed by that text being absent
+ * from the whole array. This is strictly stronger than the position probe it
+ * replaces, which never checked the billing slot at all. Never `cache_control`:
+ * the
+ * `cacheControl.suppressIdentityBlock` seam can emit the identity block with no
+ * marker, so a marker probe would misread a legitimate request.
+ */
+function canonicalSystemPrefixLength(
+  system: readonly unknown[],
+  billingSuppressed: boolean,
+  identitySuppressed: boolean,
+): number {
+  let index = 0;
+  if (!billingSuppressed) {
+    if (!isBillingBlockText(systemBlockText(system[index]))) fail();
+    index += 1;
+  }
+  if (identitySuppressed) {
+    // The identity text cannot appear ANYWHERE in a body built with the seam
+    // active: `buildCanonicalSystem` drops a caller block equal to it
+    // unconditionally, and merging joins with `\n`, so no merged run can equal
+    // it either. Absence is therefore checkable, which is what refutes a claim
+    // of suppression made over a body that still carries the block.
+    //
+    // No mirror check exists for billing: a caller block may legitimately begin
+    // with the billing header text, so its presence proves nothing.
+    if (system.some((block) => systemBlockText(block) === IDENTITY_TEXT)) {
+      fail();
+    }
+    return index;
+  }
+  if (systemBlockText(system[index]) !== IDENTITY_TEXT) fail();
+  return index + 1;
 }
 
 function parseBody(value: string): UnknownRecord {
@@ -888,6 +1200,10 @@ function evidenceRequest(
     tools?: NonNullable<ClaudeCodeRequestInput["tools"]>;
     cacheControl?: Exclude<ClaudeCodeRequestInput["cacheControl"], undefined>;
     capabilities?: NonNullable<ClaudeCodeRequestInput["capabilities"]>;
+    betaOverrides?: NonNullable<ClaudeCodeRequestInput["betaOverrides"]>;
+    preserveThinkingBlockCacheControl?: NonNullable<
+      ClaudeCodeRequestInput["preserveThinkingBlockCacheControl"]
+    >;
     thinking?: NonNullable<ClaudeCodeRequestInput["thinking"]>;
     effort?: NonNullable<ClaudeCodeRequestInput["effort"]>;
     metadata?: NonNullable<ClaudeCodeRequestInput["metadata"]>;
@@ -921,6 +1237,14 @@ function evidenceRequest(
     request.cacheControl = present(input.cacheControl);
   if (input.capabilities !== undefined)
     request.capabilities = input.capabilities;
+  if (input.betaOverrides !== undefined)
+    request.betaOverrides = input.betaOverrides;
+  // The body builder owns the thinking-block allowlist, so the seam flag has to
+  // reach it. It is forwarded only when the caller stated it, keeping the
+  // normalized request shape identical for every request that ignores the seam.
+  if (input.preserveThinkingBlockCacheControl !== undefined)
+    request.preserveThinkingBlockCacheControl =
+      input.preserveThinkingBlockCacheControl;
   if (input.thinking !== undefined) request.thinking = input.thinking;
   if (input.effort !== undefined) request.effort = input.effort;
   if (input.metadata !== undefined) request.metadata = input.metadata;
@@ -1090,11 +1414,14 @@ export async function buildClaudeCodeRequest(
     const metadata = buildCorrelatedMetadata(
       identity,
       validated.source.metadata,
+      validated.source.metadataOverrides,
     );
     const system = buildCanonicalSystem(
       validated.source.system,
       billing,
       identity,
+      validated.suppressBillingBlock,
+      validated.suppressIdentityBlock,
     );
     const canonicalBody = buildCanonicalBody(
       evidenceRequest(validated.source, validated.source.model),
@@ -1103,7 +1430,7 @@ export async function buildClaudeCodeRequest(
       metadata,
       effectiveProfile,
     );
-    const betas = composeBetas(
+    const composedBetas = composeBetasWithAudit(
       {
         rawModel: validated.source.model,
         normalizedId: resolvedModel.id,
@@ -1119,26 +1446,38 @@ export async function buildClaudeCodeRequest(
         ...(validated.source.speed === undefined
           ? {}
           : { speed: validated.source.speed }),
+        ...(validated.source.additionalBetas === undefined
+          ? {}
+          : { additionalBetas: validated.source.additionalBetas }),
+        ...(validated.source.suppressBetas === undefined
+          ? {}
+          : { suppressBetas: validated.source.suppressBetas }),
+        ...(validated.betaOverrides?.use1MContext === undefined
+          ? {}
+          : { use1MContextOverride: validated.betaOverrides.use1MContext }),
       },
       effectiveProfile,
     );
+    const betas = composedBetas.betas;
+    const headerPlan = buildOrderedHeaderPlan({
+      accessToken: validated.source.accessToken,
+      runtime: identity,
+      clientRequestId: validated.clientRequestId,
+      betaFeatures: betas,
+      app: validated.source.app ?? effectiveProfile.entrypoint,
+      stainlessRetryCount: validated.source.stainlessRetryCount ?? 0,
+      stainlessHelper: validated.source.stainlessHelper,
+      claudeRemoteContainerId: validated.source.claudeRemoteContainerId,
+      claudeRemoteSessionId: validated.source.claudeRemoteSessionId,
+      clientApp: validated.source.clientApp,
+      anthropicAdditionalProtection:
+        validated.source.anthropicAdditionalProtection,
+      extraHeaders: validated.source.extraHeaders ?? [],
+      extraHeaderPolicy: validated.extraHeaderPolicy ?? "strict",
+      profile: pinnedProfile,
+    });
     const headers = applyEffectiveProfileHeaders(
-      buildOrderedHeaders({
-        accessToken: validated.source.accessToken,
-        runtime: identity,
-        clientRequestId: validated.clientRequestId,
-        betaFeatures: betas,
-        app: validated.source.app ?? effectiveProfile.entrypoint,
-        stainlessRetryCount: validated.source.stainlessRetryCount ?? 0,
-        stainlessHelper: validated.source.stainlessHelper,
-        claudeRemoteContainerId: validated.source.claudeRemoteContainerId,
-        claudeRemoteSessionId: validated.source.claudeRemoteSessionId,
-        clientApp: validated.source.clientApp,
-        anthropicAdditionalProtection:
-          validated.source.anthropicAdditionalProtection,
-        extraHeaders: validated.source.extraHeaders ?? [],
-        profile: pinnedProfile,
-      }),
+      headerPlan.headers,
       effectiveProfile,
     );
     const body = JSON.stringify(canonicalBody);
@@ -1151,6 +1490,46 @@ export async function buildClaudeCodeRequest(
         logicalHeaders: headers,
         betaFeatures: betas,
         body,
+        // The canonical system merges adjacent caller blocks and drops any
+        // block equal to the identity text, so only the emitted count keeps
+        // `systemBlockCount === body.system.length - <canonical>` true.
+        // Symmetric arithmetic over the two suppression seams: each canonical
+        // block that survived costs one slot. A single constant cannot express
+        // the empty prefix both seams together produce.
+        emittedSystemBlockCount:
+          system.length -
+          (validated.suppressBillingBlock ? 0 : 1) -
+          (validated.suppressIdentityBlock ? 0 : 1),
+        // Emitted only for the opted-in policy, so evidence for every other
+        // request keeps the shape it had before the seam existed.
+        ...(validated.extraHeaderPolicy === "dropConflicting"
+          ? { droppedExtraHeaderNames: headerPlan.droppedExtraHeaderNames }
+          : {}),
+        // Emitted only when suppression actually removed something, so
+        // evidence for every request that ignores the seam is unchanged.
+        ...(composedBetas.suppressedBetaNames.length === 0
+          ? {}
+          : { suppressedBetaNames: composedBetas.suppressedBetaNames }),
+        // Emitted only when the billing block was actually removed, so the
+        // audit records the attribution decision without inventing a key for
+        // every request that leaves the canonical prefix intact.
+        ...(validated.suppressBillingBlock
+          ? { billingBlockSuppressed: true }
+          : {}),
+        // Emitted only when the identity block was actually removed, on the
+        // same terms as `billingBlockSuppressed`: the parser reads both flags
+        // to know the length of the canonical prefix it must verify.
+        ...(validated.suppressIdentityBlock
+          ? { identityBlockSuppressed: true }
+          : {}),
+        // Emitted only when the seam was active AND a reasoning block actually
+        // carried the marker. Opting in without using it records nothing, so
+        // the audit states what happened on the wire rather than what the
+        // caller was permitted to do.
+        ...(validated.preserveThinkingBlockCacheControl &&
+        hasThinkingBlockCacheControl(canonicalBody["messages"])
+          ? { thinkingBlockCacheControlPreserved: true }
+          : {}),
       },
       validated.crypto,
     );
@@ -1195,6 +1574,17 @@ export function parseBuiltClaudeCodeRequest(
     const parsedBody = parseBody(body);
     const headers = parseHeaders(ownValue(value, "headers"));
     const evidence = parseEvidence(ownValue(value, "evidence"));
+    // Reading evidence is not trusting evidence. A claim that the seam
+    // preserved a marker is confirmed against the body, and it is confirmed
+    // HERE — before the byte-length and digest checks — so that a forgery which
+    // is byte-length preserving and evidence-self-consistent is refused by the
+    // structural check rather than incidentally by arithmetic.
+    if (
+      evidence.thinkingBlockCacheControlPreserved === true &&
+      !hasThinkingBlockCacheControl(parsedBody["messages"])
+    ) {
+      fail();
+    }
     const sessionId = headerValue(headers, "x-claude-code-session-id");
     const additionalHeaders = splitDynamicAndExtraHeaders(headers);
     const expectedHeaders = buildOrderedHeaders({
@@ -1240,7 +1630,12 @@ export function parseBuiltClaudeCodeRequest(
           : -1) ||
       evidence.systemBlockCount !==
         (Array.isArray(parsedBody["system"])
-          ? parsedBody["system"].length - 2
+          ? parsedBody["system"].length -
+            canonicalSystemPrefixLength(
+              parsedBody["system"],
+              evidence.billingBlockSuppressed === true,
+              evidence.identityBlockSuppressed === true,
+            )
           : -1)
     ) {
       fail();

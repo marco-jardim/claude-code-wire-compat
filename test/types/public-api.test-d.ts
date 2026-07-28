@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type {
+  ClaudeCodeBetaOverrides,
+  ClaudeCodeCapabilities,
+  ClaudeCodeCapabilityDecisions,
   ClaudeCodeProtocolProfile,
   ClaudeCodeRequestInput,
   ClaudeCodeRuntimeIdentity,
   HeaderPair,
   Message,
+  RedactedRequestEvidence,
   ToolDefinition,
 } from "../../src/contracts.js";
 import { expectTypeOf } from "vitest";
@@ -57,6 +61,9 @@ const request: ClaudeCodeRequestInput = {
   thinking: { type: "enabled", budgetTokens: 512 },
   effort: "high",
   metadata: { requestId: "request-1", retry: 0, cached: false },
+  additionalBetas: ["custom-beta-2026-01-01"],
+  betaOverrides: { use1MContext: true },
+  cacheControl: { enabled: false, suppressIdentityBlock: true },
 };
 
 expectTypeOf(request).toExtend<ClaudeCodeRequestInput>();
@@ -80,3 +87,30 @@ expectTypeOf<
     ClaudeCodeRequestInput
   >
 >().toEqualTypeOf<false>();
+
+/*
+ * Package-extension seams. Each one must be OPTIONAL on the public input, so a
+ * consumer written against an earlier release still type-checks, and the
+ * override members must stay booleans rather than widening to `unknown`.
+ */
+expectTypeOf<Record<never, never>>().toExtend<ClaudeCodeBetaOverrides>();
+expectTypeOf<
+  NonNullable<ClaudeCodeRequestInput["betaOverrides"]>["use1MContext"]
+>().toEqualTypeOf<boolean | undefined>();
+expectTypeOf<
+  NonNullable<ClaudeCodeRequestInput["additionalBetas"]>
+>().toEqualTypeOf<readonly string[]>();
+expectTypeOf<
+  NonNullable<ClaudeCodeRequestInput["cacheControl"]>["suppressIdentityBlock"]
+>().toEqualTypeOf<boolean | null | undefined>();
+
+// The nine capability keys stay mandatory; the seam key is additive-only.
+expectTypeOf<ClaudeCodeCapabilityDecisions>().toExtend<
+  Readonly<Record<keyof ClaudeCodeCapabilities, boolean>>
+>();
+expectTypeOf<
+  RedactedRequestEvidence["capabilityDecisions"]["use1MContext"]
+>().toEqualTypeOf<boolean | undefined>();
+expectTypeOf<
+  Readonly<Record<keyof ClaudeCodeCapabilities, boolean>>
+>().toExtend<ClaudeCodeCapabilityDecisions>();

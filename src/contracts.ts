@@ -182,11 +182,20 @@ export interface ThinkingBlock {
   readonly signature: string;
   readonly thinking: string;
   readonly type: "thinking";
+  /**
+   * Accepted ONLY when `ClaudeCodeRequestInput.preserveThinkingBlockCacheControl`
+   * is `true`; otherwise the key is rejected with `INVALID_INPUT`. When
+   * accepted it is copied to the body verbatim. See that field's JSDoc for the
+   * 400 this exists to avoid.
+   */
+  readonly cache_control?: CacheControlEphemeral | null;
 }
 
 export interface RedactedThinkingBlock {
   readonly data: string;
   readonly type: "redacted_thinking";
+  /** Same seam-gated key as `ThinkingBlock.cache_control`. */
+  readonly cache_control?: CacheControlEphemeral | null;
 }
 
 export interface SearchResultBlock {
@@ -703,7 +712,105 @@ export interface ClaudeCodeCacheControlInput {
   readonly systemBreakpoint?: boolean | null;
   readonly toolBreakpoint?: boolean | null;
   readonly messageBreakpoint?: boolean | null;
+  /**
+   * Emits the canonical identity system block (index 1) WITHOUT a
+   * `cache_control` marker. The block itself is still emitted, text intact.
+   *
+   * NOT the same field as the root `suppressIdentityBlock` of
+   * `ClaudeCodeRequestInput`, which removes the identity BLOCK from the
+   * emitted `system` array. This one only drops the block's marker. When the
+   * root seam removed the block there is nothing left to mark, so this field
+   * has no effect.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour: the genuine client
+   * always marks that block. Defaults to `false`, which reproduces the
+   * unconditional marker byte-for-byte.
+   */
+  readonly suppressIdentityBlock?: boolean | null;
 }
+
+/**
+ * Per-request substitutes for beta gates the genuine client reads from host
+ * state.
+ *
+ * PACKAGE EXTENSION, not observed Claude Code behaviour. Every member is a
+ * tri-state: `true` forces the beta, `false` suppresses it, and omission keeps
+ * the upstream-derived decision. Recorded in
+ * `RedactedRequestEvidence.capabilityDecisions` only when supplied.
+ */
+export interface ClaudeCodeBetaOverrides {
+  /**
+   * Replaces the `[1m]` model-marker gate for `context-1m-2025-08-07`. The
+   * profile gate `betaPolicy.oneMillionContextEnabled` still applies, so an
+   * override cannot enable a beta the pinned profile declares unavailable.
+   */
+  readonly use1MContext?: boolean;
+}
+
+/**
+ * Per-request substitutes for the `metadata.user_id` value the genuine client
+ * derives from host state.
+ *
+ * PACKAGE EXTENSION, not observed Claude Code behaviour. The genuine client
+ * always emits `user_id` as the JSON encoding of the runtime correlation
+ * triple; this seam exists so a consumer can carry a host identifier the
+ * runtime-neutral core cannot observe, without forking metadata composition.
+ *
+ * The two members are MUTUALLY EXCLUSIVE, because they express different
+ * intents: `userId` abandons the derived value entirely, while `userIdFields`
+ * keeps it and adds to it. Supplying both fails with `INVALID_INPUT` rather
+ * than silently resolving the ambiguity.
+ *
+ * Omitting the field, or omitting both members, leaves the emitted request
+ * byte-identical.
+ */
+export interface ClaudeCodeMetadataOverrides {
+  /**
+   * Replaces the derived `metadata.user_id` verbatim.
+   *
+   * The correlation guarantee is the caller's from here on: the package no
+   * longer proves that `user_id` carries the session, device and account the
+   * headers and the identity system block declare. A built request whose
+   * `user_id` is not JSON carrying the session identifier is REJECTED by
+   * `parseBuiltClaudeCodeRequest`, which keeps that correlation invariant.
+   *
+   * Must be a non-blank string of at most 8192 characters with no control
+   * characters and no lone surrogates.
+   */
+  readonly userId?: string;
+  /**
+   * Adds members to the derived `metadata.user_id` JSON object.
+   *
+   * Caller members are written FIRST and the correlation triple
+   * (`device_id`, `account_uuid`, `session_id`) LAST, so correlation always
+   * wins. Supplying any of those three keys fails with `INVALID_INPUT` rather
+   * than being silently overwritten.
+   */
+  readonly userIdFields?: Readonly<Record<string, JsonValue>>;
+}
+
+/**
+ * Decides what happens when `extraHeaders` collides with a header this package
+ * owns — a canonical name, or a name on the forbidden denylist.
+ *
+ * PACKAGE EXTENSION, not observed Claude Code behaviour. The genuine client
+ * composes its own headers and never merges a foreign header map.
+ *
+ * - `strict` (the default) throws `DUPLICATE_HEADER` for a canonical name and
+ *   `FORBIDDEN_HEADER` for a denylisted one. This is the behaviour that existed
+ *   before the field, byte for byte.
+ * - `dropConflicting` discards the offending pair instead of throwing and
+ *   records its lowercased name in `evidence.droppedExtraHeaderNames`, so a
+ *   consumer can forward a heterogeneous host header map without a single
+ *   inbound `anthropic-beta` destroying the request, and still audit the loss.
+ *
+ * NEITHER policy relaxes header syntax: a control character in a name or a
+ * value raises `HEADER_INJECTION` in both. Header smuggling is never silently
+ * tolerated. A caller that duplicates one of its OWN extra headers also keeps
+ * getting `DUPLICATE_HEADER` in both, because that collision is a caller bug
+ * rather than a conflict with a header this package owns.
+ */
+export type ClaudeCodeExtraHeaderPolicy = "strict" | "dropConflicting";
 
 export interface ClaudeCodeRequestInput {
   readonly accessToken: string;
@@ -754,8 +861,151 @@ export interface ClaudeCodeRequestInput {
   readonly clientApp?: string;
   /** Supplies the Anthropic additional-protection header. */
   readonly anthropicAdditionalProtection?: string;
+  /**
+   * Appends caller-supplied beta identifiers to the `anthropic-beta` header.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour. The genuine client
+   * derives its beta set entirely from the profile and the model; this seam
+   * exists so a consumer can carry user-configured betas without forking the
+   * composer. Entries are appended AFTER the derived canonical set, in caller
+   * order, and an entry equal to an already-emitted identifier is dropped.
+   *
+   * Each entry must match `/^[A-Za-z0-9][A-Za-z0-9._-]*$/` and be at most 128
+   * characters; at most 32 entries are accepted. Anything else fails with
+   * `INVALID_INPUT`, because the header is a single comma-joined field.
+   *
+   * Omitting the field leaves the emitted request byte-identical.
+   */
+  readonly additionalBetas?: readonly string[];
+  /**
+   * Removes beta identifiers from the `anthropic-beta` header.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour. This package
+   * composes the beta set on its own, from the pinned profile and the model
+   * capabilities, so a consumer whose users can switch a beta OFF has no other
+   * way to honour that switch.
+   *
+   * The filter is applied LAST — after composition and after the
+   * `additionalBetas` merge — so suppression beats addition: an identifier
+   * named by both seams does not reach the wire. An identifier that is not in
+   * the composed set is a SILENT no-op, not an error, because the consumer
+   * cannot know which betas this package derives for a given model.
+   *
+   * Entries share the `additionalBetas` grammar exactly: each must match
+   * `/^[A-Za-z0-9][A-Za-z0-9._-]*$/` and be at most 128 characters, with at
+   * most 32 entries. Anything else fails with `INVALID_INPUT`.
+   *
+   * NOT guarded: this package does not protect load-bearing identifiers.
+   * Suppressing `oauth-2025-04-20` produces a request the API rejects with 401.
+   *
+   * Omitting the field, or supplying a list that removes nothing, leaves the
+   * emitted request byte-identical.
+   */
+  readonly suppressBetas?: readonly string[];
+  /**
+   * Omits the canonical billing block (system index 0) from the emitted
+   * request, promoting the identity block to index 0.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour: the genuine client
+   * always emits that block. It exists so a consumer that exposes an
+   * attribution switch to its users can honour it, instead of the switch being
+   * a silent no-op.
+   *
+   * Defaults to `false`. Omitting the field, or passing `false`, leaves the
+   * emitted request byte-identical. Any non-boolean value fails with
+   * `INVALID_INPUT`.
+   */
+  readonly suppressBillingBlock?: boolean;
+  /**
+   * Omits the canonical identity block — the whole block, text included — from
+   * the emitted request.
+   *
+   * NOT the same field as `cacheControl.suppressIdentityBlock`, which KEEPS the
+   * identity block and only emits it WITHOUT its `cache_control` marker. This
+   * root field removes the block entirely; the two are independent and may be
+   * combined, in which case this one wins because there is no block left to
+   * mark. With `suppressBillingBlock` also set, the canonical prefix is empty
+   * and the emitted `system` array carries caller blocks only.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour: the genuine client
+   * always emits that block. It exists so a consumer that exposes a lean-system
+   * switch to its users can honour it, instead of the switch being a silent
+   * no-op.
+   *
+   * Defaults to `false`. Omitting the field, or passing `false`, leaves the
+   * emitted request byte-identical. Any non-boolean value fails with
+   * `INVALID_INPUT`.
+   */
+  readonly suppressIdentityBlock?: boolean;
+  /**
+   * Accepts `cache_control` on `thinking` and `redacted_thinking` blocks and
+   * copies it to the body VERBATIM.
+   *
+   * WHY THIS EXISTS. The Anthropic API rejects a request whose latest assistant
+   * message carries a MUTATED reasoning block:
+   *
+   * > `400 ... thinking or redacted_thinking blocks in the latest assistant
+   * > message cannot be modified. These blocks must remain as they were in the
+   * > original response.`
+   *
+   * A consumer that receives such a block with `cache_control` attached cannot
+   * strip the key before handing the message to this package — `delete
+   * block.cache_control` IS a modification and triggers that very 400. Without
+   * this seam the strict thinking-block allowlist rejected the whole request
+   * with `INVALID_INPUT`, leaving the consumer no legal move. That is a
+   * production failure, not a test artefact.
+   *
+   * SCOPE. The allowlist grows by `cache_control` and by nothing else: an
+   * unknown key on a thinking block is still `INVALID_INPUT` with the seam
+   * active. The value is validated by the same `cache_control` validator every
+   * other block uses — `{ type: "ephemeral" }` with an optional `ttl` — so a
+   * malformed marker still fails closed. The `scope` key that `text` blocks
+   * tolerate for legacy reasons is NOT accepted here; the API never returns it
+   * on a reasoning block.
+   *
+   * PASSTHROUGH, not participation. The preserved marker takes no part in this
+   * package's cache-control machinery: no TTL is applied to it, no message or
+   * system breakpoint is moved onto or off a thinking block, and
+   * `cacheControl.*` is unaffected.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour. Defaults to `false`.
+   * Omitting the field, or passing `false`, leaves the emitted request
+   * byte-identical and keeps `cache_control` on a reasoning block an
+   * `INVALID_INPUT`. The strict default is deliberate: accepting the key
+   * unconditionally would silently widen a wire contract this package exists to
+   * reproduce exactly. Any non-boolean value fails with `INVALID_INPUT`.
+   */
+  readonly preserveThinkingBlockCacheControl?: boolean;
+  /**
+   * Overrides beta-header gates that the genuine client resolves from host
+   * state this package cannot observe.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour. Omitting the field,
+   * or omitting any member, leaves the emitted request byte-identical.
+   */
+  readonly betaOverrides?: ClaudeCodeBetaOverrides;
+  /**
+   * Overrides the `metadata.user_id` value the genuine client derives from
+   * host state this package cannot observe.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour. Opt-in: with the
+   * field omitted, a supplied `metadata.user_id` that diverges from the
+   * derived value keeps failing with `INVALID_INPUT`. Omitting the field, or
+   * omitting both members, leaves the emitted request byte-identical.
+   */
+  readonly metadataOverrides?: ClaudeCodeMetadataOverrides;
   /** Appends validated non-canonical headers in caller order. */
   readonly extraHeaders?: readonly HeaderPair[];
+  /**
+   * Decides how a collision between `extraHeaders` and a header this package
+   * owns is resolved. Defaults to `strict`, the pre-existing behaviour.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour. Omitting the field,
+   * or passing `"strict"`, leaves the emitted request byte-identical, evidence
+   * included: `droppedExtraHeaderNames` is emitted only under
+   * `"dropConflicting"`.
+   */
+  readonly extraHeaderPolicy?: ClaudeCodeExtraHeaderPolicy;
   /** Injects the Web Crypto provider used to hash the request body. */
   readonly crypto?: Pick<Crypto, "subtle">;
 }
@@ -851,10 +1101,78 @@ export interface RedactedRequestEvidence {
   readonly bodyByteLength: number;
   readonly messageCount: number;
   readonly systemBlockCount: number;
-  readonly capabilityDecisions: Readonly<
-    Record<keyof ClaudeCodeCapabilities, boolean>
-  >;
+  readonly capabilityDecisions: ClaudeCodeCapabilityDecisions;
+  /**
+   * Audits the extra headers `extraHeaderPolicy: "dropConflicting"` discarded,
+   * lowercased and in caller order.
+   *
+   * Emitted ONLY under that policy. Under `strict`, and for every request built
+   * before the seam existed, the key is ABSENT rather than present and empty,
+   * so existing evidence stays byte-identical.
+   */
+  readonly droppedExtraHeaderNames?: readonly string[];
+  /**
+   * Audits the beta identifiers `suppressBetas` actually removed, in the order
+   * the composed set held them.
+   *
+   * Emitted ONLY when at least one identifier was removed. When the seam is
+   * omitted, empty, or matches nothing, the key is ABSENT rather than present
+   * and empty, so existing evidence stays byte-identical.
+   */
+  readonly suppressedBetaNames?: readonly string[];
+  /**
+   * Records that `suppressBillingBlock` removed the canonical billing block,
+   * which shortens the canonical system prefix from two blocks to one.
+   *
+   * Emitted ONLY when the seam was active. When it is omitted or `false`, the
+   * key is ABSENT rather than present and `false`, so existing evidence stays
+   * byte-identical.
+   */
+  readonly billingBlockSuppressed?: boolean;
+  /**
+   * Records that the root `suppressIdentityBlock` removed the canonical
+   * identity block. Together with `billingBlockSuppressed` it states the length
+   * of the canonical system prefix — two, one or zero blocks — which the parser
+   * then verifies block by block.
+   *
+   * Refers to the ROOT seam, not `cacheControl.suppressIdentityBlock`: the
+   * latter only drops the identity block's `cache_control` marker and is never
+   * recorded here, because the block itself still ships.
+   *
+   * Emitted ONLY when the seam was active. When it is omitted or `false`, the
+   * key is ABSENT rather than present and `false`, so existing evidence stays
+   * byte-identical.
+   */
+  readonly identityBlockSuppressed?: boolean;
+  /**
+   * Records that `preserveThinkingBlockCacheControl` was active AND that at
+   * least one emitted `thinking` or `redacted_thinking` block actually carried
+   * a `cache_control` key.
+   *
+   * Emitted ONLY when both hold. A request that opts into the seam without
+   * using it leaves the key ABSENT rather than present and `false`, on the same
+   * discipline as `billingBlockSuppressed`: evidence records what the seam DID,
+   * not what it was allowed to do. `parseBuiltClaudeCodeRequest` verifies the
+   * claim structurally against the body rather than trusting it.
+   */
+  readonly thinkingBlockCacheControlPreserved?: boolean;
 }
+
+/**
+ * Records the nine model capability decisions, plus any package-extension beta
+ * override the caller supplied.
+ *
+ * The override keys are OPTIONAL and are emitted only when the corresponding
+ * member of `betaOverrides` is present, so evidence for a request that omits
+ * `betaOverrides` is byte-identical to evidence produced before the seam
+ * existed.
+ */
+export type ClaudeCodeCapabilityDecisions = Readonly<
+  Record<keyof ClaudeCodeCapabilities, boolean>
+> & {
+  /** Mirrors `betaOverrides.use1MContext`; absent when it was not supplied. */
+  readonly use1MContext?: boolean;
+};
 
 export interface BuiltClaudeCodeRequest {
   readonly url: "https://api.anthropic.com/v1/messages?beta=true";
