@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 /*
- * Non-breaking criterion for the five package-extension seams
- * (`additionalBetas`, `betaOverrides`, `cacheControl.suppressIdentityBlock`,
- * `metadataOverrides`, `extraHeaderPolicy`).
+ * Non-breaking criterion for the six package-extension seams
+ * (`additionalBetas`, `suppressBetas`, `betaOverrides`,
+ * `cacheControl.suppressIdentityBlock`, `metadataOverrides`,
+ * `extraHeaderPolicy`).
  *
  * Each case builds the SAME request twice: once without the seam field and once
  * with the seam field in its no-op form. The two results must be identical in
@@ -81,6 +82,12 @@ const CASES: readonly (readonly [
   ClaudeCodeRequestInput,
 ])[] = [
   ["additionalBetas omitted vs empty", BASE, { ...BASE, additionalBetas: [] }],
+  ["suppressBetas omitted vs empty", BASE, { ...BASE, suppressBetas: [] }],
+  [
+    "suppressBetas omitted vs a list that matches nothing",
+    BASE,
+    { ...BASE, suppressBetas: ["absent-2026-05-05", "also-absent-2026-05-06"] },
+  ],
   ["betaOverrides omitted vs empty", BASE, { ...BASE, betaOverrides: {} }],
   [
     "suppressIdentityBlock omitted vs explicit false",
@@ -112,23 +119,25 @@ const CASES: readonly (readonly [
     },
   ],
   [
-    "no cacheControl vs all five seams in no-op form",
+    "no cacheControl vs all six seams in no-op form",
     BASE,
     {
       ...BASE,
       additionalBetas: [],
+      suppressBetas: [],
       betaOverrides: {},
       metadataOverrides: {},
       extraHeaderPolicy: "strict",
     },
   ],
   [
-    "cacheControl present vs all five seams in no-op form",
+    "cacheControl present vs all six seams in no-op form",
     { ...BASE, cacheControl: CACHE_BASE },
     {
       ...BASE,
       cacheControl: { ...CACHE_BASE, suppressIdentityBlock: false },
       additionalBetas: [],
+      suppressBetas: [],
       betaOverrides: {},
       metadataOverrides: {},
       extraHeaderPolicy: "strict",
@@ -155,6 +164,9 @@ describe("package-extension seam additivity", () => {
           Object.hasOwn(built.evidence.capabilityDecisions, "use1MContext"),
         ).toBe(false);
         expect(Object.hasOwn(built.evidence, "droppedExtraHeaderNames")).toBe(
+          false,
+        );
+        expect(Object.hasOwn(built.evidence, "suppressedBetaNames")).toBe(
           false,
         );
       }
