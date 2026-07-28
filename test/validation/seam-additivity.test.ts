@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 /*
- * Non-breaking criterion for the three package-extension seams
- * (`additionalBetas`, `betaOverrides`, `cacheControl.suppressIdentityBlock`).
+ * Non-breaking criterion for the four package-extension seams
+ * (`additionalBetas`, `betaOverrides`, `cacheControl.suppressIdentityBlock`,
+ * `metadataOverrides`).
  *
  * Each case builds the SAME request twice: once without the seam field and once
  * with the seam field in its no-op form. The two results must be identical in
@@ -87,18 +88,29 @@ const CASES: readonly (readonly [
     { ...BASE, cacheControl: { ...CACHE_BASE, suppressIdentityBlock: false } },
   ],
   [
-    "no cacheControl vs all three seams in no-op form",
+    "metadataOverrides omitted vs empty",
     BASE,
-    { ...BASE, additionalBetas: [], betaOverrides: {} },
+    { ...BASE, metadataOverrides: {} },
   ],
   [
-    "cacheControl present vs all three seams in no-op form",
+    "metadataOverrides omitted vs empty userIdFields",
+    BASE,
+    { ...BASE, metadataOverrides: { userIdFields: {} } },
+  ],
+  [
+    "no cacheControl vs all four seams in no-op form",
+    BASE,
+    { ...BASE, additionalBetas: [], betaOverrides: {}, metadataOverrides: {} },
+  ],
+  [
+    "cacheControl present vs all four seams in no-op form",
     { ...BASE, cacheControl: CACHE_BASE },
     {
       ...BASE,
       cacheControl: { ...CACHE_BASE, suppressIdentityBlock: false },
       additionalBetas: [],
       betaOverrides: {},
+      metadataOverrides: {},
     },
   ],
 ];
