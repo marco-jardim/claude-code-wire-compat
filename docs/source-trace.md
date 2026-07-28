@@ -280,17 +280,18 @@ and reproduced here. This section is the opposite, and the distinction matters, 
 mining this file for fidelity evidence must never mistake a consumer convenience for observed
 Claude Code behaviour.
 
-The four fields below are **consumer seams invented by this package**. No byte offset, upstream
+The five fields below are **consumer seams invented by this package**. No byte offset, upstream
 file or live capture supports them, and none of them has an upstream counterpart to drift against.
 They exist so a downstream consumer can express host state this package deliberately refuses to
 observe, without forking the composer.
 
-| Field                                | Kind          | Upstream counterpart                                                  | Default when omitted                            |
-| ------------------------------------ | ------------- | --------------------------------------------------------------------- | ----------------------------------------------- |
-| `additionalBetas`                    | Consumer seam | **None.** Upstream derives the beta set from profile and model only.  | No entries appended; emitted request unchanged. |
-| `betaOverrides.use1MContext`         | Consumer seam | Partial: replaces the `[1m]` model-marker gate, not the profile gate. | The `[1m]` marker decides, as before.           |
-| `cacheControl.suppressIdentityBlock` | Consumer seam | **None.** Upstream always marks the identity block.                   | Marker emitted exactly as before.               |
-| `metadataOverrides`                  | Consumer seam | **None.** Upstream always derives `user_id` from the identity triple. | Derived `user_id` emitted exactly as before.    |
+| Field                                | Kind          | Upstream counterpart                                                   | Default when omitted                            |
+| ------------------------------------ | ------------- | ---------------------------------------------------------------------- | ----------------------------------------------- |
+| `additionalBetas`                    | Consumer seam | **None.** Upstream derives the beta set from profile and model only.   | No entries appended; emitted request unchanged. |
+| `betaOverrides.use1MContext`         | Consumer seam | Partial: replaces the `[1m]` model-marker gate, not the profile gate.  | The `[1m]` marker decides, as before.           |
+| `cacheControl.suppressIdentityBlock` | Consumer seam | **None.** Upstream always marks the identity block.                    | Marker emitted exactly as before.               |
+| `metadataOverrides`                  | Consumer seam | **None.** Upstream always derives `user_id` from the identity triple.  | Derived `user_id` emitted exactly as before.    |
+| `extraHeaderPolicy`                  | Consumer seam | **None.** Upstream composes its own headers and merges no foreign map. | `strict`: collisions throw, exactly as before.  |
 
 ### Governance ledger L10 — consumer seams are not protocol facts
 
@@ -387,6 +388,92 @@ normally, because the correlation triple survives.
 
 **Not a drift surface.** Like L10, this field has no upstream site to drift from. A live capture
 that lacks it is not evidence of a defect.
+
+### Governance ledger L12 — one defect fix and one package extension, deliberately separated
+
+This entry covers two changes that shipped together and must **never** be conflated. One is a
+correctness fix to header handling that would be right even with no consumer at all; the other is a
+seam of this package's own invention.
+
+#### Part A — the hop-by-hop and entity header denylist is a DEFECT FIX
+
+**Claim.** `isForbiddenHeader` now also rejects `content-length`, `host`, `connection`,
+`transfer-encoding`, `te`, `upgrade` and `keep-alive` in `extraHeaders`. This is a **bug fix**, not a
+consumer convenience, and it is valid independently of any consumer.
+
+**The defect.** Before this change none of those names was canonical or forbidden, so all of them
+**passed through** to the wire. `content-length` is the dangerous one. This package does not forward
+a caller's body: it **reconstructs the body canonically**, so its byte length is a function of the
+canonicalised JSON, not of whatever the caller was holding. A consumer that maps an inbound
+`Request`'s header map onto `extraHeaders` — the normal way to bridge a host request into this
+package — therefore emits a `content-length` describing a **different byte string**. Nothing local
+fails: no exception, no evidence anomaly, no failing test. The peer either truncates the body at the
+declared length or waits for bytes that never arrive. A silent corruption with a plausible-looking
+request is the worst possible failure mode, which is why this is classified as a defect rather than
+hardening.
+
+**The rest of the set.** `connection`, `transfer-encoding`, `te`, `upgrade` and `keep-alive` are
+hop-by-hop headers under RFC 9110 §7.6.1: they govern a single connection and belong to the
+transport, not to an application-level caller. `host` is derived from the pinned endpoint. Forwarding
+any of them from an inbound request is meaningless at best and connection-breaking at worst.
+
+**Blast radius.** This is the one part of the change that is **not** additive: a caller that used to
+pass one of the seven names now gets `FORBIDDEN_HEADER` instead of a corrupt request. That trade is
+deliberate. It converts a silent wire-level corruption into a loud, local, immediate rejection.
+
+#### Part B — `extraHeaderPolicy` is a PACKAGE EXTENSION
+
+**Claim.** `ClaudeCodeRequestInput.extraHeaderPolicy` is an extension of THIS package. It is **not**
+observed Claude Code behaviour and must not be cited as wire-fidelity evidence. The genuine client
+composes its own header set from profile and runtime state; it never merges a foreign header map, so
+upstream has no policy to observe and nothing to drift against.
+
+**Why it exists.** A consumer that receives a `Request` from a host and bridges it into this package
+holds a heterogeneous header map it did not author. Under the pre-existing behaviour a single
+inbound `anthropic-beta` — a header the host may attach for entirely unrelated reasons — aborts the
+whole request with `DUPLICATE_HEADER`. The consumer's only recourses were to hand-maintain a copy of
+this package's canonical name list, which guarantees drift, or to drop the header map entirely,
+which loses legitimate custom headers.
+
+**Two policies.**
+
+- `strict` is the default and is the pre-existing behaviour **byte for byte**: `DUPLICATE_HEADER`
+  for a canonical name, `FORBIDDEN_HEADER` for a denylisted one.
+- `dropConflicting` discards the offending pair instead of throwing, and records its lowercased name
+  in `evidence.droppedExtraHeaderNames`, in caller order. The consumer forwards the whole map and
+  audits what fell, rather than guessing.
+
+**What `dropConflicting` deliberately does NOT relax.**
+
+- **Header syntax is never relaxed.** `assertHeaderText` runs FIRST, before any drop decision, in
+  both policies. A control character in a name or a value raises `HEADER_INJECTION` regardless of
+  policy. Header smuggling is never silently tolerated — a "drop the bad header" policy that
+  swallowed an injection attempt would turn an attack into a no-op the caller never learns about.
+- **A caller duplicating its OWN extra header still throws `DUPLICATE_HEADER`** in both policies.
+  That collision is a caller bug, not a conflict with a header this package owns, and this package
+  has no basis for choosing which of the caller's two values wins.
+
+**Additivity, evidence included.** The seam is a no-op when omitted, enforced by
+`test/validation/seam-additivity.test.ts`, which compares `body` byte for byte plus `headers` and
+`evidence` in full. `droppedExtraHeaderNames` is emitted **only** under `dropConflicting`; under
+`strict`, and for every request built before the seam existed, the key is **absent** rather than
+present-and-empty, so existing evidence stays byte-identical. `parseBuiltClaudeCodeRequest` preserves
+the key when present and never synthesises it, exactly like the optional
+`capabilityDecisions.use1MContext`. Dropped names are credential-screened in `redaction.ts` on the
+same terms as the header names that did reach the wire.
+
+**Design decision: `extraHeaderPolicy` is absent from `src/request-body.ts` ON PURPOSE.** It is
+**not** an oversight, and the asymmetry with `betaOverrides` is intentional. `betaOverrides` appears
+in both `src/build-request.ts` and `src/request-body.ts` because it is carried on the normalized
+request that feeds body composition and evidence. `extraHeaderPolicy` is a **header-layer** field: it
+is consumed by `buildOrderedHeaderPlan` and by evidence assembly, and the canonical body carries no
+trace of it. It therefore mirrors `extraHeaders`, which is likewise absent from `request-body.ts`.
+Adding it to the body key set would imply the canonical body depends on it, which is false and would
+invite a future reader to make it true.
+
+**Not a drift surface.** Like L10 and L11, this field has no upstream site to drift from. Part A, by
+contrast, is not a seam at all: it is the correct behaviour of `extraHeaders`, and a live capture is
+irrelevant to it.
 
 **Still out of scope.** These seams do not open the door to multi-provider support. The package
 models the wire of the official Claude Code client talking to `api.anthropic.com`; `provider`
