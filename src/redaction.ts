@@ -34,6 +34,16 @@ export interface BuildRedactedEvidenceInput {
    */
   readonly droppedExtraHeaderNames?: readonly string[];
   readonly suppressedBetaNames?: readonly string[];
+  /**
+   * Carries the number of caller system blocks the canonical system actually
+   * EMITTED, which is not the raw length of `request.system`: adjacent caller
+   * blocks sharing a `cache_control` merge into one, and a block byte-identical
+   * to the pinned identity text is dropped.
+   *
+   * The parser asserts `systemBlockCount === body.system.length - <canonical>`,
+   * so the raw length made every merged request unparseable by this package.
+   */
+  readonly emittedSystemBlockCount?: number;
 }
 
 const MAX_INPUT_DEPTH = 100;
@@ -414,6 +424,11 @@ export async function buildRedactedEvidence(
     suppressedBetaNames.push(name);
   }
 
+  // The emitted count is authoritative when supplied; the raw caller length is
+  // only a fallback for callers that assemble evidence without a built system.
+  const systemBlockCount =
+    input.emittedSystemBlockCount ?? input.request.system?.length ?? 0;
+
   const provider = selectCryptoProvider(cryptoProvider);
   if (!isCryptoProvider(provider)) throw wireError("CRYPTO_UNAVAILABLE");
 
@@ -424,7 +439,7 @@ export async function buildRedactedEvidence(
     throw wireError("REDACTION_FAILURE", {
       bodyByteLength: bodyBytes.byteLength,
       messageCount: input.request.messages.length,
-      systemBlockCount: input.request.system?.length ?? 0,
+      systemBlockCount,
     });
   }
 
@@ -435,14 +450,14 @@ export async function buildRedactedEvidence(
     throw wireError("REDACTION_FAILURE", {
       bodyByteLength: bodyBytes.byteLength,
       messageCount: input.request.messages.length,
-      systemBlockCount: input.request.system?.length ?? 0,
+      systemBlockCount,
     });
   }
   if (digestBytes.byteLength !== 32) {
     throw wireError("REDACTION_FAILURE", {
       bodyByteLength: bodyBytes.byteLength,
       messageCount: input.request.messages.length,
-      systemBlockCount: input.request.system?.length ?? 0,
+      systemBlockCount,
     });
   }
   const bodySha256 = toHex(digestBytes);
@@ -457,7 +472,7 @@ export async function buildRedactedEvidence(
     bodySha256,
     bodyByteLength: bodyBytes.byteLength,
     messageCount: input.request.messages.length,
-    systemBlockCount: input.request.system?.length ?? 0,
+    systemBlockCount,
     capabilityDecisions: capabilityDecisions(input),
     // Package extension: emitted only when the caller opted into
     // `dropConflicting`, so evidence for every other request is unchanged.

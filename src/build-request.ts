@@ -107,6 +107,8 @@ const COUNT_TOKENS_INPUT_KEYS = new Set([
   "extraHeaders",
 ]);
 const BUILT_KEYS = new Set(["url", "method", "headers", "body", "evidence"]);
+/** Counts the billing and identity blocks the canonical system always emits. */
+const CANONICAL_SYSTEM_BLOCKS = 2;
 const EVIDENCE_KEYS = new Set([
   "profileId",
   "url",
@@ -1294,6 +1296,10 @@ export async function buildClaudeCodeRequest(
         logicalHeaders: headers,
         betaFeatures: betas,
         body,
+        // The canonical system merges adjacent caller blocks and drops any
+        // block equal to the identity text, so only the emitted count keeps
+        // `systemBlockCount === body.system.length - <canonical>` true.
+        emittedSystemBlockCount: system.length - CANONICAL_SYSTEM_BLOCKS,
         // Emitted only for the opted-in policy, so evidence for every other
         // request keeps the shape it had before the seam existed.
         ...(validated.extraHeaderPolicy === "dropConflicting"
@@ -1393,7 +1399,7 @@ export function parseBuiltClaudeCodeRequest(
           : -1) ||
       evidence.systemBlockCount !==
         (Array.isArray(parsedBody["system"])
-          ? parsedBody["system"].length - 2
+          ? parsedBody["system"].length - CANONICAL_SYSTEM_BLOCKS
           : -1)
     ) {
       fail();
