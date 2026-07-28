@@ -202,10 +202,39 @@ function assertExactKeys(
   }
 }
 
+/**
+ * Screens one string from the caller's input graph.
+ *
+ * TAB (0x09), LF (0x0A) and CR (0x0D) are ALLOWED. This function walks the
+ * whole input graph, which is overwhelmingly BODY content — message text,
+ * system blocks, tool descriptions — where a line break is ordinary prose that
+ * `JSON.stringify` escapes on the way out. Rejecting them here made the package
+ * unusable for real traffic: no genuine prompt is a single line.
+ *
+ * The strict rule those three characters used to be caught by is a HEADER rule,
+ * and it still lives where it belongs and still applies in full:
+ * `assertHeaderText` in `src/headers.ts` rejects every control character,
+ * including these three, because a bare LF in a header is request smuggling.
+ * `src/metadata.ts` is likewise unchanged: `user_id` and metadata keys are
+ * identifiers that travel as JSON inside a header, not prose.
+ *
+ * Every other C0 control (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F) and DEL (0x7F)
+ * stay rejected: they have no meaning in prompt text and are a reliable signal
+ * of a corrupted or hostile input.
+ *
+ * LONE SURROGATES stay rejected in every context, deliberately. `TextEncoder`
+ * silently replaces them with U+FFFD, so an unpaired surrogate would corrupt
+ * the body — and the body hash recorded in evidence — with no error anywhere.
+ */
 function inspectString(value: string): number {
   for (let index = 0; index < value.length; index += 1) {
     const unit = value.charCodeAt(index);
-    if (unit <= 0x1f || unit === 0x7f) fail("INVALID_UNICODE");
+    if (
+      (unit <= 0x1f && unit !== 0x09 && unit !== 0x0a && unit !== 0x0d) ||
+      unit === 0x7f
+    ) {
+      fail("INVALID_UNICODE");
+    }
     const classification = classifySurrogateAt(value, index);
     if (classification === "loneSurrogate") fail("INVALID_UNICODE");
     if (classification === "surrogatePair") index += 1;
