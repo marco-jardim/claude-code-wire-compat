@@ -154,7 +154,12 @@ describe("multi-line body content", () => {
     const system = parsedBody(built.body)["system"];
     if (!Array.isArray(system)) throw new Error("system missing");
     expect(JSON.stringify(system)).toContain("\\n");
-    expect(built.evidence.systemBlockCount).toBe(2);
+    // Both caller blocks carry no `cache_control`, so the canonical system
+    // merges them into a single emitted block. `systemBlockCount` counts what
+    // was emitted, not the raw caller length, so that the parser's
+    // `systemBlockCount === body.system.length - <canonical>` identity holds.
+    expect(built.evidence.systemBlockCount).toBe(1);
+    expect(system).toHaveLength(3);
   });
 
   it("accepts multi-line tool descriptions", async () => {
