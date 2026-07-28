@@ -4,7 +4,7 @@ Claude Wire Compat
 
 An ESM-only, runtime-neutral TypeScript package for constructing a pinned Claude Code Messages wire contract.
 
-> **Status:** bootstrap release candidate. Runtime request-building behavior is intentionally introduced in later releases.
+> **Status:** stable. `buildClaudeCodeRequest` and `parseBuiltClaudeCodeRequest` build and read back the pinned wire contract. The package performs no I/O: credentials, transport, persistence, refresh coordination, and retries remain the consumer's responsibility.
 
 ## Package
 

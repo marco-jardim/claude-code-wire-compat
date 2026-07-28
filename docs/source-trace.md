@@ -830,6 +830,71 @@ CRLF, and is asserted byte-exact after a full build/parse round trip.
 **Additivity is the contract**, enforced as in L10, L14, L15 and L16, and locked by
 `test/validation/preserve-thinking-cache-control.test.ts`.
 
+### Governance ledger L18 — the changelog date rule is conditional on the manifest version
+
+**Claim.** This entry records a correction to a GOVERNANCE GATE, not to the wire contract. No
+runtime behaviour, no request byte and no exported type changes. It is filed here because the gate
+it corrects is what the ledger's own release discipline rests on.
+
+**The old rule.** `test/governance/release-policy.test.ts` asserted, unconditionally, that the top
+`## [...]` heading of `CHANGELOG.md` carries no `YYYY-MM-DD` date. The stated intent is legitimate:
+at commit time the release has not happened, so its date is not yet a fact, and asserting one would
+be asserting a prediction.
+
+**Why it was wrong.** The intent holds only for a PRERELEASE heading, which is transient and
+superseded within days. A stable heading is permanent, and nothing in the workflow ever fills the
+date in afterwards. That is not a hypothesis — it is observed: `0.1.0-rc.16` and `0.1.0-rc.17` were
+both published to npm and both sat at `- Unreleased` in this changelog until `0.1.0` corrected them
+retroactively from `gh release view` timestamps. The rule that forbade the date at commit time is
+the same rule that left seventeen entries with no mechanism to acquire one. Worse, applied to a
+stable release it inverts: it would have PASSED a permanently undated `## [0.1.0]` heading.
+
+**The new rule.** The assertion is conditional on `package.json` version:
+
+- version CONTAINS a hyphen (prerelease) → the top heading MUST NOT carry a date. Unchanged.
+- version has NO hyphen (stable) → the top heading MUST carry a `\d{4}-\d{2}-\d{2}` date.
+
+**This is strictly stronger, not weaker.** The prerelease branch is byte-for-byte the previous
+behaviour. The stable branch adds an assertion where the gate previously had none: an undated stable
+heading now fails. No case that failed before passes now.
+
+`releaseCandidateHeading()`'s regex is deliberately untouched — it selects the first heading in the
+file, whatever its version, and the version discrimination belongs in the assertion rather than in
+the selector. Locked by `test/governance/release-policy.test.ts`.
+
+### Governance ledger L19 — the tarball ships `src`, and the allowlist is pinned in three places
+
+**Claim.** Like L18, this entry records a PACKAGING change, not a wire-contract change. No runtime
+behaviour, no request byte and no exported type changes. `npm run test:pack` proves it: the node,
+bun and workerd consumer digests are byte-identical before and after
+(`6b9609b29463c890544845dd94acf560206b6f8165538faafd8886750037d277`).
+
+**Why it exists.** The build emits 40 `.js.map` and `.d.ts.map` files. Each one references
+`../src/*.ts` and none carries `sourcesContent`, so every source map in the published tarball
+pointed at a file the tarball did not contain. A consumer stepping into this package in a debugger
+resolved to nothing. The two coherent fixes are to inline `sourcesContent` or to ship the sources;
+for a GPL-3.0-or-later package whose `NOTICE` already carries a written offer of corresponding
+source, shipping the sources makes the offer and the artifact agree, so `src` was added to the
+`files` allowlist immediately after `dist`.
+
+**What is packed.** `src` ships SOURCES ONLY. `test/pack/pack-policy.test.ts` asserts against the
+real `npm pack --dry-run` manifest that every packed path under `src/` ends in `.ts`, that
+`src/index.ts` is present, and that no `.test.`/`.spec.` path appears anywhere in the tarball. The
+`test/`, `scripts/`, `.github/` and `.com466-evidence/` prefixes remain forbidden; only `src` moved
+out of that denylist, and it moved into an assertion that is narrower than the one it left.
+
+**Three tests pin the allowlist and none was loosened.** All three still assert an EXACT set, now
+`["dist", "src", "README.md", "LICENSE", "NOTICE", "CHANGELOG.md"]`:
+
+- `test/governance/release-policy.test.ts` — `toEqual` on the ordered array.
+- `test/governance/package-policy.test.ts` — `JSON.stringify` identity, so order is also pinned.
+- `test/pack/pack-policy.test.ts` — set equality, plus the packed-path assertions above.
+
+The directory-vs-file classification in `test/pack/pack-policy.test.ts` was generalised from a
+hardcoded `entry === "dist"` to a `packedDirectories` set, because an allowlist entry naming a
+directory must not be matched as an exact filename; without that, `src/index.ts` would have been
+reported as an unexpected packed path while the literal name `src` was expected as a file.
+
 ## Header order is logical only
 
 The package guarantees deterministic **logical** ordering through `readonly HeaderPair[]`, locked by `test/headers.test.ts` and `test/golden-fixtures.test.ts`. It explicitly does **not** guarantee on-wire field ordering: `Headers`, `fetch`, and undici may normalize, combine, or reorder fields, and no supported API guarantees wire order. Consumers may rely on pair sequence before transport, but must not treat observed socket order as part of this contract.

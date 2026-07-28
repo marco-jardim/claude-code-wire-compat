@@ -25,11 +25,17 @@ interface PackResult {
 const repositoryRoot = join(import.meta.dirname, "..", "..");
 const expectedPublishedEntries = [
   "dist",
+  "src",
   "README.md",
   "LICENSE",
   "NOTICE",
   "CHANGELOG.md",
 ];
+// Allowlist entries that are DIRECTORIES rather than single files. `src` joined
+// `dist` in 0.1.0: the emitted `.js.map` and `.d.ts.map` files reference
+// `../src/*.ts` and carry no `sourcesContent`, so without the sources a
+// consumer debugger resolved them to nothing.
+const packedDirectories = new Set(["dist", "src"]);
 
 function npmCliPath(): string {
   const candidates: string[] = [];
@@ -95,11 +101,11 @@ describe("published tarball policy", () => {
     const allowedExactFiles = new Set([
       "package.json",
       ...declaredEntries.filter(
-        (entry) => !entry.includes("/") && entry !== "dist",
+        (entry) => !entry.includes("/") && !packedDirectories.has(entry),
       ),
     ]);
     const allowedDirectories = declaredEntries.filter(
-      (entry) => entry === "dist" || entry.includes("/"),
+      (entry) => packedDirectories.has(entry) || entry.includes("/"),
     );
     const paths = packResult.files.map(({ path }) => path.replace(/\\/gu, "/"));
 
@@ -115,12 +121,19 @@ describe("published tarball policy", () => {
     ).toEqual([]);
     expect(paths).toContain("dist/index.js");
     expect(paths).toContain("dist/index.d.ts");
+    expect(paths).toContain("src/index.ts");
     expect(
       paths.some((path) =>
-        /^(?:src|test|scripts|\.github|\.com466-evidence)\//u.test(path),
+        /^(?:test|scripts|\.github|\.com466-evidence)\//u.test(path),
       ),
     ).toBe(false);
     expect(paths.some((path) => /\.(?:test|spec)\./u.test(path))).toBe(false);
+    // `src` ships SOURCES ONLY. Anything else that appears under it — a
+    // fixture, a stray build artefact, a dotfile — is a packaging defect, so
+    // the extension set is pinned exactly rather than merely excluding tests.
+    const sourcePaths = paths.filter((path) => path.startsWith("src/"));
+    expect(sourcePaths.length).toBeGreaterThan(0);
+    expect(sourcePaths.filter((path) => !path.endsWith(".ts"))).toEqual([]);
   });
 
   it("derives the tarball filename from package identity", () => {

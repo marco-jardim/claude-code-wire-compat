@@ -56,7 +56,7 @@ function policyErrors(value: PackageManifest): readonly string[] {
   const errors: string[] = [];
   if (value.name !== "@tormentalabs/claude-code-wire-compat")
     errors.push("package name");
-  if (value.version !== "0.1.0-rc.17") errors.push("release candidate version");
+  if (value.version !== "0.1.0") errors.push("release version");
   if (value.license !== "GPL-3.0-or-later") errors.push("GPL license");
   if (value.type !== "module") errors.push("ESM type");
   if (value.private === true) errors.push("public package");
@@ -65,7 +65,14 @@ function policyErrors(value: PackageManifest): readonly string[] {
     errors.push("public publish access");
   if (
     JSON.stringify(value.files) !==
-    JSON.stringify(["dist", "README.md", "LICENSE", "NOTICE", "CHANGELOG.md"])
+    JSON.stringify([
+      "dist",
+      "src",
+      "README.md",
+      "LICENSE",
+      "NOTICE",
+      "CHANGELOG.md",
+    ])
   )
     errors.push("published files");
   if (
