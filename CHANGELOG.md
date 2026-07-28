@@ -2,7 +2,58 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.14] - Unreleased
+## [0.1.0-rc.15] - Unreleased
+
+### Fixed
+
+Two defects found when the first real consumer pointed its production call site
+at this package. Both are recorded in `docs/source-trace.md` under governance
+ledger L13.
+
+- **Line breaks and tabs are accepted in body content.** `inspectString` in
+  `src/build-request.ts` rejected every code unit `<= 0x1F` and `0x7F`, which
+  includes TAB (0x09), LF (0x0A) and CR (0x0D). That screen runs over the whole
+  caller input graph, so ANY message or system block containing a newline was
+  refused with `INVALID_UNICODE`, making the package unusable for real traffic —
+  no genuine prompt is a single line. The defect survived 14 release candidates
+  because all 1784 tests and every golden fixture used single-line text.
+
+  TAB, LF and CR are now allowed in body content: message text, system blocks,
+  tool names and descriptions. `JSON.stringify` escapes them, so no raw control
+  character reaches the wire. Every other C0 control (0x00–0x08, 0x0B, 0x0C,
+  0x0E–0x1F) and DEL (0x7F) are still rejected, and LONE SURROGATES are still
+  rejected everywhere — `TextEncoder` silently replaces them with U+FFFD, which
+  would corrupt both the body and the body hash recorded in evidence.
+
+  Header validation did NOT change. `assertHeaderText` still rejects every
+  control character, TAB, LF and CR included, because a bare LF in a header is
+  request smuggling; `extraHeaders` is untouched. Metadata validation did NOT
+  change either: `user_id` and metadata keys are identifiers that travel as JSON
+  inside a header, not prose.
+
+  Behaviour change for callers reading error codes: a header carrying CRLF used
+  to fail as `INVALID_UNICODE`, caught by the input-graph screen, and now fails
+  as `HEADER_INJECTION`, caught by the header assembler. The value is refused
+  either way; the code now names the layer that actually owns the rule.
+
+- **`cacheControl.suppressIdentityBlock` no longer destroys caller
+  `cache_control`.** `applyToolCacheControl` and `applyMessageCacheControl`
+  stripped every caller-supplied `cache_control` unconditionally and only then
+  consulted `enabled` / `toolBreakpoint` / `messageBreakpoint` to decide whether
+  to restore a breakpoint. Passing `cacheControl: { suppressIdentityBlock: true }`
+  on its own therefore deleted the `cache_control` the caller had placed on its
+  own tools and message blocks and restored nothing, so the seam could not serve
+  the use case it was created for.
+
+  The strip is now gated exactly like the re-add: it runs only when
+  `enabled === true`. When caching IS enabled the caller's own breakpoints are
+  still normalised away, because this package owns breakpoint placement in that
+  mode.
+
+  This is a behaviour change: a caller that passes `cacheControl` with `enabled`
+  absent or `false` and relied on the strip now keeps its own `cache_control`.
+
+## [0.1.0-rc.14] - 2026-07-28
 
 ### Fixed
 

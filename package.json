@@ -1,6 +1,6 @@
 {
   "name": "@tormentalabs/claude-code-wire-compat",
-  "version": "0.1.0-rc.14",
+  "version": "0.1.0-rc.15",
   "description": "Runtime-neutral Claude Code Messages wire compatibility primitives",
   "type": "module",
   "private": false,
