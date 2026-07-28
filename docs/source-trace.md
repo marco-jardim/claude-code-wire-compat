@@ -475,6 +475,91 @@ invite a future reader to make it true.
 contrast, is not a seam at all: it is the correct behaviour of `extraHeaders`, and a live capture is
 irrelevant to it.
 
+### Governance ledger L13 — two defect fixes found by the first real consumer
+
+Neither item here is a seam. Both are **defects** in this package, found when the consumer
+(`opencode-anthropic-fix`) pointed its production call site at the adapter for the first time and 33
+of 135 failures were `INVALID_UNICODE` on legitimate user content.
+
+#### Part A — a HEADER rule was applied to the BODY
+
+**The defect.** `inspectString` in `src/build-request.ts` rejected every code unit `<= 0x1F` and
+`0x7F`. That set includes TAB (0x09), LF (0x0A) and CR (0x0D). `inspectString` runs over the WHOLE
+caller input graph, which is overwhelmingly body content, so **any** message or system block
+containing a line break was refused with `INVALID_UNICODE`. No real prompt is a single line, so the
+package was unusable for real traffic.
+
+**Why it survived 14 release candidates.** Every one of the 1784 tests and all three golden fixtures
+used single-line text. The rule was never wrong in any test, because no test ever contained a
+newline. That is the real lesson of L13, and it is why the regression tests matter more than the
+one-line fix: `test/validation/multiline-content.test.ts` now pins realistic multi-line prompts with
+blank lines and tabs, on both the messages path and the count-tokens path.
+
+**The rule now.**
+
+- **BODY** (message content, system text, tool names and descriptions, values inside the body JSON):
+  TAB, LF and CR are ALLOWED. `JSON.stringify` escapes them, so no raw control character reaches the
+  wire — this is asserted, not assumed. Every other C0 control (0x00–0x08, 0x0B, 0x0C, 0x0E–0x1F)
+  and DEL (0x7F) stay rejected.
+- **HEADERS**: **unchanged.** `assertHeaderText` in `src/headers.ts` still rejects every control
+  character, TAB, LF and CR included, because a bare LF in a header is request smuggling. The
+  `extraHeaders` path is untouched. What changed is only WHICH layer refuses a header carrying CRLF:
+  the input-graph screen used to catch it first as `INVALID_UNICODE`, and now `assertHeaderText`
+  catches it as `HEADER_INJECTION`. The refusal is the same; the code is more precise about why.
+- **METADATA**: **unchanged.** `src/metadata.ts` stays strict. `user_id` and metadata keys are
+  identifiers that travel as JSON inside a header, not prose.
+- **LONE SURROGATES**: still rejected in every context, deliberately. `TextEncoder` silently
+  replaces an unpaired surrogate with U+FFFD, which would corrupt the body — and the body hash
+  recorded in evidence — with no error raised anywhere.
+
+`src/system-prompt.ts` and `src/request-body.ts` already permitted TAB, LF and CR before this change;
+they needed no edit. `src/redaction.ts` never carried a control-character rule. The duplication that
+looked like five copies of one rule was in fact one over-broad copy and four correct ones.
+
+**Existing tests that encoded the defect were CORRECTED, not deleted.**
+`test/security/core-adversarial.test.ts` asserted that CRLF is rejected in every string-bearing
+position, body included; it now asserts rejection for the positions that reach a header, an identity
+field or a metadata identifier, and acceptance for body content. `test/security/seam-injection.test.ts`
+and `test/validation/headers-contract-expansion.test.ts` had their expected error codes moved from
+`INVALID_UNICODE` to the code of the layer that now refuses the value. In every case the input is
+still refused; only the layer and the code changed.
+
+**No golden fixture was added.** `test/fixtures/golden/` is capture-derived ground truth: its
+`manifest.json` pins a `sourceCommit` and a SHA-256 per file, and each file records what the genuine
+client was OBSERVED to send. No capture of the real client sending a multi-line prompt was available,
+and hand-authoring one would manufacture wire evidence indistinguishable from a real capture. The
+equivalent protection is a hand-written canonical-body assertion in
+`test/validation/multiline-content.test.ts` ("golden-equivalent"), which pins the emitted body for a
+fixed multi-line input and proves the evidence digest is self-consistent.
+
+#### Part B — `suppressIdentityBlock` could not be used
+
+**The defect.** In `src/request-body.ts`, `applyToolCacheControl` and `applyMessageCacheControl`
+stripped every caller-supplied `cache_control` as their FIRST act, unconditionally, and only then
+consulted `enabled` / `toolBreakpoint` / `messageBreakpoint` to decide whether to put a breakpoint
+back. The call site invokes both whenever `cacheControl` is present at all.
+
+Consequence: `cacheControl: { suppressIdentityBlock: true }` — the S3 seam on its own — deleted every
+`cache_control` the caller had placed on its tools and message blocks and restored nothing. The seam
+could not serve the use case it was created for (L10). Any other lone member of
+`ClaudeCodeCacheControlInput` was equally destructive.
+
+**The fix.** The strip is now gated exactly like the re-add: it runs only when `enabled === true`.
+When caching IS enabled the caller's own breakpoints are still normalised away, because this package
+owns breakpoint placement in that mode and two competing breakpoint sets cannot both be honoured.
+`applySystemCacheControl` was not touched: caller system blocks arrive as plain strings and carry no
+`cache_control` to lose.
+
+The alternative — skipping both functions at the call site when `suppressIdentityBlock` is the only
+populated field — was rejected. It would make behaviour depend on which OTHER fields happen to be
+present, so adding a field to the input later would silently change the outcome. Gating each function
+on its own flag is local and predictable.
+
+**Behaviour change.** A caller that passes `cacheControl` with `enabled` absent or `false` and relies
+on the strip now keeps its own `cache_control`. That is recorded in the CHANGELOG under `### Fixed`,
+following the precedent set by the rc.14 hop-by-hop denylist. Locked by
+`test/validation/cache-control-strip.test.ts`.
+
 **Still out of scope.** These seams do not open the door to multi-provider support. The package
 models the wire of the official Claude Code client talking to `api.anthropic.com`; `provider`
 remains pinned to `anthropic` and Bedrock, Vertex, Foundry and Mantle stay permanently out of
