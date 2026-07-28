@@ -28,6 +28,7 @@ import type {
 } from "./contracts.js";
 import { deriveCapabilities } from "./model-capabilities.js";
 import { stripModelMarkers } from "./model-identity.js";
+import { IDENTITY_TEXT } from "./system-prompt.js";
 import { classifySurrogateAt } from "./unicode.js";
 
 const MAX_DEPTH = 100;
@@ -56,6 +57,20 @@ const TOOL_RESULT_KEYS = new Set([
 ]);
 const THINKING_BLOCK_KEYS = new Set(["signature", "thinking", "type"]);
 const REDACTED_THINKING_BLOCK_KEYS = new Set(["data", "type"]);
+/*
+ * The `preserveThinkingBlockCacheControl` allowlists. They grow by exactly ONE
+ * key over the strict sets above; every other key stays refused, so the seam
+ * widens the contract by the single field the API itself round-trips and by
+ * nothing else. See the seam's JSDoc on `ClaudeCodeRequestInput`.
+ */
+const THINKING_BLOCK_CACHE_CONTROL_KEYS = new Set([
+  ...THINKING_BLOCK_KEYS,
+  "cache_control",
+]);
+const REDACTED_THINKING_BLOCK_CACHE_CONTROL_KEYS = new Set([
+  ...REDACTED_THINKING_BLOCK_KEYS,
+  "cache_control",
+]);
 const IMAGE_BLOCK_KEYS = new Set(["source", "type", "cache_control"]);
 const BASE64_IMAGE_SOURCE_KEYS = new Set(["data", "media_type", "type"]);
 const FILE_IMAGE_SOURCE_KEYS = new Set(["file_id", "type"]);
@@ -275,6 +290,7 @@ const CACHE_CONTROL_INPUT_KEYS = new Set([
   "systemBreakpoint",
   "toolBreakpoint",
   "messageBreakpoint",
+  "suppressIdentityBlock",
 ]);
 const JSON_OUTPUT_FORMAT_KEYS = new Set(["schema", "type"]);
 const TOOL_CHOICE_PARALLEL_KEYS = new Set([
@@ -297,6 +313,13 @@ const INPUT_KEYS = [
   "cacheControl",
   "runtime",
   "capabilities",
+  // Package extension: consumed by beta composition and evidence only. The
+  // canonical body carries no trace of it.
+  "betaOverrides",
+  // Package extension: widens the thinking-block allowlist by `cache_control`
+  // alone. The canonical body carries no trace of the FLAG; what it carries is
+  // the caller's own `cache_control`, verbatim.
+  "preserveThinkingBlockCacheControl",
   "thinking",
   "effort",
   "metadata",
@@ -583,13 +606,25 @@ function applySystemCacheControl(
   value: readonly TextBlock[],
   input: ClaudeCodeCacheControlInput,
 ): readonly TextBlock[] {
-  const result = value.map((block, index) =>
-    index === 1 ? withBreakpoint(block, breakpoint(input)) : block,
+  // The identity block sits at index 1 unless `suppressBillingBlock` removed
+  // the billing block, which promotes it to index 0. Matching on the pinned
+  // text keeps both layouts correct without threading the seam down here.
+  const identityIndex = value.findIndex(
+    (block) => block.text === IDENTITY_TEXT,
   );
+  // Package extension: `suppressIdentityBlock` is the only way to emit the
+  // identity block without a marker. Default (`undefined`/`false`) keeps the
+  // unconditional overwrite the genuine client performs.
+  const result = value.map((block, index) => {
+    if (index !== identityIndex) return block;
+    return input.suppressIdentityBlock === true
+      ? withoutCacheControl(block)
+      : withBreakpoint(block, breakpoint(input));
+  });
   if (
     input.enabled === true &&
     input.systemBreakpoint === true &&
-    result.length > 2
+    result.length > identityIndex + 1
   ) {
     const index = result.length - 1;
     const block = result[index];
@@ -599,16 +634,26 @@ function applySystemCacheControl(
   return result;
 }
 
+/**
+ * Normalises tool `cache_control` when caching is enabled.
+ *
+ * The strip is gated on `enabled === true`, exactly like the re-add below it.
+ * It used to be unconditional, which made any OTHER member of
+ * `ClaudeCodeCacheControlInput` destructive: passing
+ * `{ suppressIdentityBlock: true }` — the S3 seam on its own — deleted every
+ * `cache_control` the caller had placed on its tools and restored nothing.
+ *
+ * When caching IS enabled the caller's own breakpoints are still normalised
+ * away, because this package owns breakpoint placement in that mode and two
+ * competing sets of breakpoints cannot both be honoured.
+ */
 function applyToolCacheControl(
   value: readonly ToolDefinition[],
   input: ClaudeCodeCacheControlInput,
 ): readonly ToolDefinition[] {
+  if (input.enabled !== true) return value;
   const result = value.map((tool) => withoutCacheControl(tool));
-  if (
-    input.enabled === true &&
-    input.toolBreakpoint === true &&
-    result.length > 0
-  ) {
+  if (input.toolBreakpoint === true && result.length > 0) {
     const index = result.length - 1;
     const tool = result[index];
     if (tool !== undefined)
@@ -617,10 +662,19 @@ function applyToolCacheControl(
   return result;
 }
 
+/**
+ * Normalises message `cache_control` when caching is enabled.
+ *
+ * Gated on `enabled === true` for the same reason as `applyToolCacheControl`:
+ * the strip used to run unconditionally, so a caller populating any other
+ * member of `ClaudeCodeCacheControlInput` silently lost the `cache_control` it
+ * had placed on its own message blocks.
+ */
 function applyMessageCacheControl(
   value: readonly Message[],
   input: ClaudeCodeCacheControlInput,
 ): readonly Message[] {
+  if (input.enabled !== true) return value;
   const result = value.map((message): Message => ({
     role: message.role,
     content:
@@ -632,7 +686,7 @@ function applyMessageCacheControl(
               : withoutCacheControl(block),
           ),
   }));
-  if (input.enabled !== true || input.messageBreakpoint !== true) return result;
+  if (input.messageBreakpoint !== true) return result;
 
   for (let index = result.length - 1; index >= 0; index -= 1) {
     const message = result[index];
@@ -839,30 +893,64 @@ function documentSource(value: unknown): DocumentBlock["source"] {
   return Object.fromEntries(entries) as unknown as DocumentBlock["source"];
 }
 
-function thinkingBlock(value: unknown): ThinkingBlock {
+/**
+ * Validates a `thinking` block.
+ *
+ * @param preserveCacheControl - Opt-in from
+ * `ClaudeCodeRequestInput.preserveThinkingBlockCacheControl`. When `true`,
+ * `cache_control` becomes an accepted key and is copied to the body VERBATIM:
+ * no TTL is applied, no breakpoint is placed, and `applyMessageCacheControl`
+ * already leaves thinking blocks untouched. The value still passes the same
+ * `cacheControl` validator every other block uses, so a malformed marker fails
+ * closed. Default `false` reproduces the strict allowlist byte for byte.
+ */
+function thinkingBlock(
+  value: unknown,
+  preserveCacheControl: boolean,
+): ThinkingBlock {
   const record = requireRecord(value);
-  assertExactKeys(record, THINKING_BLOCK_KEYS);
+  assertExactKeys(
+    record,
+    preserveCacheControl
+      ? THINKING_BLOCK_CACHE_CONTROL_KEYS
+      : THINKING_BLOCK_KEYS,
+  );
   requireKeys(record, ["signature", "thinking", "type"]);
   if (record["type"] !== "thinking") fail("INVALID_INPUT");
-  return Object.fromEntries(
-    Object.keys(record).map((key) => [
-      key,
-      key === "type" ? "thinking" : requireString(record[key]),
-    ]),
-  ) as unknown as ThinkingBlock;
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "type") entries.push([key, "thinking"]);
+    else if (key === "cache_control")
+      entries.push([key, nullable(item, cacheControl)]);
+    else entries.push([key, requireString(item)]);
+  }
+  return Object.fromEntries(entries) as unknown as ThinkingBlock;
 }
 
-function redactedThinkingBlock(value: unknown): RedactedThinkingBlock {
+/** Validates a `redacted_thinking` block. See `thinkingBlock` for the seam. */
+function redactedThinkingBlock(
+  value: unknown,
+  preserveCacheControl: boolean,
+): RedactedThinkingBlock {
   const record = requireRecord(value);
-  assertExactKeys(record, REDACTED_THINKING_BLOCK_KEYS);
+  assertExactKeys(
+    record,
+    preserveCacheControl
+      ? REDACTED_THINKING_BLOCK_CACHE_CONTROL_KEYS
+      : REDACTED_THINKING_BLOCK_KEYS,
+  );
   requireKeys(record, ["data", "type"]);
   if (record["type"] !== "redacted_thinking") fail("INVALID_INPUT");
-  return Object.fromEntries(
-    Object.keys(record).map((key) => [
-      key,
-      key === "type" ? "redacted_thinking" : requireString(record[key]),
-    ]),
-  ) as unknown as RedactedThinkingBlock;
+  const entries: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    const item = record[key];
+    if (key === "type") entries.push([key, "redacted_thinking"]);
+    else if (key === "cache_control")
+      entries.push([key, nullable(item, cacheControl)]);
+    else entries.push([key, requireString(item)]);
+  }
+  return Object.fromEntries(entries) as unknown as RedactedThinkingBlock;
 }
 
 function searchResultBlock(value: unknown): SearchResultBlock {
@@ -973,19 +1061,26 @@ function toolResultBlock(value: unknown): ToolResultBlock {
   return Object.fromEntries(entries) as unknown as ToolResultBlock;
 }
 
-function messageContentBlock(value: unknown): MessageContentBlock {
+function messageContentBlock(
+  value: unknown,
+  preserveThinkingCacheControl: boolean,
+): MessageContentBlock {
   const record = requireRecord(value);
   if (record["type"] === "text") return textBlock(record);
   if (record["type"] === "image") return imageBlock(record);
   if (record["type"] === "document") return documentBlock(record);
   if (record["type"] === "search_result") return searchResultBlock(record);
-  if (record["type"] === "thinking") return thinkingBlock(record);
+  if (record["type"] === "thinking")
+    return thinkingBlock(record, preserveThinkingCacheControl);
   if (record["type"] === "redacted_thinking")
-    return redactedThinkingBlock(record);
+    return redactedThinkingBlock(record, preserveThinkingCacheControl);
   return fail("INVALID_INPUT");
 }
 
-function messages(value: unknown): readonly Message[] {
+function messages(
+  value: unknown,
+  preserveThinkingCacheControl: boolean,
+): readonly Message[] {
   if (!Array.isArray(value)) fail("INVALID_INPUT");
   const useIds = new Set<string>();
   const resultIds: string[] = [];
@@ -1011,7 +1106,7 @@ function messages(value: unknown): readonly Message[] {
         resultIds.push(parsed.tool_use_id);
         return parsed;
       }
-      return messageContentBlock(blockRecord);
+      return messageContentBlock(blockRecord, preserveThinkingCacheControl);
     });
     return { role, content };
   });
@@ -1619,7 +1714,9 @@ export function canonicalCountTokensLists(
   readonly tools: readonly ToolDefinition[];
 } {
   return {
-    messages: messages(rawMessages),
+    // The count-tokens endpoint has no seam of its own, so thinking blocks stay
+    // on the strict allowlist here.
+    messages: messages(rawMessages, false),
     tools: rawTools === undefined ? Object.freeze([]) : tools(rawTools),
   };
 }
@@ -1654,8 +1751,14 @@ export function buildCanonicalBody(
   const cacheOverride = hasOwn(input, "cacheControl")
     ? nullable(input["cacheControl"], cacheControlInput)
     : undefined;
+  // Package extension. Only a boolean states a decision; omission is `false`,
+  // which keeps the strict thinking-block allowlist and the emitted body
+  // byte-identical.
+  const preserveThinkingCacheControl =
+    hasOwn(input, "preserveThinkingBlockCacheControl") &&
+    requireBoolean(input["preserveThinkingBlockCacheControl"]);
   let systemBlocks = system(rawSystemBlocks);
-  let messageList = messages(input["messages"]);
+  let messageList = messages(input["messages"], preserveThinkingCacheControl);
   let toolList = hasOwn(input, "tools") ? tools(input["tools"]) : undefined;
   if (cacheOverride !== undefined && cacheOverride !== null) {
     systemBlocks = applySystemCacheControl(systemBlocks, cacheOverride);

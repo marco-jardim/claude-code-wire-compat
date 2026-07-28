@@ -273,6 +273,563 @@ opt-in.
 onto this package changes observable behavior: context hint stops being sent by default. The Wave
 6 wire-parity review **MUST** address this divergence.
 
+## Package extension seams
+
+Everything else in this document is a **protocol fact**: a behaviour read out of the genuine client
+and reproduced here. This section is the opposite, and the distinction matters, because a reader
+mining this file for fidelity evidence must never mistake a consumer convenience for observed
+Claude Code behaviour.
+
+The six fields below are **consumer seams invented by this package**. No byte offset, upstream
+file or live capture supports them, and none of them has an upstream counterpart to drift against.
+They exist so a downstream consumer can express host state this package deliberately refuses to
+observe, without forking the composer.
+
+| Field                                | Kind          | Upstream counterpart                                                   | Default when omitted                            |
+| ------------------------------------ | ------------- | ---------------------------------------------------------------------- | ----------------------------------------------- |
+| `additionalBetas`                    | Consumer seam | **None.** Upstream derives the beta set from profile and model only.   | No entries appended; emitted request unchanged. |
+| `suppressBetas`                      | Consumer seam | **None.** Upstream never removes a beta it just composed.              | No entries removed; emitted request unchanged.  |
+| `betaOverrides.use1MContext`         | Consumer seam | Partial: replaces the `[1m]` model-marker gate, not the profile gate.  | The `[1m]` marker decides, as before.           |
+| `cacheControl.suppressIdentityBlock` | Consumer seam | **None.** Upstream always marks the identity block.                    | Marker emitted exactly as before.               |
+| `metadataOverrides`                  | Consumer seam | **None.** Upstream always derives `user_id` from the identity triple.  | Derived `user_id` emitted exactly as before.    |
+| `extraHeaderPolicy`                  | Consumer seam | **None.** Upstream composes its own headers and merges no foreign map. | `strict`: collisions throw, exactly as before.  |
+
+### Governance ledger L10 — consumer seams are not protocol facts
+
+**Claim.** `ClaudeCodeRequestInput.additionalBetas`, `ClaudeCodeRequestInput.betaOverrides` and
+`ClaudeCodeCacheControlInput.suppressIdentityBlock` are extensions of THIS package. They are **not**
+observed Claude Code behaviour and must not be cited as wire-fidelity evidence, ported upstream
+reasoning, or grounds for changing any pinned default.
+
+**Why they exist.** The runtime-neutral core observes no environment, so it cannot see the host
+state upstream reads: the user's configured beta list, the per-request 1M-context decision, or a
+cache mode that emits no marker. Without these seams a consumer must either fork beta composition
+or drop user-visible features.
+
+**Additivity is the contract.** Each seam is a no-op when omitted, and that is enforced, not
+asserted: `test/validation/seam-additivity.test.ts` builds the same request with and without each
+field and compares `body` byte for byte, plus `headers` and `evidence` in full. Any diff on the
+omitted path is a breaking change, not a seam.
+
+- `additionalBetas` is appended AFTER the upstream-derived set, so the canonical prefix keeps its
+  emergent order (see "Beta registry and push order"). Entries duplicating an already-emitted
+  identifier are dropped rather than reordering that prefix. Because `anthropic-beta` is one
+  comma-joined field, entries are restricted to `/^[A-Za-z0-9][A-Za-z0-9._-]*$/`, ≤128 characters,
+  ≤32 entries; the header grammar and the dedup/order invariants are fuzzed in
+  `test/property/request-invariants.test.ts` and attacked in `test/security/seam-injection.test.ts`.
+  Locked by `test/validation/additional-betas.test.ts`.
+- `betaOverrides.use1MContext` replaces ONLY the `[1m]` model-marker gate. The profile gate
+  `betaPolicy.oneMillionContextEnabled` still applies, so a consumer cannot force a beta the pinned
+  profile declares unavailable. It is a top-level field rather than a tenth `ClaudeCodeCapabilities`
+  key on purpose: capabilities are model-derived and cross-checked against `resolveModel()`, this
+  gate is host state with no catalogue entry, and a tenth MANDATORY key in
+  `evidence.capabilityDecisions` would change the evidence of every request and break additivity.
+  The decision is recorded as an OPTIONAL `capabilityDecisions.use1MContext`, present only when the
+  caller supplied it. Locked by `test/validation/beta-overrides-1m.test.ts`.
+- `cacheControl.suppressIdentityBlock` is the only way to emit the identity block with no
+  `cache_control`. Default `false` reproduces the unconditional marker — the hardcoded `1h` when
+  `cacheControl` is absent, and the `applySystemCacheControl` overwrite when it is present. It never
+  touches the billing block (index 0) or the canonical block count. Locked by
+  `test/validation/suppress-identity-cache.test.ts`.
+
+**Consequence.** These fields do not participate in drift detection, because there is no upstream
+site to drift from. A future wire-parity review must treat them as this package's own surface: they
+may be removed or renamed on their own schedule, and a live capture that lacks them is not evidence
+of a defect.
+
+### Governance ledger L11 — `metadataOverrides` is a package extension, not a relaxed guard
+
+**Claim.** `ClaudeCodeRequestInput.metadataOverrides` is an extension of THIS package. It is **not**
+observed Claude Code behaviour and must not be cited as wire-fidelity evidence. The genuine client
+emits `metadata.user_id` as the JSON encoding of `{device_id, account_uuid, session_id}` and nothing
+else; every value this seam can produce that differs from that encoding is this package's own
+surface.
+
+**Why it exists.** The correlation guard in `buildCorrelatedMetadata` rejects a supplied
+`metadata.user_id` that diverges from the derived value with `INVALID_INPUT`. That guard is correct
+and stays on by default: a silently decorrelated `user_id` is exactly the fingerprint break this
+package exists to prevent. But a consumer host can legitimately carry identity state the
+runtime-neutral core cannot observe, and without a seam the only options were forking metadata
+composition or dropping the feature.
+
+**Two mechanisms, one field, two members.** The consumer surveyed for this seam
+(`opencode-anthropic-fix`) exposes two environment-driven behaviours that are structurally
+different, so the seam carries two members rather than one:
+
+- `metadataOverrides.userId` replaces the emitted `user_id` VERBATIM, for a host that carries an
+  opaque identifier of its own. The package makes no correlation claim about the result.
+- `metadataOverrides.userIdFields` keeps the derived object and adds members to it. The caller's
+  members are written FIRST and the correlation triple LAST, so `device_id`, `account_uuid` and
+  `session_id` always win. Supplying one of those three keys fails with `INVALID_INPUT` instead of
+  being silently overwritten, because a discarded value that looks honoured is worse than a
+  rejection.
+
+The two members are **mutually exclusive**. They express opposite intents — abandon the derived
+value versus extend it — so supplying both fails rather than resolving the ambiguity silently.
+
+**Opt-in, never a default relaxation.** With the field omitted, the divergence guard behaves exactly
+as before: `test/validation/metadata-overrides.test.ts` asserts the unchanged `INVALID_INPUT`
+rejection on the no-seam path. When the seam IS supplied, the guard is not removed — it is
+re-pointed: a supplied `metadata.user_id` must equal the seam-resolved value, and `device_id`,
+`account_uuid` and `session_id` supplied at the `metadata` level remain pinned to the runtime
+identity.
+
+**Additivity.** The seam is a no-op when omitted, and that is enforced, not asserted:
+`test/validation/seam-additivity.test.ts` covers `metadataOverrides` omitted versus `{}` and versus
+`{userIdFields: {}}`, comparing `body` byte for byte plus `headers` and `evidence` in full. Evidence
+gains no key: unlike `betaOverrides.use1MContext`, this seam records no decision in
+`RedactedRequestEvidence`, so evidence for every request is unchanged.
+
+**Known consequence.** A request built with `metadataOverrides.userId` is REJECTED by
+`parseBuiltClaudeCodeRequest`. The parser proves that `metadata.user_id` is JSON carrying the same
+`session_id` as the `x-claude-code-session-id` header; an opaque replacement makes that unprovable.
+Relaxing the parser would weaken the invariant for every caller, so the parser stays strict and the
+consequence is documented here and locked by a test. `metadataOverrides.userIdFields` round-trips
+normally, because the correlation triple survives.
+
+**Not a drift surface.** Like L10, this field has no upstream site to drift from. A live capture
+that lacks it is not evidence of a defect.
+
+### Governance ledger L12 — one defect fix and one package extension, deliberately separated
+
+This entry covers two changes that shipped together and must **never** be conflated. One is a
+correctness fix to header handling that would be right even with no consumer at all; the other is a
+seam of this package's own invention.
+
+#### Part A — the hop-by-hop and entity header denylist is a DEFECT FIX
+
+**Claim.** `isForbiddenHeader` now also rejects `content-length`, `host`, `connection`,
+`transfer-encoding`, `te`, `upgrade` and `keep-alive` in `extraHeaders`. This is a **bug fix**, not a
+consumer convenience, and it is valid independently of any consumer.
+
+**The defect.** Before this change none of those names was canonical or forbidden, so all of them
+**passed through** to the wire. `content-length` is the dangerous one. This package does not forward
+a caller's body: it **reconstructs the body canonically**, so its byte length is a function of the
+canonicalised JSON, not of whatever the caller was holding. A consumer that maps an inbound
+`Request`'s header map onto `extraHeaders` — the normal way to bridge a host request into this
+package — therefore emits a `content-length` describing a **different byte string**. Nothing local
+fails: no exception, no evidence anomaly, no failing test. The peer either truncates the body at the
+declared length or waits for bytes that never arrive. A silent corruption with a plausible-looking
+request is the worst possible failure mode, which is why this is classified as a defect rather than
+hardening.
+
+**The rest of the set.** `connection`, `transfer-encoding`, `te`, `upgrade` and `keep-alive` are
+hop-by-hop headers under RFC 9110 §7.6.1: they govern a single connection and belong to the
+transport, not to an application-level caller. `host` is derived from the pinned endpoint. Forwarding
+any of them from an inbound request is meaningless at best and connection-breaking at worst.
+
+**Blast radius.** This is the one part of the change that is **not** additive: a caller that used to
+pass one of the seven names now gets `FORBIDDEN_HEADER` instead of a corrupt request. That trade is
+deliberate. It converts a silent wire-level corruption into a loud, local, immediate rejection.
+
+#### Part B — `extraHeaderPolicy` is a PACKAGE EXTENSION
+
+**Claim.** `ClaudeCodeRequestInput.extraHeaderPolicy` is an extension of THIS package. It is **not**
+observed Claude Code behaviour and must not be cited as wire-fidelity evidence. The genuine client
+composes its own header set from profile and runtime state; it never merges a foreign header map, so
+upstream has no policy to observe and nothing to drift against.
+
+**Why it exists.** A consumer that receives a `Request` from a host and bridges it into this package
+holds a heterogeneous header map it did not author. Under the pre-existing behaviour a single
+inbound `anthropic-beta` — a header the host may attach for entirely unrelated reasons — aborts the
+whole request with `DUPLICATE_HEADER`. The consumer's only recourses were to hand-maintain a copy of
+this package's canonical name list, which guarantees drift, or to drop the header map entirely,
+which loses legitimate custom headers.
+
+**Two policies.**
+
+- `strict` is the default and is the pre-existing behaviour **byte for byte**: `DUPLICATE_HEADER`
+  for a canonical name, `FORBIDDEN_HEADER` for a denylisted one.
+- `dropConflicting` discards the offending pair instead of throwing, and records its lowercased name
+  in `evidence.droppedExtraHeaderNames`, in caller order. The consumer forwards the whole map and
+  audits what fell, rather than guessing.
+
+**What `dropConflicting` deliberately does NOT relax.**
+
+- **Header syntax is never relaxed.** `assertHeaderText` runs FIRST, before any drop decision, in
+  both policies. A control character in a name or a value raises `HEADER_INJECTION` regardless of
+  policy. Header smuggling is never silently tolerated — a "drop the bad header" policy that
+  swallowed an injection attempt would turn an attack into a no-op the caller never learns about.
+- **A caller duplicating its OWN extra header still throws `DUPLICATE_HEADER`** in both policies.
+  That collision is a caller bug, not a conflict with a header this package owns, and this package
+  has no basis for choosing which of the caller's two values wins.
+
+**Additivity, evidence included.** The seam is a no-op when omitted, enforced by
+`test/validation/seam-additivity.test.ts`, which compares `body` byte for byte plus `headers` and
+`evidence` in full. `droppedExtraHeaderNames` is emitted **only** under `dropConflicting`; under
+`strict`, and for every request built before the seam existed, the key is **absent** rather than
+present-and-empty, so existing evidence stays byte-identical. `parseBuiltClaudeCodeRequest` preserves
+the key when present and never synthesises it, exactly like the optional
+`capabilityDecisions.use1MContext`. Dropped names are credential-screened in `redaction.ts` on the
+same terms as the header names that did reach the wire.
+
+**Design decision: `extraHeaderPolicy` is absent from `src/request-body.ts` ON PURPOSE.** It is
+**not** an oversight, and the asymmetry with `betaOverrides` is intentional. `betaOverrides` appears
+in both `src/build-request.ts` and `src/request-body.ts` because it is carried on the normalized
+request that feeds body composition and evidence. `extraHeaderPolicy` is a **header-layer** field: it
+is consumed by `buildOrderedHeaderPlan` and by evidence assembly, and the canonical body carries no
+trace of it. It therefore mirrors `extraHeaders`, which is likewise absent from `request-body.ts`.
+Adding it to the body key set would imply the canonical body depends on it, which is false and would
+invite a future reader to make it true.
+
+**Not a drift surface.** Like L10 and L11, this field has no upstream site to drift from. Part A, by
+contrast, is not a seam at all: it is the correct behaviour of `extraHeaders`, and a live capture is
+irrelevant to it.
+
+### Governance ledger L13 — two defect fixes found by the first real consumer
+
+Neither item here is a seam. Both are **defects** in this package, found when the consumer
+(`opencode-anthropic-fix`) pointed its production call site at the adapter for the first time and 33
+of 135 failures were `INVALID_UNICODE` on legitimate user content.
+
+#### Part A — a HEADER rule was applied to the BODY
+
+**The defect.** `inspectString` in `src/build-request.ts` rejected every code unit `<= 0x1F` and
+`0x7F`. That set includes TAB (0x09), LF (0x0A) and CR (0x0D). `inspectString` runs over the WHOLE
+caller input graph, which is overwhelmingly body content, so **any** message or system block
+containing a line break was refused with `INVALID_UNICODE`. No real prompt is a single line, so the
+package was unusable for real traffic.
+
+**Why it survived 14 release candidates.** Every one of the 1784 tests and all three golden fixtures
+used single-line text. The rule was never wrong in any test, because no test ever contained a
+newline. That is the real lesson of L13, and it is why the regression tests matter more than the
+one-line fix: `test/validation/multiline-content.test.ts` now pins realistic multi-line prompts with
+blank lines and tabs, on both the messages path and the count-tokens path.
+
+**The rule now.**
+
+- **BODY** (message content, system text, tool names and descriptions, values inside the body JSON):
+  TAB, LF and CR are ALLOWED. `JSON.stringify` escapes them, so no raw control character reaches the
+  wire — this is asserted, not assumed. Every other C0 control (0x00–0x08, 0x0B, 0x0C, 0x0E–0x1F)
+  and DEL (0x7F) stay rejected.
+- **HEADERS**: **unchanged.** `assertHeaderText` in `src/headers.ts` still rejects every control
+  character, TAB, LF and CR included, because a bare LF in a header is request smuggling. The
+  `extraHeaders` path is untouched. What changed is only WHICH layer refuses a header carrying CRLF:
+  the input-graph screen used to catch it first as `INVALID_UNICODE`, and now `assertHeaderText`
+  catches it as `HEADER_INJECTION`. The refusal is the same; the code is more precise about why.
+- **METADATA**: **unchanged.** `src/metadata.ts` stays strict. `user_id` and metadata keys are
+  identifiers that travel as JSON inside a header, not prose.
+- **LONE SURROGATES**: still rejected in every context, deliberately. `TextEncoder` silently
+  replaces an unpaired surrogate with U+FFFD, which would corrupt the body — and the body hash
+  recorded in evidence — with no error raised anywhere.
+
+`src/system-prompt.ts` and `src/request-body.ts` already permitted TAB, LF and CR before this change;
+they needed no edit. `src/redaction.ts` never carried a control-character rule. The duplication that
+looked like five copies of one rule was in fact one over-broad copy and four correct ones.
+
+**Existing tests that encoded the defect were CORRECTED, not deleted.**
+`test/security/core-adversarial.test.ts` asserted that CRLF is rejected in every string-bearing
+position, body included; it now asserts rejection for the positions that reach a header, an identity
+field or a metadata identifier, and acceptance for body content. `test/security/seam-injection.test.ts`
+and `test/validation/headers-contract-expansion.test.ts` had their expected error codes moved from
+`INVALID_UNICODE` to the code of the layer that now refuses the value. In every case the input is
+still refused; only the layer and the code changed.
+
+**No golden fixture was added.** `test/fixtures/golden/` is capture-derived ground truth: its
+`manifest.json` pins a `sourceCommit` and a SHA-256 per file, and each file records what the genuine
+client was OBSERVED to send. No capture of the real client sending a multi-line prompt was available,
+and hand-authoring one would manufacture wire evidence indistinguishable from a real capture. The
+equivalent protection is a hand-written canonical-body assertion in
+`test/validation/multiline-content.test.ts` ("golden-equivalent"), which pins the emitted body for a
+fixed multi-line input and proves the evidence digest is self-consistent.
+
+#### Part B — `suppressIdentityBlock` could not be used
+
+**The defect.** In `src/request-body.ts`, `applyToolCacheControl` and `applyMessageCacheControl`
+stripped every caller-supplied `cache_control` as their FIRST act, unconditionally, and only then
+consulted `enabled` / `toolBreakpoint` / `messageBreakpoint` to decide whether to put a breakpoint
+back. The call site invokes both whenever `cacheControl` is present at all.
+
+Consequence: `cacheControl: { suppressIdentityBlock: true }` — the S3 seam on its own — deleted every
+`cache_control` the caller had placed on its tools and message blocks and restored nothing. The seam
+could not serve the use case it was created for (L10). Any other lone member of
+`ClaudeCodeCacheControlInput` was equally destructive.
+
+**The fix.** The strip is now gated exactly like the re-add: it runs only when `enabled === true`.
+When caching IS enabled the caller's own breakpoints are still normalised away, because this package
+owns breakpoint placement in that mode and two competing breakpoint sets cannot both be honoured.
+`applySystemCacheControl` was not touched: caller system blocks arrive as plain strings and carry no
+`cache_control` to lose.
+
+The alternative — skipping both functions at the call site when `suppressIdentityBlock` is the only
+populated field — was rejected. It would make behaviour depend on which OTHER fields happen to be
+present, so adding a field to the input later would silently change the outcome. Gating each function
+on its own flag is local and predictable.
+
+**Behaviour change.** A caller that passes `cacheControl` with `enabled` absent or `false` and relies
+on the strip now keeps its own `cache_control`. That is recorded in the CHANGELOG under `### Fixed`,
+following the precedent set by the rc.14 hop-by-hop denylist. Locked by
+`test/validation/cache-control-strip.test.ts`.
+
+### Governance ledger L14 — `suppressBetas`, the removal counterpart of `additionalBetas`
+
+**Claim.** `ClaudeCodeRequestInput.suppressBetas` is an extension of THIS package, exactly like the
+L10 seams. It is **not** observed Claude Code behaviour: the genuine client never removes a beta it
+just composed, because its composition inputs and its user configuration are the same host state.
+
+**Why it exists.** This package composes `anthropic-beta` on its own, from the pinned profile and
+the model capabilities, and until now that composition was write-only from the consumer's side.
+`additionalBetas` could only ADD. The first real consumer (`opencode-anthropic-fix`) exposes user
+switches whose entire meaning is removal, and each one silently became a no-op:
+
+- `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` has to drop `context-management-2025-06-27`,
+  `interleaved-thinking-2025-05-14` and `prompt-caching-scope-2026-01-05`.
+- The round-robin account strategy has to drop `prompt-caching-scope-2026-01-05`, because a cache
+  scope pinned across rotating accounts is worse than no scope at all.
+
+Without this seam the consumer's only options were forking beta composition or shipping switches
+that do nothing — a silent no-op is the worst of the three, because the user believes the switch
+worked.
+
+**Semantics.**
+
+- The filter runs **LAST**: after the canonical composition and after the `additionalBetas` merge.
+  Suppression therefore beats addition — an identifier named by both seams does **not** reach the
+  wire. Composing then filtering (rather than gating composition) keeps the emergent canonical order
+  of the survivors intact, which a gate-level change would not.
+- An identifier that is not in the composed set is a **silent no-op, not an error**. The consumer
+  cannot know which betas this package derives for a given model, so demanding precision would make
+  the seam unusable: the same switch has to work across models whose capability-gated sets differ.
+- Entry grammar is `validateAdditionalBetas` verbatim — `/^[A-Za-z0-9][A-Za-z0-9._-]*$/`, ≤128
+  characters, ≤32 entries, `INVALID_INPUT` otherwise. One comma-joined header field, one grammar.
+- `evidence.suppressedBetaNames` records only the identifiers that were **actually present and
+  removed**, in the order the composed set held them, never in caller order. The key is emitted only
+  when at least one identifier was removed; when the seam is omitted, empty, or matches nothing, the
+  key is **ABSENT** rather than present and empty. That is the `droppedExtraHeaderNames` precedent
+  from rc.14, and it is what keeps evidence byte-identical for every request that ignores the seam.
+  Suppressed names never reach the wire, but they do land in evidence, so they get the same
+  credential screening as the features that did.
+
+**NOT guarded, deliberately.** There is no protected-beta list. Suppressing `oauth-2025-04-20`
+produces a request the API rejects with **401**; suppressing `claude-code-20250219` changes how the
+request is classified upstream. This package composes the wire faithfully and refuses to be the
+consumer's babysitter: a guard here would be a second, undocumented policy layer that silently
+disagrees with the caller and could not be turned off. The consumer owns the switch semantics; this
+seam owns only the mechanics.
+
+**Additivity is the contract**, enforced the same way as L10:
+`test/validation/seam-additivity.test.ts` builds the same request with and without `suppressBetas`
+in its no-op forms (omitted vs `[]`, and omitted vs a list that matches nothing) and compares `body`
+byte for byte plus `headers` and `evidence` in full. Locked by
+`test/validation/suppress-betas.test.ts`.
+
+**Still out of scope.** These seams do not open the door to multi-provider support. The package
+models the wire of the official Claude Code client talking to `api.anthropic.com`; `provider`
+remains pinned to `anthropic` and Bedrock, Vertex, Foundry and Mantle stay permanently out of
+scope.
+
+### Governance ledger L15 — `suppressBillingBlock`, and the parser's structural prefix discriminator
+
+**Claim.** `ClaudeCodeRequestInput.suppressBillingBlock` is an extension of THIS package, exactly
+like the L10 and L14 seams. It is **not** observed Claude Code behaviour: the genuine client always
+emits the billing block.
+
+**Why it exists.** Until now this package composed the canonical billing block at `system[0]`
+unconditionally. The first real consumer (`opencode-anthropic-fix`) exposes
+`CLAUDE_CODE_ATTRIBUTION_HEADER=0`, a user switch whose entire meaning is "do not send the billing
+block". With no seam, that switch was a silent no-op — the worst outcome, because the user believes
+it worked. This is the same failure mode L14 documents for the removal-shaped beta switches.
+
+**Semantics.**
+
+- Absent or `false`, the canonical prefix is `[billing, identity]` and every byte of the request is
+  what it was before the seam existed. `true` emits `[identity]` alone.
+- Only a boolean is accepted. `validateSuppressBillingBlock` rejects a truthy string or `0` with
+  `INVALID_INPUT` rather than coercing, because coercion would silently change what Anthropic
+  receives.
+- `evidence.billingBlockSuppressed` is emitted **only when the block was actually removed**, never
+  as `false`. That is the `droppedExtraHeaderNames` / `suppressedBetaNames` precedent from rc.14 and
+  rc.15, and it keeps evidence byte-identical for every request that ignores the seam.
+- `evidence.systemBlockCount` continues to count only the CALLER's emitted blocks. The canonical
+  prefix subtracted is one slot per canonical block that actually survived — see L16, which removed
+  the constants `CANONICAL_SYSTEM_BLOCKS` and `CANONICAL_SYSTEM_BLOCKS_WITHOUT_BILLING` in favour of
+  symmetric arithmetic over both suppression seams.
+
+**The parser discriminator changed from arithmetic to structural recognition — twice.**
+`parseBuiltClaudeCodeRequest` receives only `{url, method, headers, body, evidence}`, so the INPUT
+flag is never on the wire. rc.16 replaced the constant `CANONICAL_SYSTEM_BLOCKS` — ambiguous once a
+one-block prefix became legitimate — with a POSITION probe over the byte-exact `IDENTITY_TEXT`: at
+`system[1]` the prefix is 2, at `system[0]` the prefix is 1, at neither position the parser refuses.
+
+**That position probe was superseded in rc.17 (L16) and no longer exists.** Two independent seams
+make `[]` a legitimate prefix, and an empty prefix is indistinguishable from a caller-only array by
+inspection alone, so the probe's failure path would have fired on every request built with both
+seams. The prefix length is now READ from `evidence.billingBlockSuppressed` and
+`evidence.identityBlockSuppressed` and then VERIFIED block by block. The rc.16 probe was also
+weaker than it looked: it never inspected the billing slot at all, so an envelope built with
+`suppressBillingBlock` whose evidence hid that fact was accepted.
+
+What survives from rc.16 unchanged: the match is on **TEXT, never on `cache_control`**. The L10
+`cacheControl.suppressIdentityBlock` seam can emit the identity block with no cache marker, so a
+marker-based probe would misread a legitimate request as a forgery. The assertion also stays an
+**EQUALITY** (`systemBlockCount === system.length - prefix`), not an inequality: an envelope whose
+caller-block count merely "fits" is still a forgery.
+
+Byte-length ordering matters when testing this. `bodyByteLength` is checked before the prefix
+discriminator, so the negative test forges a **length-preserving** system array; a shorter forgery
+would be rejected earlier and would prove nothing about the discriminator.
+
+**The attribution consequence is the consumer's, and it is deliberate.** Suppressing the billing
+block changes what Anthropic sees for attribution purposes. This package does not judge that: it
+composes the wire faithfully and refuses to be the consumer's babysitter, exactly as L14 states for
+suppressing `oauth-2025-04-20`. The consumer owns the switch semantics; this seam owns only the
+mechanics. There is no guard, and a guard here would be a second, undocumented policy layer that
+silently disagrees with the caller.
+
+**Additivity is the contract**, enforced as in L10 and L14, and locked by
+`test/validation/suppress-billing-block.test.ts`.
+
+### Governance ledger L15 (A) — `evidence.systemBlockCount` counts EMITTED blocks
+
+**Confirmed production defect, not a refactor.** `systemBlockCount` was the raw length of the
+caller's `system` array, but `buildCanonicalSystem` **merges adjacent caller blocks that carry the
+same `cache_control`** and drops any block equal to the identity text. The emitted array was
+therefore routinely shorter than the caller's, while the parser asserted
+`systemBlockCount === body.system.length - <canonical>`.
+
+Consequence: any request with two or more mergeable caller system blocks was rejected by
+`parseBuiltClaudeCodeRequest` with an opaque `INVALID_INPUT` and `safeDetails: {}`. The only
+consumer of the parser is a proxy validating envelopes emitted by a Worker, so this would have
+produced a 403 in production with no diagnosable cause.
+
+The fix records `emittedSystemBlockCount` — the length of the array actually serialized — and the
+build path subtracts the canonical prefix from that. Locked by the block-merging test committed
+alongside the fix.
+
+### Governance ledger L16 — root `suppressIdentityBlock`, and evidence-driven prefix verification
+
+**Claim.** `ClaudeCodeRequestInput.suppressIdentityBlock` is an extension of THIS package, exactly
+like the L10, L14 and L15 seams. It is **not** observed Claude Code behaviour: the genuine client
+always emits the identity block.
+
+**Why it exists.** The first real consumer's plugin exposes `token_economy.lean_system_non_main`, a
+user switch that removed BOTH canonical blocks by simply not composing them. Migrating that call
+site onto this package turned the switch into a silent no-op for the identity half — the same
+failure mode L14 and L15 document. The approved criterion is explicit: **a user configuration
+switch becoming a silent no-op is unacceptable; the package grows a seam.**
+
+**It is a DIFFERENT field from `cacheControl.suppressIdentityBlock` (L10).** The L10 field keeps the
+identity block and emits it WITHOUT its `cache_control` marker; this one removes the block. The name
+collision was accepted deliberately: symmetry with `suppressBillingBlock` at the root was judged
+worth more than inventing a distinct name. The mitigation is documentation, and it is mandatory —
+the JSDoc of each field states what it does and names the other by its full path
+(`cacheControl.suppressIdentityBlock` vs root `suppressIdentityBlock`).
+
+**Semantics.**
+
+- Absent or `false`, every byte of the request is what it was before the seam existed.
+- Only a boolean is accepted; `validateSuppressIdentityBlock` refuses to coerce, as L15 does.
+- With `suppressBillingBlock`, four canonical prefixes are legitimate: `[billing, identity]`,
+  `[identity]`, `[billing]` and `[]`. With both active and no caller blocks the emitted body carries
+  `"system":[]` — the key is present and the array empty, which round-trips through the parser.
+- `evidence.identityBlockSuppressed` is emitted **only when the block was actually removed**, never
+  as `false`, mirroring `billingBlockSuppressed`. It must also be added to `EVIDENCE_KEYS`:
+  `parseEvidence` asserts exact keys, so an unregistered key makes every such envelope unparseable.
+- The caller-block drop stays **unconditional**. A caller block byte-equal to the identity text is
+  dropped even when the canonical one was suppressed — matching the genuine client, and a
+  precondition for the absence check below.
+
+**The parser now READS the prefix length from evidence and VERIFIES it, rather than inferring it.**
+No probe over the array alone can separate the four states, because an empty canonical prefix looks
+exactly like a caller-only array. `canonicalSystemPrefixLength` therefore takes both evidence flags
+and confirms every canonical block those flags imply:
+
+- billing by its fixed, self-describing head `x-anthropic-billing-header: cc_version=` — the tail
+  carries a per-request fingerprint, so only the head can anchor a structural check;
+- identity by the byte-exact `IDENTITY_TEXT`.
+
+This is **strictly stronger** than the rc.16 position probe, which asserted only that identity sat
+at one of two indices and never inspected the billing slot.
+
+**Verification is asymmetric, and the asymmetry is the point.** A claim of identity suppression is
+refuted by finding `IDENTITY_TEXT` **anywhere** in the emitted array: `buildCanonicalSystem` drops
+caller blocks equal to it unconditionally, and merges runs with `\n`, so no legitimate suppressed
+body can contain that exact text. Without this the forgery is undetectable — evidence claiming
+suppression over a body that still carries the block passes both the positional check (skipped) and
+the arithmetic (self-consistent). There is deliberately **no mirror check for billing**: a caller
+block may legitimately begin with the billing header text, so its presence proves nothing and a
+symmetric rule would reject honest requests.
+
+**Reading evidence is not trusting evidence.** The flags select which blocks must be confirmed; they
+never substitute for confirmation. Every negative case in
+`test/validation/suppress-identity-block.test.ts` forges evidence that is **self-consistent** —
+`systemBlockCount` adjusted to the length the forged prefix implies — so only the structural check
+can reject it. Body forgeries stay **byte-length preserving**, because `bodyByteLength` is checked
+before the prefix verification and a shorter forgery would be rejected earlier, proving nothing.
+
+**Additivity is the contract**, enforced as in L10, L14 and L15, and locked by
+`test/validation/suppress-identity-block.test.ts`.
+
+### Governance ledger L17 — `preserveThinkingBlockCacheControl`, a seam forced by a real API 400
+
+**Claim.** `ClaudeCodeRequestInput.preserveThinkingBlockCacheControl` is an extension of THIS
+package, exactly like the L10, L14, L15 and L16 seams. It is **not** observed Claude Code behaviour,
+and **no wire capture was taken for it**: the strict thinking-block allowlist remains what the
+binary shows, and this seam is a documented, opt-in departure from it.
+
+**Why it exists.** The package pinned `thinking` to `{signature, thinking, type}` and
+`redacted_thinking` to `{data, type}` and applied `assertExactKeys`, so any request carrying
+`cache_control` on a reasoning block died with `INVALID_INPUT`. Unlike every earlier seam, the
+consumer could not work around it, because the workaround is itself an error. The Anthropic API
+answers a mutated reasoning block with:
+
+> `400 ... thinking or redacted_thinking blocks in the latest assistant message cannot be modified.`
+> `These blocks must remain as they were in the original response.`
+
+`delete block.cache_control` IS a modification and triggers that 400. So the consumer's choice was a
+400 from the API or an `INVALID_INPUT` from this package — a production failure either way. The
+approved criterion applies unchanged: **when the consumer loses a capability to this package's
+validation, the resolution is a seam in the package, never a degraded consumer.**
+
+**Semantics.**
+
+- Absent or `false`, every byte of the request is what it was before the seam existed, and
+  `cache_control` on a reasoning block is still `INVALID_INPUT`.
+- Only a boolean is accepted; `validatePreserveThinkingBlockCacheControl` refuses to coerce, as L15
+  and L16 do.
+- The allowlist grows by `cache_control` and by **nothing else**. `assertExactKeys` is not relaxed;
+  it is handed a second, one-key-wider set. An unknown key on a reasoning block is still
+  `INVALID_INPUT` with the seam active.
+- The value is validated by the **existing** `cache_control` validator, not a parallel one:
+  `{ type: "ephemeral" }` with an optional `ttl` of `5m` or `1h`. The `scope` key that `text` blocks
+  tolerate for legacy reasons is **not** accepted here — the API never returns it on a reasoning
+  block, and a seam that exists to round-trip the API's own bytes must not accept bytes the API
+  never emits.
+- Copying is **verbatim**: the caller's key order survives, because the validator rebuilds the
+  record over `Object.keys` rather than a canonical template. No TTL is applied to the marker and no
+  breakpoint is moved onto or off a reasoning block. `applySystemCacheControl` is untouched, and
+  `applyMessageCacheControl` already exempted reasoning blocks from both its strip and its
+  breakpoint pass, so passthrough required no change there.
+- `cache_control: null` is preserved as `null`, exactly as on every other block type that accepts
+  the key.
+- The count-tokens path takes no seam: `canonicalCountTokensLists` calls the message validator with
+  the strict allowlist.
+
+**Evidence records what the seam DID, not what it was allowed to do.**
+`evidence.thinkingBlockCacheControlPreserved` is emitted **only when the seam was active AND at
+least one emitted block actually carried a marker**. A request that opts in and never uses the key
+produces evidence byte-identical to one that never opted in — the same discipline as
+`billingBlockSuppressed`. It must also be added to `EVIDENCE_KEYS`: `parseEvidence` asserts exact
+keys, so an unregistered key makes every such envelope unparseable, and it must be **rehydrated**
+there too, or a legal envelope silently loses the key and fails its own round-trip equality.
+
+**Reading evidence is not trusting evidence.** `parseBuiltClaudeCodeRequest` confirms the claim
+structurally: it scans the emitted `messages` for a `thinking` or `redacted_thinking` block that
+actually carries a `cache_control` key, and refuses the envelope when the claim is unbacked.
+Presence of the KEY is the test, not truthiness, so a preserved `null` marker still backs the claim.
+The check runs **before** the byte-length and digest comparisons, deliberately: the forgery in
+`test/validation/preserve-thinking-cache-control.test.ts` leaves the body completely untouched, so
+`bodyByteLength`, `bodySha256`, `messageCount` and `systemBlockCount` all still agree, and only the
+structural confirmation can reject it. Placing the check after the arithmetic would have let the
+arithmetic take credit for a rejection it did not perform.
+
+**Corpus discipline.** Two defects survived fourteen release candidates because the test corpus was
+entirely single-line. The reasoning text exercised by this seam therefore embeds `\n`, `\t` and
+CRLF, and is asserted byte-exact after a full build/parse round trip.
+
+**Additivity is the contract**, enforced as in L10, L14, L15 and L16, and locked by
+`test/validation/preserve-thinking-cache-control.test.ts`.
+
 ## Header order is logical only
 
 The package guarantees deterministic **logical** ordering through `readonly HeaderPair[]`, locked by `test/headers.test.ts` and `test/golden-fixtures.test.ts`. It explicitly does **not** guarantee on-wire field ordering: `Headers`, `fetch`, and undici may normalize, combine, or reorder fields, and no supported API guarantees wire order. Consumers may rely on pair sequence before transport, but must not treat observed socket order as part of this contract.

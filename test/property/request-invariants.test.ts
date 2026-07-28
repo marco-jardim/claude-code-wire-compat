@@ -42,6 +42,19 @@ const inputArbitrary: fc.Arbitrary<ClaudeCodeRequestInput> = fc
     ],
   }));
 
+const LONG_CONTEXT_BETA = "context-1m-2025-08-07";
+/** Mirrors the accepted grammar of `ClaudeCodeRequestInput.additionalBetas`. */
+const betaArbitrary = fc.stringMatching(/^[A-Za-z0-9][A-Za-z0-9._-]{0,40}$/u);
+
+function builtHeader(
+  built: { readonly headers: readonly (readonly [string, string])[] },
+  name: string,
+): string {
+  const match = built.headers.find(([candidate]) => candidate === name);
+  if (match === undefined) throw new Error(`missing header ${name}`);
+  return match[1];
+}
+
 function tokenOccurrences(value: unknown): string[] {
   if (typeof value === "string") return value.includes(TOKEN) ? [value] : [];
   if (Array.isArray(value)) return value.flatMap(tokenOccurrences);
@@ -134,6 +147,91 @@ describe("request properties", () => {
       ]),
     ).rejects.toMatchObject({ code: "INVALID_INPUT" });
     expect(JSON.parse('{"key":1,"key":2}')).toEqual({ key: 2 });
+  });
+
+  /*
+   * Package-extension seam invariants. `additionalBetas` is the only caller
+   * input that reaches the `anthropic-beta` header, which is a single
+   * comma-joined field, so the header grammar has to hold for EVERY accepted
+   * list, not just the hand-written cases.
+   */
+  it("keeps the beta header well formed for any accepted additionalBetas list", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(betaArbitrary, { maxLength: 32 }),
+        async (additionalBetas) => {
+          const canonical = await buildClaudeCodeRequest(base);
+          const built = await buildClaudeCodeRequest({
+            ...base,
+            additionalBetas,
+          });
+          const header = builtHeader(built, "anthropic-beta");
+
+          // Header grammar: no empty element, so no doubled or edge comma.
+          expect(header).not.toContain(",,");
+          expect(header.startsWith(",")).toBe(false);
+          expect(header.endsWith(",")).toBe(false);
+          expect(header).toBe(built.evidence.betaFeatures.join(","));
+
+          // The canonical, upstream-derived prefix is never reordered or lost.
+          expect(
+            built.evidence.betaFeatures.slice(
+              0,
+              canonical.evidence.betaFeatures.length,
+            ),
+          ).toEqual(canonical.evidence.betaFeatures);
+
+          // Dedup: the emitted set carries no repeated identifier, and every
+          // caller entry survives exactly once.
+          expect(new Set(built.evidence.betaFeatures).size).toBe(
+            built.evidence.betaFeatures.length,
+          );
+          for (const beta of additionalBetas) {
+            expect(built.evidence.betaFeatures).toContain(beta);
+          }
+
+          // Dedup is idempotent: feeding the emitted tail back changes nothing.
+          const tail = built.evidence.betaFeatures.slice(
+            canonical.evidence.betaFeatures.length,
+          );
+          const again = await buildClaudeCodeRequest({
+            ...base,
+            additionalBetas: [...additionalBetas, ...tail],
+          });
+          expect(again.evidence.betaFeatures).toEqual(
+            built.evidence.betaFeatures,
+          );
+
+          // The body never observes the seam.
+          expect(built.body).toBe(canonical.body);
+
+          expect(parseBuiltClaudeCodeRequest(built)).toEqual(built);
+        },
+      ),
+      { seed: SEED, numRuns: 40, verbose: true },
+    );
+  });
+
+  it("keeps betaOverrides confined to the beta header and the evidence", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.boolean(), async (use1MContext) => {
+        const canonical = await buildClaudeCodeRequest(base);
+        const built = await buildClaudeCodeRequest({
+          ...base,
+          betaOverrides: { use1MContext },
+        });
+
+        expect(built.body).toBe(canonical.body);
+        expect(built.evidence.capabilityDecisions.use1MContext).toBe(
+          use1MContext,
+        );
+        expect(built.evidence.betaFeatures.includes(LONG_CONTEXT_BETA)).toBe(
+          use1MContext,
+        );
+        expect(parseBuiltClaudeCodeRequest(built)).toEqual(built);
+      }),
+      { seed: SEED, numRuns: 8, verbose: true },
+    );
   });
 
   it("passes every catalogue model through without rewriting it", async () => {

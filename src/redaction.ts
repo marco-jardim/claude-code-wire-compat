@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type {
-  ClaudeCodeCapabilities,
+  ClaudeCodeCapabilityDecisions,
   ClaudeCodeModelFamily,
   ClaudeCodeProtocolProfile,
   ClaudeCodeRequestInput,
@@ -26,6 +26,40 @@ export interface BuildRedactedEvidenceInput {
   readonly logicalHeaders: readonly HeaderPair[];
   readonly betaFeatures: readonly string[];
   readonly body: string;
+  /**
+   * Carries the names discarded by `extraHeaderPolicy: "dropConflicting"`.
+   *
+   * Supplied only under that policy, so evidence for every other request keeps
+   * its original shape.
+   */
+  readonly droppedExtraHeaderNames?: readonly string[];
+  readonly suppressedBetaNames?: readonly string[];
+  /**
+   * Carries the number of caller system blocks the canonical system actually
+   * EMITTED, which is not the raw length of `request.system`: adjacent caller
+   * blocks sharing a `cache_control` merge into one, and a block byte-identical
+   * to the pinned identity text is dropped.
+   *
+   * The parser asserts `systemBlockCount === body.system.length - <canonical>`,
+   * so the raw length made every merged request unparseable by this package.
+   */
+  readonly emittedSystemBlockCount?: number;
+  /**
+   * Set only when `suppressBillingBlock` removed the billing block, so evidence
+   * for every request that ignores the seam keeps its original shape.
+   */
+  readonly billingBlockSuppressed?: true;
+  /**
+   * Set only when the root `suppressIdentityBlock` removed the identity block,
+   * so evidence for every request that ignores the seam keeps its shape.
+   */
+  readonly identityBlockSuppressed?: true;
+  /**
+   * Set only when `preserveThinkingBlockCacheControl` was active AND at least
+   * one emitted reasoning block actually carried `cache_control`, so evidence
+   * for every request that ignores the seam keeps its shape.
+   */
+  readonly thinkingBlockCacheControlPreserved?: true;
 }
 
 const MAX_INPUT_DEPTH = 100;
@@ -206,9 +240,13 @@ function toHex(bytes: Uint8Array): string {
 
 function capabilityDecisions(
   input: BuildRedactedEvidenceInput,
-): Readonly<Record<keyof ClaudeCodeCapabilities, boolean>> {
+): ClaudeCodeCapabilityDecisions {
   const requested = input.request.capabilities;
+  const use1MContext = input.request.betaOverrides?.use1MContext;
   return Object.freeze({
+    // Package extension: emitted only when the caller stated a decision, so
+    // evidence for requests without `betaOverrides` keeps its original shape.
+    ...(use1MContext === undefined ? {} : { use1MContext }),
     thinking: requested?.thinking ?? false,
     adaptiveThinking: requested?.adaptiveThinking ?? false,
     effort: requested?.effort ?? false,
@@ -386,6 +424,27 @@ export async function buildRedactedEvidence(
     betaFeatures.push(feature);
   }
 
+  // Dropped names are caller-controlled text that lands in evidence. They get
+  // the same credential screening as the header names that did reach the wire.
+  const droppedExtraHeaderNames: string[] = [];
+  for (const name of input.droppedExtraHeaderNames ?? []) {
+    if (containsCredential(name, credentials)) throw wireError("INVALID_INPUT");
+    droppedExtraHeaderNames.push(name);
+  }
+
+  // Suppressed names never reached the wire, but they are caller-controlled
+  // text landing in evidence, so they get the same credential screening.
+  const suppressedBetaNames: string[] = [];
+  for (const name of input.suppressedBetaNames ?? []) {
+    if (containsCredential(name, credentials)) throw wireError("INVALID_INPUT");
+    suppressedBetaNames.push(name);
+  }
+
+  // The emitted count is authoritative when supplied; the raw caller length is
+  // only a fallback for callers that assemble evidence without a built system.
+  const systemBlockCount =
+    input.emittedSystemBlockCount ?? input.request.system?.length ?? 0;
+
   const provider = selectCryptoProvider(cryptoProvider);
   if (!isCryptoProvider(provider)) throw wireError("CRYPTO_UNAVAILABLE");
 
@@ -396,7 +455,7 @@ export async function buildRedactedEvidence(
     throw wireError("REDACTION_FAILURE", {
       bodyByteLength: bodyBytes.byteLength,
       messageCount: input.request.messages.length,
-      systemBlockCount: input.request.system?.length ?? 0,
+      systemBlockCount,
     });
   }
 
@@ -407,14 +466,14 @@ export async function buildRedactedEvidence(
     throw wireError("REDACTION_FAILURE", {
       bodyByteLength: bodyBytes.byteLength,
       messageCount: input.request.messages.length,
-      systemBlockCount: input.request.system?.length ?? 0,
+      systemBlockCount,
     });
   }
   if (digestBytes.byteLength !== 32) {
     throw wireError("REDACTION_FAILURE", {
       bodyByteLength: bodyBytes.byteLength,
       messageCount: input.request.messages.length,
-      systemBlockCount: input.request.system?.length ?? 0,
+      systemBlockCount,
     });
   }
   const bodySha256 = toHex(digestBytes);
@@ -429,8 +488,34 @@ export async function buildRedactedEvidence(
     bodySha256,
     bodyByteLength: bodyBytes.byteLength,
     messageCount: input.request.messages.length,
-    systemBlockCount: input.request.system?.length ?? 0,
+    systemBlockCount,
     capabilityDecisions: capabilityDecisions(input),
+    // Package extension: emitted only when the caller opted into
+    // `dropConflicting`, so evidence for every other request is unchanged.
+    ...(input.droppedExtraHeaderNames === undefined
+      ? {}
+      : { droppedExtraHeaderNames: Object.freeze(droppedExtraHeaderNames) }),
+    // Package extension: emitted only when the suppression seam removed at
+    // least one identifier, so evidence for every other request is unchanged.
+    ...(suppressedBetaNames.length === 0
+      ? {}
+      : { suppressedBetaNames: Object.freeze(suppressedBetaNames) }),
+    // Package extension: emitted only when the billing block was actually
+    // suppressed, so evidence for every other request is unchanged.
+    ...(input.billingBlockSuppressed === true
+      ? { billingBlockSuppressed: true }
+      : {}),
+    // Package extension: emitted only when the identity block was actually
+    // suppressed, so evidence for every other request is unchanged.
+    ...(input.identityBlockSuppressed === true
+      ? { identityBlockSuppressed: true }
+      : {}),
+    // Package extension: emitted only when the seam was active AND a reasoning
+    // block actually carried the marker, so evidence for every other request is
+    // unchanged.
+    ...(input.thinkingBlockCacheControlPreserved === true
+      ? { thinkingBlockCacheControlPreserved: true }
+      : {}),
   };
   return Object.freeze(evidence);
 }

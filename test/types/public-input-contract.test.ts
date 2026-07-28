@@ -36,6 +36,38 @@ describe("public request input contract", () => {
     ]);
   });
 
+  it("accepts the package-extension seams through the public input type", async () => {
+    const input: ClaudeCodeRequestInput = {
+      accessToken: "test-token",
+      model: "claude-sonnet-4-6",
+      maxTokens: 1024,
+      messages: [{ role: "user", content: "Hello" }],
+      runtime: {
+        sessionId: "session-1",
+        deviceId: "device-1",
+        accountUuid: "account-1",
+        runtime: "node",
+        runtimeVersion: "22.0.0",
+        os: "Linux",
+        arch: "x64",
+      },
+      clientRequestId: "public-contract-request-2",
+      additionalBetas: ["public-contract-beta-2026-01-01"],
+      betaOverrides: { use1MContext: true },
+      cacheControl: { suppressIdentityBlock: true },
+    };
+
+    const built = await buildClaudeCodeRequest(
+      input,
+      CLAUDE_CODE_2_1_195_PROFILE,
+    );
+
+    expect(built.evidence.betaFeatures).toContain(
+      "public-contract-beta-2026-01-01",
+    );
+    expect(built.evidence.capabilityDecisions.use1MContext).toBe(true);
+  });
+
   it("rejects a public-contract input missing the mandatory client request id", async () => {
     const input: ClaudeCodeRequestInput = {
       accessToken: "test-token",
