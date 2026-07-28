@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { composeBetas } from "./betas.js";
+import { composeBetas, composeBetasWithAudit } from "./betas.js";
 import type {
   BuiltClaudeCodeCountTokensRequest,
   BuiltClaudeCodeRequest,
@@ -79,6 +79,7 @@ const INPUT_KEYS = new Set([
   "clientApp",
   "anthropicAdditionalProtection",
   "additionalBetas",
+  "suppressBetas",
   "betaOverrides",
   "metadataOverrides",
   "extraHeaders",
@@ -119,6 +120,7 @@ const EVIDENCE_KEYS = new Set([
   "systemBlockCount",
   "capabilityDecisions",
   "droppedExtraHeaderNames",
+  "suppressedBetaNames",
 ]);
 const CAPABILITY_KEYS = [
   "thinking",
@@ -932,6 +934,13 @@ function parseEvidence(value: unknown): RedactedRequestEvidence {
           ),
         }
       : {}),
+    ...(Object.hasOwn(value, "suppressedBetaNames")
+      ? {
+          suppressedBetaNames: parseStringArray(
+            ownValue(value, "suppressedBetaNames"),
+          ),
+        }
+      : {}),
   };
 }
 
@@ -1225,7 +1234,7 @@ export async function buildClaudeCodeRequest(
       metadata,
       effectiveProfile,
     );
-    const betas = composeBetas(
+    const composedBetas = composeBetasWithAudit(
       {
         rawModel: validated.source.model,
         normalizedId: resolvedModel.id,
@@ -1244,12 +1253,16 @@ export async function buildClaudeCodeRequest(
         ...(validated.source.additionalBetas === undefined
           ? {}
           : { additionalBetas: validated.source.additionalBetas }),
+        ...(validated.source.suppressBetas === undefined
+          ? {}
+          : { suppressBetas: validated.source.suppressBetas }),
         ...(validated.betaOverrides?.use1MContext === undefined
           ? {}
           : { use1MContextOverride: validated.betaOverrides.use1MContext }),
       },
       effectiveProfile,
     );
+    const betas = composedBetas.betas;
     const headerPlan = buildOrderedHeaderPlan({
       accessToken: validated.source.accessToken,
       runtime: identity,
@@ -1286,6 +1299,11 @@ export async function buildClaudeCodeRequest(
         ...(validated.extraHeaderPolicy === "dropConflicting"
           ? { droppedExtraHeaderNames: headerPlan.droppedExtraHeaderNames }
           : {}),
+        // Emitted only when suppression actually removed something, so
+        // evidence for every request that ignores the seam is unchanged.
+        ...(composedBetas.suppressedBetaNames.length === 0
+          ? {}
+          : { suppressedBetaNames: composedBetas.suppressedBetaNames }),
       },
       validated.crypto,
     );

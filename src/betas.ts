@@ -37,6 +37,14 @@ export interface ComposeBetasInput {
    */
   readonly additionalBetas?: readonly string[];
   /**
+   * Package extension, not observed upstream behaviour. Beta identifiers
+   * removed from the emitted set AFTER composition and AFTER the
+   * `additionalBetas` merge, so suppression beats addition. An identifier that
+   * is not in the composed set is a silent no-op. See `docs/source-trace.md`,
+   * governance ledger L14.
+   */
+  readonly suppressBetas?: readonly string[];
+  /**
    * Package extension, not observed upstream behaviour. Forces (`true`) or
    * suppresses (`false`) the 1M-context beta for this request, overriding the
    * `[1m]` model marker. See `docs/source-trace.md`, governance ledger L10.
@@ -45,7 +53,19 @@ export interface ComposeBetasInput {
 }
 
 /**
- * Bounds the caller-supplied beta list. The header is a comma-joined single
+ * Reports the emitted beta set together with the identifiers `suppressBetas`
+ * actually removed. `suppressedBetaNames` is empty when the seam is unused or
+ * matched nothing, which is what keeps the evidence key absent for every
+ * request built before the seam existed.
+ */
+export interface ComposedBetas {
+  readonly betas: readonly string[];
+  readonly suppressedBetaNames: readonly string[];
+}
+
+/**
+ * Bounds a caller-supplied beta list (`additionalBetas` and `suppressBetas`
+ * share these rules verbatim). The header is a comma-joined single
  * field, so a comma, control character, or whitespace in an entry would let a
  * caller synthesize extra beta values (or, with CR/LF, an entirely separate
  * header). The allowlist below is deliberately narrower than the observed
@@ -73,10 +93,19 @@ function validateAdditionalBetas(value: unknown): readonly string[] {
   });
 }
 
+const NO_SUPPRESSED_BETAS: readonly string[] = Object.freeze([]);
+
 export function composeBetas(
   input: ComposeBetasInput,
   profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
 ): readonly string[] {
+  return composeBetasWithAudit(input, profile).betas;
+}
+
+export function composeBetasWithAudit(
+  input: ComposeBetasInput,
+  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+): ComposedBetas {
   const out: string[] = [];
   const policy = profile.betaPolicy;
   const experimental = policy.experimentalBetasEnabled;
@@ -164,5 +193,27 @@ export function composeBetas(
     }
   }
 
-  return Object.freeze(out);
+  // Package extension. The suppression filter is deliberately LAST: it runs
+  // after the canonical composition and after the `additionalBetas` merge, so
+  // an identifier named by both seams does not reach the wire. Removal is
+  // reported in composed order, never in caller order, and an identifier that
+  // was never composed is a silent no-op because a consumer cannot know which
+  // betas this package derives for a given model.
+  if (input.suppressBetas === undefined) {
+    return Object.freeze({
+      betas: Object.freeze(out),
+      suppressedBetaNames: NO_SUPPRESSED_BETAS,
+    });
+  }
+  const suppressed = new Set(validateAdditionalBetas(input.suppressBetas));
+  const kept: string[] = [];
+  const removed: string[] = [];
+  for (const beta of out) {
+    if (suppressed.has(beta)) removed.push(beta);
+    else kept.push(beta);
+  }
+  return Object.freeze({
+    betas: Object.freeze(kept),
+    suppressedBetaNames: Object.freeze(removed),
+  });
 }

@@ -863,6 +863,31 @@ export interface ClaudeCodeRequestInput {
    */
   readonly additionalBetas?: readonly string[];
   /**
+   * Removes beta identifiers from the `anthropic-beta` header.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour. This package
+   * composes the beta set on its own, from the pinned profile and the model
+   * capabilities, so a consumer whose users can switch a beta OFF has no other
+   * way to honour that switch.
+   *
+   * The filter is applied LAST — after composition and after the
+   * `additionalBetas` merge — so suppression beats addition: an identifier
+   * named by both seams does not reach the wire. An identifier that is not in
+   * the composed set is a SILENT no-op, not an error, because the consumer
+   * cannot know which betas this package derives for a given model.
+   *
+   * Entries share the `additionalBetas` grammar exactly: each must match
+   * `/^[A-Za-z0-9][A-Za-z0-9._-]*$/` and be at most 128 characters, with at
+   * most 32 entries. Anything else fails with `INVALID_INPUT`.
+   *
+   * NOT guarded: this package does not protect load-bearing identifiers.
+   * Suppressing `oauth-2025-04-20` produces a request the API rejects with 401.
+   *
+   * Omitting the field, or supplying a list that removes nothing, leaves the
+   * emitted request byte-identical.
+   */
+  readonly suppressBetas?: readonly string[];
+  /**
    * Overrides beta-header gates that the genuine client resolves from host
    * state this package cannot observe.
    *
@@ -997,6 +1022,15 @@ export interface RedactedRequestEvidence {
    * so existing evidence stays byte-identical.
    */
   readonly droppedExtraHeaderNames?: readonly string[];
+  /**
+   * Audits the beta identifiers `suppressBetas` actually removed, in the order
+   * the composed set held them.
+   *
+   * Emitted ONLY when at least one identifier was removed. When the seam is
+   * omitted, empty, or matches nothing, the key is ABSENT rather than present
+   * and empty, so existing evidence stays byte-identical.
+   */
+  readonly suppressedBetaNames?: readonly string[];
 }
 
 /**

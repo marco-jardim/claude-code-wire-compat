@@ -33,6 +33,7 @@ export interface BuildRedactedEvidenceInput {
    * its original shape.
    */
   readonly droppedExtraHeaderNames?: readonly string[];
+  readonly suppressedBetaNames?: readonly string[];
 }
 
 const MAX_INPUT_DEPTH = 100;
@@ -405,6 +406,14 @@ export async function buildRedactedEvidence(
     droppedExtraHeaderNames.push(name);
   }
 
+  // Suppressed names never reached the wire, but they are caller-controlled
+  // text landing in evidence, so they get the same credential screening.
+  const suppressedBetaNames: string[] = [];
+  for (const name of input.suppressedBetaNames ?? []) {
+    if (containsCredential(name, credentials)) throw wireError("INVALID_INPUT");
+    suppressedBetaNames.push(name);
+  }
+
   const provider = selectCryptoProvider(cryptoProvider);
   if (!isCryptoProvider(provider)) throw wireError("CRYPTO_UNAVAILABLE");
 
@@ -455,6 +464,11 @@ export async function buildRedactedEvidence(
     ...(input.droppedExtraHeaderNames === undefined
       ? {}
       : { droppedExtraHeaderNames: Object.freeze(droppedExtraHeaderNames) }),
+    // Package extension: emitted only when the suppression seam removed at
+    // least one identifier, so evidence for every other request is unchanged.
+    ...(suppressedBetaNames.length === 0
+      ? {}
+      : { suppressedBetaNames: Object.freeze(suppressedBetaNames) }),
   };
   return Object.freeze(evidence);
 }
