@@ -273,6 +273,72 @@ opt-in.
 onto this package changes observable behavior: context hint stops being sent by default. The Wave
 6 wire-parity review **MUST** address this divergence.
 
+## Package extension seams
+
+Everything else in this document is a **protocol fact**: a behaviour read out of the genuine client
+and reproduced here. This section is the opposite, and the distinction matters, because a reader
+mining this file for fidelity evidence must never mistake a consumer convenience for observed
+Claude Code behaviour.
+
+The three fields below are **consumer seams invented by this package**. No byte offset, upstream
+file or live capture supports them, and none of them has an upstream counterpart to drift against.
+They exist so a downstream consumer can express host state this package deliberately refuses to
+observe, without forking the composer.
+
+| Field                                | Kind          | Upstream counterpart                                                  | Default when omitted                            |
+| ------------------------------------ | ------------- | --------------------------------------------------------------------- | ----------------------------------------------- |
+| `additionalBetas`                    | Consumer seam | **None.** Upstream derives the beta set from profile and model only.  | No entries appended; emitted request unchanged. |
+| `betaOverrides.use1MContext`         | Consumer seam | Partial: replaces the `[1m]` model-marker gate, not the profile gate. | The `[1m]` marker decides, as before.           |
+| `cacheControl.suppressIdentityBlock` | Consumer seam | **None.** Upstream always marks the identity block.                   | Marker emitted exactly as before.               |
+
+### Governance ledger L10 — consumer seams are not protocol facts
+
+**Claim.** `ClaudeCodeRequestInput.additionalBetas`, `ClaudeCodeRequestInput.betaOverrides` and
+`ClaudeCodeCacheControlInput.suppressIdentityBlock` are extensions of THIS package. They are **not**
+observed Claude Code behaviour and must not be cited as wire-fidelity evidence, ported upstream
+reasoning, or grounds for changing any pinned default.
+
+**Why they exist.** The runtime-neutral core observes no environment, so it cannot see the host
+state upstream reads: the user's configured beta list, the per-request 1M-context decision, or a
+cache mode that emits no marker. Without these seams a consumer must either fork beta composition
+or drop user-visible features.
+
+**Additivity is the contract.** Each seam is a no-op when omitted, and that is enforced, not
+asserted: `test/validation/seam-additivity.test.ts` builds the same request with and without each
+field and compares `body` byte for byte, plus `headers` and `evidence` in full. Any diff on the
+omitted path is a breaking change, not a seam.
+
+- `additionalBetas` is appended AFTER the upstream-derived set, so the canonical prefix keeps its
+  emergent order (see "Beta registry and push order"). Entries duplicating an already-emitted
+  identifier are dropped rather than reordering that prefix. Because `anthropic-beta` is one
+  comma-joined field, entries are restricted to `/^[A-Za-z0-9][A-Za-z0-9._-]*$/`, ≤128 characters,
+  ≤32 entries; the header grammar and the dedup/order invariants are fuzzed in
+  `test/property/request-invariants.test.ts` and attacked in `test/security/seam-injection.test.ts`.
+  Locked by `test/validation/additional-betas.test.ts`.
+- `betaOverrides.use1MContext` replaces ONLY the `[1m]` model-marker gate. The profile gate
+  `betaPolicy.oneMillionContextEnabled` still applies, so a consumer cannot force a beta the pinned
+  profile declares unavailable. It is a top-level field rather than a tenth `ClaudeCodeCapabilities`
+  key on purpose: capabilities are model-derived and cross-checked against `resolveModel()`, this
+  gate is host state with no catalogue entry, and a tenth MANDATORY key in
+  `evidence.capabilityDecisions` would change the evidence of every request and break additivity.
+  The decision is recorded as an OPTIONAL `capabilityDecisions.use1MContext`, present only when the
+  caller supplied it. Locked by `test/validation/beta-overrides-1m.test.ts`.
+- `cacheControl.suppressIdentityBlock` is the only way to emit the identity block with no
+  `cache_control`. Default `false` reproduces the unconditional marker — the hardcoded `1h` when
+  `cacheControl` is absent, and the `applySystemCacheControl` overwrite when it is present. It never
+  touches the billing block (index 0) or the canonical block count. Locked by
+  `test/validation/suppress-identity-cache.test.ts`.
+
+**Consequence.** These fields do not participate in drift detection, because there is no upstream
+site to drift from. A future wire-parity review must treat them as this package's own surface: they
+may be removed or renamed on their own schedule, and a live capture that lacks them is not evidence
+of a defect.
+
+**Still out of scope.** These seams do not open the door to multi-provider support. The package
+models the wire of the official Claude Code client talking to `api.anthropic.com`; `provider`
+remains pinned to `anthropic` and Bedrock, Vertex, Foundry and Mantle stay permanently out of
+scope.
+
 ## Header order is logical only
 
 The package guarantees deterministic **logical** ordering through `readonly HeaderPair[]`, locked by `test/headers.test.ts` and `test/golden-fixtures.test.ts`. It explicitly does **not** guarantee on-wire field ordering: `Headers`, `fetch`, and undici may normalize, combine, or reorder fields, and no supported API guarantees wire order. Consumers may rely on pair sequence before transport, but must not treat observed socket order as part of this contract.
