@@ -79,10 +79,12 @@ const INPUT_KEYS = new Set([
   "anthropicAdditionalProtection",
   "additionalBetas",
   "betaOverrides",
+  "metadataOverrides",
   "extraHeaders",
   "crypto",
 ]);
 const BETA_OVERRIDE_KEYS = new Set(["use1MContext"]);
+const METADATA_OVERRIDE_KEYS = new Set(["userId", "userIdFields"]);
 const COUNT_TOKENS_INPUT_KEYS = new Set([
   "accessToken",
   "model",
@@ -534,6 +536,18 @@ function validateBetaOverrides(value: unknown): ClaudeCodeBetaOverrides {
   });
 }
 
+/**
+ * Validates the shape of the package-extension metadata overrides.
+ *
+ * Only the key set is decided here, exactly as `validateBetaOverrides` does.
+ * Member values, and the mutual exclusion between them, are decided by
+ * `buildCorrelatedMetadata`, which owns the correlation rules.
+ */
+function validateMetadataOverrides(value: unknown): void {
+  if (!isRecord(value)) fail();
+  assertExactKeys(value, METADATA_OVERRIDE_KEYS);
+}
+
 function createEffectiveProfile(
   pinnedProfile: ClaudeCodeProtocolProfile,
   override: ClaudeCodeProfileOverride | undefined,
@@ -605,6 +619,9 @@ function validateInput(input: ClaudeCodeRequestInput): {
   const betaOverrides = Object.hasOwn(input, "betaOverrides")
     ? validateBetaOverrides(ownValue(input, "betaOverrides"))
     : undefined;
+  if (Object.hasOwn(input, "metadataOverrides")) {
+    validateMetadataOverrides(ownValue(input, "metadataOverrides"));
+  }
   return {
     source: input,
     clientRequestId,
@@ -1133,6 +1150,7 @@ export async function buildClaudeCodeRequest(
     const metadata = buildCorrelatedMetadata(
       identity,
       validated.source.metadata,
+      validated.source.metadataOverrides,
     );
     const system = buildCanonicalSystem(
       validated.source.system,

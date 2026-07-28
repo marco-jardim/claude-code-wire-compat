@@ -732,6 +732,48 @@ export interface ClaudeCodeBetaOverrides {
   readonly use1MContext?: boolean;
 }
 
+/**
+ * Per-request substitutes for the `metadata.user_id` value the genuine client
+ * derives from host state.
+ *
+ * PACKAGE EXTENSION, not observed Claude Code behaviour. The genuine client
+ * always emits `user_id` as the JSON encoding of the runtime correlation
+ * triple; this seam exists so a consumer can carry a host identifier the
+ * runtime-neutral core cannot observe, without forking metadata composition.
+ *
+ * The two members are MUTUALLY EXCLUSIVE, because they express different
+ * intents: `userId` abandons the derived value entirely, while `userIdFields`
+ * keeps it and adds to it. Supplying both fails with `INVALID_INPUT` rather
+ * than silently resolving the ambiguity.
+ *
+ * Omitting the field, or omitting both members, leaves the emitted request
+ * byte-identical.
+ */
+export interface ClaudeCodeMetadataOverrides {
+  /**
+   * Replaces the derived `metadata.user_id` verbatim.
+   *
+   * The correlation guarantee is the caller's from here on: the package no
+   * longer proves that `user_id` carries the session, device and account the
+   * headers and the identity system block declare. A built request whose
+   * `user_id` is not JSON carrying the session identifier is REJECTED by
+   * `parseBuiltClaudeCodeRequest`, which keeps that correlation invariant.
+   *
+   * Must be a non-blank string of at most 8192 characters with no control
+   * characters and no lone surrogates.
+   */
+  readonly userId?: string;
+  /**
+   * Adds members to the derived `metadata.user_id` JSON object.
+   *
+   * Caller members are written FIRST and the correlation triple
+   * (`device_id`, `account_uuid`, `session_id`) LAST, so correlation always
+   * wins. Supplying any of those three keys fails with `INVALID_INPUT` rather
+   * than being silently overwritten.
+   */
+  readonly userIdFields?: Readonly<Record<string, JsonValue>>;
+}
+
 export interface ClaudeCodeRequestInput {
   readonly accessToken: string;
   readonly model: string;
@@ -805,6 +847,16 @@ export interface ClaudeCodeRequestInput {
    * or omitting any member, leaves the emitted request byte-identical.
    */
   readonly betaOverrides?: ClaudeCodeBetaOverrides;
+  /**
+   * Overrides the `metadata.user_id` value the genuine client derives from
+   * host state this package cannot observe.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour. Opt-in: with the
+   * field omitted, a supplied `metadata.user_id` that diverges from the
+   * derived value keeps failing with `INVALID_INPUT`. Omitting the field, or
+   * omitting both members, leaves the emitted request byte-identical.
+   */
+  readonly metadataOverrides?: ClaudeCodeMetadataOverrides;
   /** Appends validated non-canonical headers in caller order. */
   readonly extraHeaders?: readonly HeaderPair[];
   /** Injects the Web Crypto provider used to hash the request body. */

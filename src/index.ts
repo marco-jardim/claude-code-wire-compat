@@ -23,6 +23,7 @@ export type {
   ClaudeCodeCapabilityDecisions,
   ClaudeCodeCatalogueEntry,
   ClaudeCodeEffort,
+  ClaudeCodeMetadataOverrides,
   ClaudeCodeModelFamily,
   ClaudeCodeProtocolProfile,
   ClaudeCodeCountTokensInput,

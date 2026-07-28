@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { ClaudeCodeWireError } from "./contracts.js";
-import type { ClaudeCodeRuntimeIdentity, JsonValue } from "./contracts.js";
+import type {
+  ClaudeCodeMetadataOverrides,
+  ClaudeCodeRuntimeIdentity,
+  JsonValue,
+} from "./contracts.js";
 import { inspectJsonInputs, validatedJson } from "./request-body.js";
 import { classifySurrogateAt } from "./unicode.js";
 
@@ -13,6 +17,14 @@ const CORRELATION_KEYS = new Set([
   "account_uuid",
   "session_id",
 ]);
+/**
+ * The members of the derived `user_id` JSON object.
+ *
+ * `metadataOverrides.userIdFields` may not carry these keys: the package writes
+ * them last so correlation always wins, and a silently overwritten caller value
+ * would look honoured while being discarded.
+ */
+const IDENTITY_KEYS = new Set(["device_id", "account_uuid", "session_id"]);
 
 function hasInvalidUtf16(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
@@ -205,16 +217,98 @@ function validateMetadataObject(metadata: unknown): object {
   return metadata;
 }
 
+/**
+ * Validates a package-extension `user_id` replacement.
+ *
+ * PACKAGE EXTENSION, not observed Claude Code behaviour. The value is opaque to
+ * this package, so it is checked only for wire-safety, never for correlation.
+ */
+function validateOverrideUserId(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new ClaudeCodeWireError("INVALID_INPUT", { field: "userId" });
+  }
+  if (hasInvalidUtf16(value)) {
+    throw new ClaudeCodeWireError("INVALID_UNICODE", { field: "userId" });
+  }
+  if (value.length > MAX_TEXT_LENGTH) {
+    throw new ClaudeCodeWireError("INPUT_TOO_LARGE", { field: "userId" });
+  }
+  if (hasControlCharacter(value)) {
+    throw new ClaudeCodeWireError("INVALID_UNICODE", { field: "userId" });
+  }
+  if (value.length === 0 || value.trim().length === 0) {
+    throw new ClaudeCodeWireError("INVALID_INPUT", { field: "userId" });
+  }
+  return value;
+}
+
+/** Validates the package-extension members merged into the `user_id` object. */
+function validateUserIdFields(value: unknown): [string, JsonValue][] {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ClaudeCodeWireError("INVALID_INPUT", { field: "userIdFields" });
+  }
+  const entries: [string, JsonValue][] = [];
+  for (const rawKey of Reflect.ownKeys(value)) {
+    const key = validateMetadataKey(rawKey);
+    if (IDENTITY_KEYS.has(key)) {
+      throw new ClaudeCodeWireError("INVALID_INPUT", { field: key });
+    }
+    entries.push([key, validateMetadataValue(ownDataValue(value, key), key)]);
+  }
+  return entries;
+}
+
+/**
+ * Resolves the emitted `user_id`, applying the package-extension seam.
+ *
+ * With no overrides this is the derived correlation triple, byte for byte as
+ * before the seam existed. The two override members are mutually exclusive
+ * because they express opposite intents: one abandons the derived value, the
+ * other extends it.
+ */
+function resolveUserId(
+  identity: ClaudeCodeRuntimeIdentity,
+  overrides: unknown,
+): string {
+  const correlation = {
+    device_id: identity.deviceId,
+    account_uuid: identity.accountUuid,
+    session_id: identity.sessionId,
+  };
+  if (overrides === undefined) return JSON.stringify(correlation);
+  if (
+    typeof overrides !== "object" ||
+    overrides === null ||
+    Array.isArray(overrides)
+  ) {
+    throw new ClaudeCodeWireError("INVALID_INPUT", {
+      field: "metadataOverrides",
+    });
+  }
+  const hasUserId = Object.hasOwn(overrides, "userId");
+  const hasUserIdFields = Object.hasOwn(overrides, "userIdFields");
+  if (hasUserId && hasUserIdFields) {
+    throw new ClaudeCodeWireError("INVALID_INPUT", {
+      field: "metadataOverrides",
+    });
+  }
+  if (hasUserId) {
+    return validateOverrideUserId(ownDataValue(overrides, "userId"));
+  }
+  if (!hasUserIdFields) return JSON.stringify(correlation);
+  const fields = validateUserIdFields(ownDataValue(overrides, "userIdFields"));
+  // Caller members first, correlation last: the triple always wins, which
+  // mirrors how the consumer composes the same object.
+  return JSON.stringify({ ...Object.fromEntries(fields), ...correlation });
+}
+
 export function buildCorrelatedMetadata(
   identity: ClaudeCodeRuntimeIdentity,
   suppliedMetadata?: Readonly<Record<string, JsonValue>>,
+  overrides?: ClaudeCodeMetadataOverrides,
 ): Readonly<Record<string, JsonValue>> {
   const validatedIdentity = validateRuntimeIdentity(identity);
-  const userId = JSON.stringify({
-    device_id: validatedIdentity.deviceId,
-    account_uuid: validatedIdentity.accountUuid,
-    session_id: validatedIdentity.sessionId,
-  });
+  const userId = resolveUserId(validatedIdentity, overrides);
   const entries: [string, JsonValue][] = [["user_id", userId]];
 
   if (suppliedMetadata === undefined) return Object.freeze({ user_id: userId });
