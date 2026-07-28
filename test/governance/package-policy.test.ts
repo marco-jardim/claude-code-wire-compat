@@ -65,7 +65,14 @@ function policyErrors(value: PackageManifest): readonly string[] {
     errors.push("public publish access");
   if (
     JSON.stringify(value.files) !==
-    JSON.stringify(["dist", "README.md", "LICENSE", "NOTICE", "CHANGELOG.md"])
+    JSON.stringify([
+      "dist",
+      "src",
+      "README.md",
+      "LICENSE",
+      "NOTICE",
+      "CHANGELOG.md",
+    ])
   )
     errors.push("published files");
   if (

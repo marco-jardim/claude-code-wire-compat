@@ -77,6 +77,7 @@ describe("release candidate policy", () => {
   it("declares the exact published file allowlist", () => {
     expect(manifest.files).toEqual([
       "dist",
+      "src",
       "README.md",
       "LICENSE",
       "NOTICE",

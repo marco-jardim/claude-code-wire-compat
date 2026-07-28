@@ -862,6 +862,39 @@ heading now fails. No case that failed before passes now.
 file, whatever its version, and the version discrimination belongs in the assertion rather than in
 the selector. Locked by `test/governance/release-policy.test.ts`.
 
+### Governance ledger L19 — the tarball ships `src`, and the allowlist is pinned in three places
+
+**Claim.** Like L18, this entry records a PACKAGING change, not a wire-contract change. No runtime
+behaviour, no request byte and no exported type changes. `npm run test:pack` proves it: the node,
+bun and workerd consumer digests are byte-identical before and after
+(`6b9609b29463c890544845dd94acf560206b6f8165538faafd8886750037d277`).
+
+**Why it exists.** The build emits 40 `.js.map` and `.d.ts.map` files. Each one references
+`../src/*.ts` and none carries `sourcesContent`, so every source map in the published tarball
+pointed at a file the tarball did not contain. A consumer stepping into this package in a debugger
+resolved to nothing. The two coherent fixes are to inline `sourcesContent` or to ship the sources;
+for a GPL-3.0-or-later package whose `NOTICE` already carries a written offer of corresponding
+source, shipping the sources makes the offer and the artifact agree, so `src` was added to the
+`files` allowlist immediately after `dist`.
+
+**What is packed.** `src` ships SOURCES ONLY. `test/pack/pack-policy.test.ts` asserts against the
+real `npm pack --dry-run` manifest that every packed path under `src/` ends in `.ts`, that
+`src/index.ts` is present, and that no `.test.`/`.spec.` path appears anywhere in the tarball. The
+`test/`, `scripts/`, `.github/` and `.com466-evidence/` prefixes remain forbidden; only `src` moved
+out of that denylist, and it moved into an assertion that is narrower than the one it left.
+
+**Three tests pin the allowlist and none was loosened.** All three still assert an EXACT set, now
+`["dist", "src", "README.md", "LICENSE", "NOTICE", "CHANGELOG.md"]`:
+
+- `test/governance/release-policy.test.ts` — `toEqual` on the ordered array.
+- `test/governance/package-policy.test.ts` — `JSON.stringify` identity, so order is also pinned.
+- `test/pack/pack-policy.test.ts` — set equality, plus the packed-path assertions above.
+
+The directory-vs-file classification in `test/pack/pack-policy.test.ts` was generalised from a
+hardcoded `entry === "dist"` to a `packedDirectories` set, because an allowlist entry naming a
+directory must not be matched as an exact filename; without that, `src/index.ts` would have been
+reported as an unexpected packed path while the literal name `src` was expected as a file.
+
 ## Header order is logical only
 
 The package guarantees deterministic **logical** ordering through `readonly HeaderPair[]`, locked by `test/headers.test.ts` and `test/golden-fixtures.test.ts`. It explicitly does **not** guarantee on-wire field ordering: `Headers`, `fetch`, and undici may normalize, combine, or reorder fields, and no supported API guarantees wire order. Consumers may rely on pair sequence before transport, but must not treat observed socket order as part of this contract.

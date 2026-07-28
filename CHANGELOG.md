@@ -8,15 +8,26 @@ First stable release.
 
 There is NO runtime code change relative to `0.1.0-rc.17`:
 `git diff --stat 5c6881b d7e2901 -- src package.json` is empty, so `dist/` is
-byte-identical to the `0.1.0-rc.17` build and the only packed-content difference
-is `README.md`. Everything this release contains is described in the release
-candidate entries below; they are not repeated here.
+byte-identical to the `0.1.0-rc.17` build. Everything this release contains is
+described in the release candidate entries below; they are not repeated here.
+The packed content differs from `0.1.0-rc.17` by `README.md` and by the added
+TypeScript sources described below — the executed code is unchanged, which
+`npm run test:pack` confirms by an unchanged consumer digest.
 
 ### Added
 
+- **The tarball now ships the TypeScript sources.** `src` is added to the
+  `files` allowlist. The build emits 40 `.js.map` and `.d.ts.map` files that
+  reference `../src/*.ts` and carry no `sourcesContent`, so every source map in
+  the published package resolved to nothing in a consumer's debugger. Shipping
+  the sources is also the coherent option for a GPL-3.0-or-later package whose
+  `NOTICE` already offers corresponding source: the offer and the tarball now
+  agree. Only `.ts` files are packed under `src/`, pinned exactly by
+  `test/pack/pack-policy.test.ts`; the allowlist itself is pinned by
+  `test/governance/release-policy.test.ts` and
+  `test/governance/package-policy.test.ts`.
 - The ported protocol-documentation corpus and `docs/ATTRIBUTION.md` are now in
-  the repository. Neither is packed into the tarball — the `files` allowlist is
-  unchanged (`dist`, `README.md`, `LICENSE`, `NOTICE`, `CHANGELOG.md`).
+  the repository. Neither is packed into the tarball.
 
 ### Changed
 
