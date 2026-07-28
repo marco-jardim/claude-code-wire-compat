@@ -895,6 +895,49 @@ hardcoded `entry === "dist"` to a `packedDirectories` set, because an allowlist 
 directory must not be matched as an exact filename; without that, `src/index.ts` would have been
 reported as an unexpected packed path while the literal name `src` was expected as a file.
 
+### Governance ledger L20 — "anthropic first-party only" becomes a test, not a convention
+
+**Claim.** Like L18 and L19, this entry records a GOVERNANCE GATE, not a wire-contract change. No
+runtime behaviour, no request byte, no header, no exported type and no fixture digest changes. It
+adds one test file and this paragraph; `src/` is untouched.
+
+**What it locks.** `test/governance/provider-scope.test.ts` asserts, against the SOURCE text rather
+than against the type checker:
+
+- `src/contracts.ts` declares `readonly provider: "anthropic";` — the exact literal, and the only
+  `readonly provider:` declaration in the file. A union, a widening to `string`, or an optional
+  marker fails.
+- the messages endpoint and the count-tokens endpoint are the pinned `api.anthropic.com` URLs,
+  literally, in `src/contracts.ts`, `src/count-tokens.ts`, `src/redaction.ts` and
+  `src/profiles/claude-code-2.1.195.ts`; and every `https://` host anywhere in `src/` is
+  `api.anthropic.com`.
+- no file in `src/` carries a foreign-provider string literal, a `provider ===` comparison against
+  anything but `"anthropic"`, or a `switch` dispatching on a provider.
+
+**Why it became a gate now.** The decision was already correct and already written down — L14 ends
+with the sentence this test now pins verbatim. But it was enforced by a compile-time literal type
+and a paragraph of prose, and neither is a tripwire. Widen `"anthropic"` to `"anthropic" | "bedrock"`
+and every gate in the repository still passed: nothing in `test/governance/` was watching. A
+decision that lives only in a type and a doc is a decision the next contributor undoes without
+noticing. Both failure modes are now covered by an assertion, and both were verified by temporary
+mutation before this entry was written.
+
+**Mention is not branch, and the difference is load-bearing.** `src/model-capabilities.ts` documents
+the upstream client's provider handling in prose, including `l_(e) === "foundry"` — a comparison
+operator inside a comment. That reverse-engineering knowledge is legitimate and stays. The test
+therefore scans COMMENT-STRIPPED source, so comments are permitted by construction rather than by
+exception, and the stripper is itself pinned by a positive/negative battery in the same file (the
+`source-hygiene.test.ts` pattern). String literals deliberately survive stripping, because that is
+exactly how a real branch is spelled.
+
+**One justified allowlist entry.** `BEDROCK_UNSUPPORTED_BETAS` (`src/beta-registry.ts`) is an
+identifier naming a foreign provider in real code. It is static reference data, not a selectable
+branch: a frozen `Set` of beta headers transcribed from upstream `S2r`, with **no call site in
+`src/`**. The allowlist requires a written justification per entry, fails on an entry that no longer
+matches anything (no justification outliving its code), and a separate assertion pins the constant
+as inert — its declaration is its single occurrence in `src/`, so the day something reads it, the
+suite says so. The goal is to forbid multi-provider SURFACE, not to ban the word.
+
 ## Header order is logical only
 
 The package guarantees deterministic **logical** ordering through `readonly HeaderPair[]`, locked by `test/headers.test.ts` and `test/golden-fixtures.test.ts`. It explicitly does **not** guarantee on-wire field ordering: `Headers`, `fetch`, and undici may normalize, combine, or reorder fields, and no supported API guarantees wire order. Consumers may rely on pair sequence before transport, but must not treat observed socket order as part of this contract.
