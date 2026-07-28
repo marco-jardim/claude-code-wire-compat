@@ -6,10 +6,12 @@
  * because this package composed the billing block at system index 0
  * unconditionally, turning that switch into a silent no-op.
  *
- * The parser never sees the flag — it receives only `{url, method, headers,
- * body, evidence}` — so it INFERS the canonical prefix length from the position
- * of the byte-exact identity text, which appears at most once because a caller
- * block equal to it is dropped.
+ * The parser never sees the input flag — it receives only `{url, method,
+ * headers, body, evidence}` — so it reads `evidence.billingBlockSuppressed` for
+ * the canonical prefix length and then VERIFIES the blocks that flag says are
+ * present: the billing head at index 0, the byte-exact identity text after it.
+ * See `suppress-identity-block.test.ts` for the four-state matrix the root
+ * `suppressIdentityBlock` seam adds.
  */
 
 import { describe, expect, it } from "vitest";
