@@ -280,7 +280,7 @@ and reproduced here. This section is the opposite, and the distinction matters, 
 mining this file for fidelity evidence must never mistake a consumer convenience for observed
 Claude Code behaviour.
 
-The five fields below are **consumer seams invented by this package**. No byte offset, upstream
+The six fields below are **consumer seams invented by this package**. No byte offset, upstream
 file or live capture supports them, and none of them has an upstream counterpart to drift against.
 They exist so a downstream consumer can express host state this package deliberately refuses to
 observe, without forking the composer.
@@ -288,6 +288,7 @@ observe, without forking the composer.
 | Field                                | Kind          | Upstream counterpart                                                   | Default when omitted                            |
 | ------------------------------------ | ------------- | ---------------------------------------------------------------------- | ----------------------------------------------- |
 | `additionalBetas`                    | Consumer seam | **None.** Upstream derives the beta set from profile and model only.   | No entries appended; emitted request unchanged. |
+| `suppressBetas`                      | Consumer seam | **None.** Upstream never removes a beta it just composed.              | No entries removed; emitted request unchanged.  |
 | `betaOverrides.use1MContext`         | Consumer seam | Partial: replaces the `[1m]` model-marker gate, not the profile gate.  | The `[1m]` marker decides, as before.           |
 | `cacheControl.suppressIdentityBlock` | Consumer seam | **None.** Upstream always marks the identity block.                    | Marker emitted exactly as before.               |
 | `metadataOverrides`                  | Consumer seam | **None.** Upstream always derives `user_id` from the identity triple.  | Derived `user_id` emitted exactly as before.    |
@@ -559,6 +560,58 @@ on its own flag is local and predictable.
 on the strip now keeps its own `cache_control`. That is recorded in the CHANGELOG under `### Fixed`,
 following the precedent set by the rc.14 hop-by-hop denylist. Locked by
 `test/validation/cache-control-strip.test.ts`.
+
+### Governance ledger L14 — `suppressBetas`, the removal counterpart of `additionalBetas`
+
+**Claim.** `ClaudeCodeRequestInput.suppressBetas` is an extension of THIS package, exactly like the
+L10 seams. It is **not** observed Claude Code behaviour: the genuine client never removes a beta it
+just composed, because its composition inputs and its user configuration are the same host state.
+
+**Why it exists.** This package composes `anthropic-beta` on its own, from the pinned profile and
+the model capabilities, and until now that composition was write-only from the consumer's side.
+`additionalBetas` could only ADD. The first real consumer (`opencode-anthropic-fix`) exposes user
+switches whose entire meaning is removal, and each one silently became a no-op:
+
+- `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` has to drop `context-management-2025-06-27`,
+  `interleaved-thinking-2025-05-14` and `prompt-caching-scope-2026-01-05`.
+- The round-robin account strategy has to drop `prompt-caching-scope-2026-01-05`, because a cache
+  scope pinned across rotating accounts is worse than no scope at all.
+
+Without this seam the consumer's only options were forking beta composition or shipping switches
+that do nothing — a silent no-op is the worst of the three, because the user believes the switch
+worked.
+
+**Semantics.**
+
+- The filter runs **LAST**: after the canonical composition and after the `additionalBetas` merge.
+  Suppression therefore beats addition — an identifier named by both seams does **not** reach the
+  wire. Composing then filtering (rather than gating composition) keeps the emergent canonical order
+  of the survivors intact, which a gate-level change would not.
+- An identifier that is not in the composed set is a **silent no-op, not an error**. The consumer
+  cannot know which betas this package derives for a given model, so demanding precision would make
+  the seam unusable: the same switch has to work across models whose capability-gated sets differ.
+- Entry grammar is `validateAdditionalBetas` verbatim — `/^[A-Za-z0-9][A-Za-z0-9._-]*$/`, ≤128
+  characters, ≤32 entries, `INVALID_INPUT` otherwise. One comma-joined header field, one grammar.
+- `evidence.suppressedBetaNames` records only the identifiers that were **actually present and
+  removed**, in the order the composed set held them, never in caller order. The key is emitted only
+  when at least one identifier was removed; when the seam is omitted, empty, or matches nothing, the
+  key is **ABSENT** rather than present and empty. That is the `droppedExtraHeaderNames` precedent
+  from rc.14, and it is what keeps evidence byte-identical for every request that ignores the seam.
+  Suppressed names never reach the wire, but they do land in evidence, so they get the same
+  credential screening as the features that did.
+
+**NOT guarded, deliberately.** There is no protected-beta list. Suppressing `oauth-2025-04-20`
+produces a request the API rejects with **401**; suppressing `claude-code-20250219` changes how the
+request is classified upstream. This package composes the wire faithfully and refuses to be the
+consumer's babysitter: a guard here would be a second, undocumented policy layer that silently
+disagrees with the caller and could not be turned off. The consumer owns the switch semantics; this
+seam owns only the mechanics.
+
+**Additivity is the contract**, enforced the same way as L10:
+`test/validation/seam-additivity.test.ts` builds the same request with and without `suppressBetas`
+in its no-op forms (omitted vs `[]`, and omitted vs a list that matches nothing) and compares `body`
+byte for byte plus `headers` and `evidence` in full. Locked by
+`test/validation/suppress-betas.test.ts`.
 
 **Still out of scope.** These seams do not open the door to multi-provider support. The package
 models the wire of the official Claude Code client talking to `api.anthropic.com`; `provider`
