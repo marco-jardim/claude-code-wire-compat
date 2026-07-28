@@ -2,7 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.17] - Unreleased
+## [0.1.0] - 2026-07-28
+
+First stable release.
+
+There is NO runtime code change relative to `0.1.0-rc.17`:
+`git diff --stat 5c6881b d7e2901 -- src package.json` is empty, so `dist/` is
+byte-identical to the `0.1.0-rc.17` build and the only packed-content difference
+is `README.md`. Everything this release contains is described in the release
+candidate entries below; they are not repeated here.
+
+### Added
+
+- The ported protocol-documentation corpus and `docs/ATTRIBUTION.md` are now in
+  the repository. Neither is packed into the tarball — the `files` allowlist is
+  unchanged (`dist`, `README.md`, `LICENSE`, `NOTICE`, `CHANGELOG.md`).
+
+### Changed
+
+- `README.md` no longer describes the package as a bootstrap release candidate
+  whose request-building behavior arrives later. That statement was false — the
+  package builds and parses requests — and it was the text rendered on the
+  npmjs.com package page.
+
+## [0.1.0-rc.17] - 2026-07-28
 
 ### Added
 
@@ -99,7 +122,7 @@ All notable changes to this project will be documented in this file.
   together. The build path now subtracts one slot per canonical block that
   actually survived.
 
-## [0.1.0-rc.16] - Unreleased
+## [0.1.0-rc.16] - 2026-07-28
 
 ### Added
 

@@ -58,11 +58,20 @@ describe("release candidate policy", () => {
     );
   });
 
-  it("marks the release candidate heading as unreleased", () => {
+  // The rule is conditional on the manifest version because the two cases have
+  // opposite failure modes. A prerelease heading is transient and superseded
+  // within days, so at commit time its date is not yet a fact and must be
+  // absent. A stable heading is permanent and nothing ever fills the date in
+  // afterwards: 0.1.0-rc.16 and 0.1.0-rc.17 were both published and both sat at
+  // "Unreleased" in this changelog until 0.1.0 corrected them retroactively.
+  // Do not collapse these branches back into a single unconditional assertion —
+  // an unconditional "must not be dated" rule passes an undated stable release,
+  // which is the defect above.
+  it("leaves a prerelease heading undated and requires a stable heading to be dated", () => {
     const heading = releaseCandidateHeading();
-    expect(heading !== undefined && !/\d{4}-\d{2}-\d{2}/u.test(heading)).toBe(
-      true,
-    );
+    expect(heading).toBeDefined();
+    const dated = /\d{4}-\d{2}-\d{2}/u.test(heading ?? "");
+    expect(dated).toBe(!manifest.version.includes("-"));
   });
 
   it("declares the exact published file allowlist", () => {
