@@ -2,6 +2,103 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.0-rc.17] - Unreleased
+
+### Added
+
+- **Root `suppressIdentityBlock` (seam S8).** The canonical identity block was
+  composed unconditionally, so a consumer switch whose meaning is "send neither
+  canonical block" — `token_economy.lean_system_non_main` in the `opencode`
+  plugin, which removed billing AND identity before it migrated to this package
+  — was a silent no-op. `suppressIdentityBlock: true` omits the identity block
+  entirely, which with `suppressBillingBlock` makes four canonical prefixes
+  legitimate: `[billing, identity]`, `[identity]`, `[billing]` and `[]`. Only a
+  boolean is accepted; anything else is `INVALID_INPUT`.
+  `evidence.identityBlockSuppressed` is emitted only when the block was actually
+  removed, mirroring `billingBlockSuppressed` exactly, so evidence stays
+  byte-identical for every request that ignores the seam. Recorded in
+  `docs/source-trace.md` as governance ledger L16.
+
+  This is a DIFFERENT field from the L10 `cacheControl.suppressIdentityBlock`,
+  which keeps the block and drops only its `cache_control` marker. The name
+  collision is deliberate — symmetry with `suppressBillingBlock` at the root was
+  judged worth more than a novel name — and the JSDoc of each field states what
+  it does and names the other by its full path.
+
+  The caller-block drop stays UNCONDITIONAL: a caller block byte-equal to the
+  identity text is removed even when the canonical one was suppressed, matching
+  the genuine client and keeping the parser's absence check below sound.
+
+- **`preserveThinkingBlockCacheControl` (seam S9).** `thinking` and
+  `redacted_thinking` blocks were pinned to a strict allowlist — `signature`,
+  `thinking`, `type` and `data`, `type` — so a request carrying `cache_control`
+  on a reasoning block was rejected outright with `INVALID_INPUT`. The consumer
+  had no legal way out, and this is a PRODUCTION failure rather than a test
+  artefact: the Anthropic API answers a mutated reasoning block with
+
+  > `400 ... thinking or redacted_thinking blocks in the latest assistant`
+  > `message cannot be modified. These blocks must remain as they were in the`
+  > `original response.`
+
+  so `delete block.cache_control` before the call is itself the modification
+  that triggers the 400. `preserveThinkingBlockCacheControl: true` accepts the
+  key and copies it to the body VERBATIM — caller key order intact, no TTL
+  applied, no breakpoint placed. Only a boolean is accepted; anything else is
+  `INVALID_INPUT`.
+
+  The allowlist grows by `cache_control` and by NOTHING else: an unknown key on
+  a reasoning block is still `INVALID_INPUT` with the seam active. The value
+  passes the same `cache_control` validator every other block uses —
+  `{ type: "ephemeral" }` with an optional `ttl` — so a malformed marker still
+  fails closed; the `scope` key that `text` blocks tolerate for legacy reasons
+  is deliberately NOT accepted, the API never returning it on a reasoning block.
+  The marker takes no part in this package's cache-control machinery:
+  `applySystemCacheControl` is untouched and `applyMessageCacheControl` already
+  exempts reasoning blocks from both the strip and the breakpoint pass.
+
+  `evidence.thinkingBlockCacheControlPreserved` is emitted only when the seam
+  was active AND at least one emitted block actually carried a marker — opting
+  in without using it records nothing — mirroring `billingBlockSuppressed`
+  exactly, so evidence stays byte-identical for every request that ignores the
+  seam. `parseBuiltClaudeCodeRequest` CONFIRMS that claim against the body
+  before it checks byte length or digest, so a forgery that is byte-length
+  preserving and evidence-self-consistent is refused by the structural check
+  rather than incidentally by arithmetic. Recorded in `docs/source-trace.md` as
+  governance ledger L17.
+
+### Changed
+
+- **`parseBuiltClaudeCodeRequest` no longer INFERS the canonical prefix from the
+  identity block's position; it READS the length from evidence and VERIFIES it
+  structurally.** With two independent seams an empty prefix is
+  indistinguishable from a caller-only array, so position inference is no longer
+  decidable: the rc.16 discriminator would have hit its unconditional failure
+  path on every request built with both seams active. The parser now takes
+  `evidence.billingBlockSuppressed` and `evidence.identityBlockSuppressed` as
+  the claimed prefix length and confirms every block that claim implies —
+  billing by its fixed `x-anthropic-billing-header: cc_version=` head (the tail
+  is per-request), identity by the byte-exact identity text. This is strictly
+  stronger than what it replaces, which never inspected the billing slot at all:
+  an envelope built with `suppressBillingBlock` whose evidence hid that fact was
+  previously accepted.
+
+  Verification is **asymmetric, deliberately**. A claim that identity was
+  suppressed is refuted by finding the identity text ANYWHERE in the array,
+  which is sound because `buildCanonicalSystem` drops caller blocks equal to it
+  unconditionally and merges runs with `\n`, so the text cannot legitimately
+  survive. There is no mirror check for billing: a caller block may legitimately
+  begin with the billing header text, so its presence proves nothing.
+
+  The match is on TEXT, never on `cache_control` — the L10 seam can legitimately
+  emit the identity block with no marker — and the assertion remains an
+  EQUALITY.
+
+- **`emittedSystemBlockCount` is computed from both seams instead of a
+  constant.** `CANONICAL_SYSTEM_BLOCKS` and `CANONICAL_SYSTEM_BLOCKS_WITHOUT_BILLING`
+  were removed: a constant cannot express the empty prefix the two seams produce
+  together. The build path now subtracts one slot per canonical block that
+  actually survived.
+
 ## [0.1.0-rc.16] - Unreleased
 
 ### Added

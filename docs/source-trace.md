@@ -640,24 +640,30 @@ it worked. This is the same failure mode L14 documents for the removal-shaped be
 - `evidence.billingBlockSuppressed` is emitted **only when the block was actually removed**, never
   as `false`. That is the `droppedExtraHeaderNames` / `suppressedBetaNames` precedent from rc.14 and
   rc.15, and it keeps evidence byte-identical for every request that ignores the seam.
-- `evidence.systemBlockCount` continues to count only the CALLER's emitted blocks, so the canonical
-  prefix subtracted is `CANONICAL_SYSTEM_BLOCKS_WITHOUT_BILLING = 1` when suppression is active and
-  `CANONICAL_SYSTEM_BLOCKS = 2` otherwise.
+- `evidence.systemBlockCount` continues to count only the CALLER's emitted blocks. The canonical
+  prefix subtracted is one slot per canonical block that actually survived — see L16, which removed
+  the constants `CANONICAL_SYSTEM_BLOCKS` and `CANONICAL_SYSTEM_BLOCKS_WITHOUT_BILLING` in favour of
+  symmetric arithmetic over both suppression seams.
 
-**The parser discriminator changed from arithmetic to structural recognition.**
-`parseBuiltClaudeCodeRequest` receives only `{url, method, headers, body, evidence}` — the flag is
-never on the wire, so the parser cannot be told the prefix length; it must **infer** it. It used to
-subtract the constant `CANONICAL_SYSTEM_BLOCKS`, which is now ambiguous: a two-block prefix and a
-one-block prefix are both legitimate. The parser therefore locates the byte-exact `IDENTITY_TEXT`:
-at `system[1]` the prefix is 2, at `system[0]` the prefix is 1, and at neither position the envelope
-was not produced by this package and the parser refuses. The identity text appears **at most once**,
-because `buildCanonicalSystem` drops any caller block equal to it, so the probe is unambiguous.
+**The parser discriminator changed from arithmetic to structural recognition — twice.**
+`parseBuiltClaudeCodeRequest` receives only `{url, method, headers, body, evidence}`, so the INPUT
+flag is never on the wire. rc.16 replaced the constant `CANONICAL_SYSTEM_BLOCKS` — ambiguous once a
+one-block prefix became legitimate — with a POSITION probe over the byte-exact `IDENTITY_TEXT`: at
+`system[1]` the prefix is 2, at `system[0]` the prefix is 1, at neither position the parser refuses.
 
-The match is on **TEXT, never on `cache_control`**. The L10 `cacheControl.suppressIdentityBlock`
-seam can emit the identity block with no cache marker, so a marker-based probe would misread a
-legitimate request as a forgery. The assertion also stays an **EQUALITY**
-(`systemBlockCount === system.length - prefix`), not an inequality: an envelope whose caller-block
-count merely "fits" is still a forgery.
+**That position probe was superseded in rc.17 (L16) and no longer exists.** Two independent seams
+make `[]` a legitimate prefix, and an empty prefix is indistinguishable from a caller-only array by
+inspection alone, so the probe's failure path would have fired on every request built with both
+seams. The prefix length is now READ from `evidence.billingBlockSuppressed` and
+`evidence.identityBlockSuppressed` and then VERIFIED block by block. The rc.16 probe was also
+weaker than it looked: it never inspected the billing slot at all, so an envelope built with
+`suppressBillingBlock` whose evidence hid that fact was accepted.
+
+What survives from rc.16 unchanged: the match is on **TEXT, never on `cache_control`**. The L10
+`cacheControl.suppressIdentityBlock` seam can emit the identity block with no cache marker, so a
+marker-based probe would misread a legitimate request as a forgery. The assertion also stays an
+**EQUALITY** (`systemBlockCount === system.length - prefix`), not an inequality: an envelope whose
+caller-block count merely "fits" is still a forgery.
 
 Byte-length ordering matters when testing this. `bodyByteLength` is checked before the prefix
 discriminator, so the negative test forges a **length-preserving** system array; a shorter forgery
@@ -689,6 +695,140 @@ produced a 403 in production with no diagnosable cause.
 The fix records `emittedSystemBlockCount` — the length of the array actually serialized — and the
 build path subtracts the canonical prefix from that. Locked by the block-merging test committed
 alongside the fix.
+
+### Governance ledger L16 — root `suppressIdentityBlock`, and evidence-driven prefix verification
+
+**Claim.** `ClaudeCodeRequestInput.suppressIdentityBlock` is an extension of THIS package, exactly
+like the L10, L14 and L15 seams. It is **not** observed Claude Code behaviour: the genuine client
+always emits the identity block.
+
+**Why it exists.** The first real consumer's plugin exposes `token_economy.lean_system_non_main`, a
+user switch that removed BOTH canonical blocks by simply not composing them. Migrating that call
+site onto this package turned the switch into a silent no-op for the identity half — the same
+failure mode L14 and L15 document. The approved criterion is explicit: **a user configuration
+switch becoming a silent no-op is unacceptable; the package grows a seam.**
+
+**It is a DIFFERENT field from `cacheControl.suppressIdentityBlock` (L10).** The L10 field keeps the
+identity block and emits it WITHOUT its `cache_control` marker; this one removes the block. The name
+collision was accepted deliberately: symmetry with `suppressBillingBlock` at the root was judged
+worth more than inventing a distinct name. The mitigation is documentation, and it is mandatory —
+the JSDoc of each field states what it does and names the other by its full path
+(`cacheControl.suppressIdentityBlock` vs root `suppressIdentityBlock`).
+
+**Semantics.**
+
+- Absent or `false`, every byte of the request is what it was before the seam existed.
+- Only a boolean is accepted; `validateSuppressIdentityBlock` refuses to coerce, as L15 does.
+- With `suppressBillingBlock`, four canonical prefixes are legitimate: `[billing, identity]`,
+  `[identity]`, `[billing]` and `[]`. With both active and no caller blocks the emitted body carries
+  `"system":[]` — the key is present and the array empty, which round-trips through the parser.
+- `evidence.identityBlockSuppressed` is emitted **only when the block was actually removed**, never
+  as `false`, mirroring `billingBlockSuppressed`. It must also be added to `EVIDENCE_KEYS`:
+  `parseEvidence` asserts exact keys, so an unregistered key makes every such envelope unparseable.
+- The caller-block drop stays **unconditional**. A caller block byte-equal to the identity text is
+  dropped even when the canonical one was suppressed — matching the genuine client, and a
+  precondition for the absence check below.
+
+**The parser now READS the prefix length from evidence and VERIFIES it, rather than inferring it.**
+No probe over the array alone can separate the four states, because an empty canonical prefix looks
+exactly like a caller-only array. `canonicalSystemPrefixLength` therefore takes both evidence flags
+and confirms every canonical block those flags imply:
+
+- billing by its fixed, self-describing head `x-anthropic-billing-header: cc_version=` — the tail
+  carries a per-request fingerprint, so only the head can anchor a structural check;
+- identity by the byte-exact `IDENTITY_TEXT`.
+
+This is **strictly stronger** than the rc.16 position probe, which asserted only that identity sat
+at one of two indices and never inspected the billing slot.
+
+**Verification is asymmetric, and the asymmetry is the point.** A claim of identity suppression is
+refuted by finding `IDENTITY_TEXT` **anywhere** in the emitted array: `buildCanonicalSystem` drops
+caller blocks equal to it unconditionally, and merges runs with `\n`, so no legitimate suppressed
+body can contain that exact text. Without this the forgery is undetectable — evidence claiming
+suppression over a body that still carries the block passes both the positional check (skipped) and
+the arithmetic (self-consistent). There is deliberately **no mirror check for billing**: a caller
+block may legitimately begin with the billing header text, so its presence proves nothing and a
+symmetric rule would reject honest requests.
+
+**Reading evidence is not trusting evidence.** The flags select which blocks must be confirmed; they
+never substitute for confirmation. Every negative case in
+`test/validation/suppress-identity-block.test.ts` forges evidence that is **self-consistent** —
+`systemBlockCount` adjusted to the length the forged prefix implies — so only the structural check
+can reject it. Body forgeries stay **byte-length preserving**, because `bodyByteLength` is checked
+before the prefix verification and a shorter forgery would be rejected earlier, proving nothing.
+
+**Additivity is the contract**, enforced as in L10, L14 and L15, and locked by
+`test/validation/suppress-identity-block.test.ts`.
+
+### Governance ledger L17 — `preserveThinkingBlockCacheControl`, a seam forced by a real API 400
+
+**Claim.** `ClaudeCodeRequestInput.preserveThinkingBlockCacheControl` is an extension of THIS
+package, exactly like the L10, L14, L15 and L16 seams. It is **not** observed Claude Code behaviour,
+and **no wire capture was taken for it**: the strict thinking-block allowlist remains what the
+binary shows, and this seam is a documented, opt-in departure from it.
+
+**Why it exists.** The package pinned `thinking` to `{signature, thinking, type}` and
+`redacted_thinking` to `{data, type}` and applied `assertExactKeys`, so any request carrying
+`cache_control` on a reasoning block died with `INVALID_INPUT`. Unlike every earlier seam, the
+consumer could not work around it, because the workaround is itself an error. The Anthropic API
+answers a mutated reasoning block with:
+
+> `400 ... thinking or redacted_thinking blocks in the latest assistant message cannot be modified.`
+> `These blocks must remain as they were in the original response.`
+
+`delete block.cache_control` IS a modification and triggers that 400. So the consumer's choice was a
+400 from the API or an `INVALID_INPUT` from this package — a production failure either way. The
+approved criterion applies unchanged: **when the consumer loses a capability to this package's
+validation, the resolution is a seam in the package, never a degraded consumer.**
+
+**Semantics.**
+
+- Absent or `false`, every byte of the request is what it was before the seam existed, and
+  `cache_control` on a reasoning block is still `INVALID_INPUT`.
+- Only a boolean is accepted; `validatePreserveThinkingBlockCacheControl` refuses to coerce, as L15
+  and L16 do.
+- The allowlist grows by `cache_control` and by **nothing else**. `assertExactKeys` is not relaxed;
+  it is handed a second, one-key-wider set. An unknown key on a reasoning block is still
+  `INVALID_INPUT` with the seam active.
+- The value is validated by the **existing** `cache_control` validator, not a parallel one:
+  `{ type: "ephemeral" }` with an optional `ttl` of `5m` or `1h`. The `scope` key that `text` blocks
+  tolerate for legacy reasons is **not** accepted here — the API never returns it on a reasoning
+  block, and a seam that exists to round-trip the API's own bytes must not accept bytes the API
+  never emits.
+- Copying is **verbatim**: the caller's key order survives, because the validator rebuilds the
+  record over `Object.keys` rather than a canonical template. No TTL is applied to the marker and no
+  breakpoint is moved onto or off a reasoning block. `applySystemCacheControl` is untouched, and
+  `applyMessageCacheControl` already exempted reasoning blocks from both its strip and its
+  breakpoint pass, so passthrough required no change there.
+- `cache_control: null` is preserved as `null`, exactly as on every other block type that accepts
+  the key.
+- The count-tokens path takes no seam: `canonicalCountTokensLists` calls the message validator with
+  the strict allowlist.
+
+**Evidence records what the seam DID, not what it was allowed to do.**
+`evidence.thinkingBlockCacheControlPreserved` is emitted **only when the seam was active AND at
+least one emitted block actually carried a marker**. A request that opts in and never uses the key
+produces evidence byte-identical to one that never opted in — the same discipline as
+`billingBlockSuppressed`. It must also be added to `EVIDENCE_KEYS`: `parseEvidence` asserts exact
+keys, so an unregistered key makes every such envelope unparseable, and it must be **rehydrated**
+there too, or a legal envelope silently loses the key and fails its own round-trip equality.
+
+**Reading evidence is not trusting evidence.** `parseBuiltClaudeCodeRequest` confirms the claim
+structurally: it scans the emitted `messages` for a `thinking` or `redacted_thinking` block that
+actually carries a `cache_control` key, and refuses the envelope when the claim is unbacked.
+Presence of the KEY is the test, not truthiness, so a preserved `null` marker still backs the claim.
+The check runs **before** the byte-length and digest comparisons, deliberately: the forgery in
+`test/validation/preserve-thinking-cache-control.test.ts` leaves the body completely untouched, so
+`bodyByteLength`, `bodySha256`, `messageCount` and `systemBlockCount` all still agree, and only the
+structural confirmation can reject it. Placing the check after the arithmetic would have let the
+arithmetic take credit for a rejection it did not perform.
+
+**Corpus discipline.** Two defects survived fourteen release candidates because the test corpus was
+entirely single-line. The reasoning text exercised by this seam therefore embeds `\n`, `\t` and
+CRLF, and is asserted byte-exact after a full build/parse round trip.
+
+**Additivity is the contract**, enforced as in L10, L14, L15 and L16, and locked by
+`test/validation/preserve-thinking-cache-control.test.ts`.
 
 ## Header order is logical only
 
