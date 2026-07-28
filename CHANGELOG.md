@@ -2,7 +2,60 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.13] - Unreleased
+## [0.1.0-rc.14] - Unreleased
+
+### Fixed
+
+`extraHeaders` no longer forwards hop-by-hop or entity headers. `isForbiddenHeader`
+now also rejects `content-length`, `host`, `connection`, `transfer-encoding`,
+`te`, `upgrade` and `keep-alive` with `FORBIDDEN_HEADER`.
+
+This is a defect fix, valid independently of any consumer. `content-length` used
+to pass straight through. Because this package RECONSTRUCTS the request body
+canonically, a `content-length` copied from an inbound request describes a
+different byte string: the wire request is corrupted SILENTLY, with no local
+exception and no evidence anomaly, and the peer truncates or stalls. The other
+six are hop-by-hop headers under RFC 9110 section 7.6.1 (or, for `host`, derived
+from the pinned endpoint) and belong to the transport, not to the caller.
+
+This is the one non-additive part of the release: a caller that used to pass one
+of the seven names now receives a loud, local `FORBIDDEN_HEADER` instead of a
+corrupt request. Recorded in `docs/source-trace.md` under governance ledger L12,
+Part A.
+
+### Added
+
+A fifth additive consumer seam. Like the four before it, it is an extension of
+THIS package, not observed Claude Code behaviour, and is recorded as such in
+`docs/source-trace.md` under governance ledger L12, Part B. It is a no-op when
+omitted: `test/validation/seam-additivity.test.ts` builds the same request with
+and without the field and compares `body` byte for byte, plus `headers` and
+`evidence` in full.
+
+- `ClaudeCodeRequestInput.extraHeaderPolicy` decides how a collision between
+  `extraHeaders` and a header this package owns is resolved. `"strict"` is the
+  default and reproduces the previous behaviour byte for byte: `DUPLICATE_HEADER`
+  for a canonical name, `FORBIDDEN_HEADER` for a denylisted one.
+  `"dropConflicting"` discards the offending pair instead of throwing and records
+  its lowercased name in the new optional `evidence.droppedExtraHeaderNames`, in
+  caller order, so a consumer bridging a heterogeneous host header map is not
+  defeated by a single inbound `anthropic-beta` and can still audit the loss.
+
+  Neither policy relaxes header syntax: `assertHeaderText` runs first, before any
+  drop decision, so a control character in a name or a value raises
+  `HEADER_INJECTION` under both. A caller that duplicates one of its OWN extra
+  headers also keeps receiving `DUPLICATE_HEADER` under both, because that is a
+  caller bug rather than a conflict with a header this package owns.
+
+  `evidence.droppedExtraHeaderNames` is emitted ONLY under `"dropConflicting"`.
+  Under `"strict"`, and for every request built before the seam existed, the key
+  is ABSENT rather than present-and-empty, so existing evidence stays
+  byte-identical. `parseBuiltClaudeCodeRequest` preserves the key when present
+  and never synthesises it.
+
+- `ClaudeCodeExtraHeaderPolicy` is exported from the package root.
+
+## [0.1.0-rc.13] - 2026-07-28
 
 ### Added
 

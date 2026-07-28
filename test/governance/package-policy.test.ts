@@ -56,7 +56,7 @@ function policyErrors(value: PackageManifest): readonly string[] {
   const errors: string[] = [];
   if (value.name !== "@tormentalabs/claude-code-wire-compat")
     errors.push("package name");
-  if (value.version !== "0.1.0-rc.13") errors.push("release candidate version");
+  if (value.version !== "0.1.0-rc.14") errors.push("release candidate version");
   if (value.license !== "GPL-3.0-or-later") errors.push("GPL license");
   if (value.type !== "module") errors.push("ESM type");
   if (value.private === true) errors.push("public package");
