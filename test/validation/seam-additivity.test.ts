@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 /*
- * Non-breaking criterion for the four package-extension seams
+ * Non-breaking criterion for the five package-extension seams
  * (`additionalBetas`, `betaOverrides`, `cacheControl.suppressIdentityBlock`,
- * `metadataOverrides`).
+ * `metadataOverrides`, `extraHeaderPolicy`).
  *
  * Each case builds the SAME request twice: once without the seam field and once
  * with the seam field in its no-op form. The two results must be identical in
@@ -98,12 +98,32 @@ const CASES: readonly (readonly [
     { ...BASE, metadataOverrides: { userIdFields: {} } },
   ],
   [
-    "no cacheControl vs all four seams in no-op form",
+    "extraHeaderPolicy omitted vs explicit strict",
     BASE,
-    { ...BASE, additionalBetas: [], betaOverrides: {}, metadataOverrides: {} },
+    { ...BASE, extraHeaderPolicy: "strict" },
   ],
   [
-    "cacheControl present vs all four seams in no-op form",
+    "extraHeaderPolicy omitted vs explicit strict with extra headers",
+    { ...BASE, extraHeaders: [["x-meu-header", "kept"]] },
+    {
+      ...BASE,
+      extraHeaders: [["x-meu-header", "kept"]],
+      extraHeaderPolicy: "strict",
+    },
+  ],
+  [
+    "no cacheControl vs all five seams in no-op form",
+    BASE,
+    {
+      ...BASE,
+      additionalBetas: [],
+      betaOverrides: {},
+      metadataOverrides: {},
+      extraHeaderPolicy: "strict",
+    },
+  ],
+  [
+    "cacheControl present vs all five seams in no-op form",
     { ...BASE, cacheControl: CACHE_BASE },
     {
       ...BASE,
@@ -111,6 +131,7 @@ const CASES: readonly (readonly [
       additionalBetas: [],
       betaOverrides: {},
       metadataOverrides: {},
+      extraHeaderPolicy: "strict",
     },
   ],
 ];
@@ -133,6 +154,9 @@ describe("package-extension seam additivity", () => {
         expect(
           Object.hasOwn(built.evidence.capabilityDecisions, "use1MContext"),
         ).toBe(false);
+        expect(Object.hasOwn(built.evidence, "droppedExtraHeaderNames")).toBe(
+          false,
+        );
       }
     }
   });
