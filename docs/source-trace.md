@@ -280,7 +280,7 @@ and reproduced here. This section is the opposite, and the distinction matters, 
 mining this file for fidelity evidence must never mistake a consumer convenience for observed
 Claude Code behaviour.
 
-The three fields below are **consumer seams invented by this package**. No byte offset, upstream
+The four fields below are **consumer seams invented by this package**. No byte offset, upstream
 file or live capture supports them, and none of them has an upstream counterpart to drift against.
 They exist so a downstream consumer can express host state this package deliberately refuses to
 observe, without forking the composer.
@@ -290,6 +290,7 @@ observe, without forking the composer.
 | `additionalBetas`                    | Consumer seam | **None.** Upstream derives the beta set from profile and model only.  | No entries appended; emitted request unchanged. |
 | `betaOverrides.use1MContext`         | Consumer seam | Partial: replaces the `[1m]` model-marker gate, not the profile gate. | The `[1m]` marker decides, as before.           |
 | `cacheControl.suppressIdentityBlock` | Consumer seam | **None.** Upstream always marks the identity block.                   | Marker emitted exactly as before.               |
+| `metadataOverrides`                  | Consumer seam | **None.** Upstream always derives `user_id` from the identity triple. | Derived `user_id` emitted exactly as before.    |
 
 ### Governance ledger L10 — consumer seams are not protocol facts
 
@@ -333,6 +334,59 @@ omitted path is a breaking change, not a seam.
 site to drift from. A future wire-parity review must treat them as this package's own surface: they
 may be removed or renamed on their own schedule, and a live capture that lacks them is not evidence
 of a defect.
+
+### Governance ledger L11 — `metadataOverrides` is a package extension, not a relaxed guard
+
+**Claim.** `ClaudeCodeRequestInput.metadataOverrides` is an extension of THIS package. It is **not**
+observed Claude Code behaviour and must not be cited as wire-fidelity evidence. The genuine client
+emits `metadata.user_id` as the JSON encoding of `{device_id, account_uuid, session_id}` and nothing
+else; every value this seam can produce that differs from that encoding is this package's own
+surface.
+
+**Why it exists.** The correlation guard in `buildCorrelatedMetadata` rejects a supplied
+`metadata.user_id` that diverges from the derived value with `INVALID_INPUT`. That guard is correct
+and stays on by default: a silently decorrelated `user_id` is exactly the fingerprint break this
+package exists to prevent. But a consumer host can legitimately carry identity state the
+runtime-neutral core cannot observe, and without a seam the only options were forking metadata
+composition or dropping the feature.
+
+**Two mechanisms, one field, two members.** The consumer surveyed for this seam
+(`opencode-anthropic-fix`) exposes two environment-driven behaviours that are structurally
+different, so the seam carries two members rather than one:
+
+- `metadataOverrides.userId` replaces the emitted `user_id` VERBATIM, for a host that carries an
+  opaque identifier of its own. The package makes no correlation claim about the result.
+- `metadataOverrides.userIdFields` keeps the derived object and adds members to it. The caller's
+  members are written FIRST and the correlation triple LAST, so `device_id`, `account_uuid` and
+  `session_id` always win. Supplying one of those three keys fails with `INVALID_INPUT` instead of
+  being silently overwritten, because a discarded value that looks honoured is worse than a
+  rejection.
+
+The two members are **mutually exclusive**. They express opposite intents — abandon the derived
+value versus extend it — so supplying both fails rather than resolving the ambiguity silently.
+
+**Opt-in, never a default relaxation.** With the field omitted, the divergence guard behaves exactly
+as before: `test/validation/metadata-overrides.test.ts` asserts the unchanged `INVALID_INPUT`
+rejection on the no-seam path. When the seam IS supplied, the guard is not removed — it is
+re-pointed: a supplied `metadata.user_id` must equal the seam-resolved value, and `device_id`,
+`account_uuid` and `session_id` supplied at the `metadata` level remain pinned to the runtime
+identity.
+
+**Additivity.** The seam is a no-op when omitted, and that is enforced, not asserted:
+`test/validation/seam-additivity.test.ts` covers `metadataOverrides` omitted versus `{}` and versus
+`{userIdFields: {}}`, comparing `body` byte for byte plus `headers` and `evidence` in full. Evidence
+gains no key: unlike `betaOverrides.use1MContext`, this seam records no decision in
+`RedactedRequestEvidence`, so evidence for every request is unchanged.
+
+**Known consequence.** A request built with `metadataOverrides.userId` is REJECTED by
+`parseBuiltClaudeCodeRequest`. The parser proves that `metadata.user_id` is JSON carrying the same
+`session_id` as the `x-claude-code-session-id` header; an opaque replacement makes that unprovable.
+Relaxing the parser would weaken the invariant for every caller, so the parser stays strict and the
+consequence is documented here and locked by a test. `metadataOverrides.userIdFields` round-trips
+normally, because the correlation triple survives.
+
+**Not a drift surface.** Like L10, this field has no upstream site to drift from. A live capture
+that lacks it is not evidence of a defect.
 
 **Still out of scope.** These seams do not open the door to multi-provider support. The package
 models the wire of the official Claude Code client talking to `api.anthropic.com`; `provider`
