@@ -11,10 +11,17 @@ import { classifySurrogateAt } from "./unicode.js";
 /**
  * The pinned identity text, byte-exact.
  *
- * It is exported because it is the only reliable discriminator for the length
- * of the canonical system prefix: a caller block equal to it is dropped, so it
- * appears at most once in a built body. The parser, which never sees
- * `suppressBillingBlock`, infers the prefix length from its position.
+ * It is exported because it is the byte-exact probe the parser uses to CONFIRM
+ * the canonical system prefix. A caller block equal to it is dropped by
+ * `buildCanonicalSystem` — unconditionally, even when `suppressIdentityBlock`
+ * removed the canonical one — so it appears at most once in a built body.
+ *
+ * The parser no longer INFERS the prefix length from this text's position: the
+ * root seams `suppressBillingBlock` and `suppressIdentityBlock` are recorded in
+ * `evidence.billingBlockSuppressed` / `evidence.identityBlockSuppressed`, which
+ * state which canonical blocks were emitted. This text is what the parser then
+ * checks the identity slot against, so evidence is verified structurally rather
+ * than trusted.
  */
 export const IDENTITY_TEXT =
   "You are Claude Code, Anthropic's official CLI for Claude.";
@@ -152,6 +159,7 @@ export function buildCanonicalSystem(
   billingBlock: TextBlock,
   identity: ClaudeCodeRuntimeIdentity,
   suppressBillingBlock = false,
+  suppressIdentityBlock = false,
 ): readonly TextBlock[] {
   validateStructure(input);
   if (input !== undefined && !Array.isArray(input)) fail("INVALID_INPUT");
@@ -166,17 +174,21 @@ export function buildCanonicalSystem(
   // pinned identity system text itself intentionally contains no identifiers.
   void identity;
 
-  // Package extension: `suppressBillingBlock` is the only way to omit the
-  // billing block. Default (`false`) keeps the two-block canonical prefix the
-  // genuine client always emits.
+  // Package extension: `suppressBillingBlock` and `suppressIdentityBlock` are
+  // the only ways to omit a canonical block. Both default to `false`, which
+  // keeps the two-block canonical prefix the genuine client always emits. With
+  // both active the canonical prefix is empty and the emitted `system` array
+  // holds caller blocks only.
   const blocks: TextBlock[] = suppressBillingBlock ? [] : [canonicalBilling];
-  blocks.push(
-    Object.freeze({
-      type: "text",
-      text: IDENTITY_TEXT,
-      cache_control: Object.freeze({ type: "ephemeral", ttl: "1h" }),
-    }),
-  );
+  if (!suppressIdentityBlock) {
+    blocks.push(
+      Object.freeze({
+        type: "text",
+        text: IDENTITY_TEXT,
+        cache_control: Object.freeze({ type: "ephemeral", ttl: "1h" }),
+      }),
+    );
+  }
 
   if (input !== undefined) {
     let run: TextBlock | undefined;
@@ -188,6 +200,11 @@ export function buildCanonicalSystem(
 
       // Upstream recognizes only the byte-for-byte identity constant. Similar
       // caller text remains ordinary prompt content.
+      //
+      // The drop stays UNCONDITIONAL under `suppressIdentityBlock`: the genuine
+      // client drops it too, and a caller block equal to the identity text
+      // landing at the front of a suppressed prefix would defeat the parser's
+      // structural check of the canonical prefix.
       if (block.text === IDENTITY_TEXT) continue;
       if (run === undefined) {
         run = block;

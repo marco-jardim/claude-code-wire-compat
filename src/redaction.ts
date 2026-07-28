@@ -49,6 +49,17 @@ export interface BuildRedactedEvidenceInput {
    * for every request that ignores the seam keeps its original shape.
    */
   readonly billingBlockSuppressed?: true;
+  /**
+   * Set only when the root `suppressIdentityBlock` removed the identity block,
+   * so evidence for every request that ignores the seam keeps its shape.
+   */
+  readonly identityBlockSuppressed?: true;
+  /**
+   * Set only when `preserveThinkingBlockCacheControl` was active AND at least
+   * one emitted reasoning block actually carried `cache_control`, so evidence
+   * for every request that ignores the seam keeps its shape.
+   */
+  readonly thinkingBlockCacheControlPreserved?: true;
 }
 
 const MAX_INPUT_DEPTH = 100;
@@ -493,6 +504,17 @@ export async function buildRedactedEvidence(
     // suppressed, so evidence for every other request is unchanged.
     ...(input.billingBlockSuppressed === true
       ? { billingBlockSuppressed: true }
+      : {}),
+    // Package extension: emitted only when the identity block was actually
+    // suppressed, so evidence for every other request is unchanged.
+    ...(input.identityBlockSuppressed === true
+      ? { identityBlockSuppressed: true }
+      : {}),
+    // Package extension: emitted only when the seam was active AND a reasoning
+    // block actually carried the marker, so evidence for every other request is
+    // unchanged.
+    ...(input.thinkingBlockCacheControlPreserved === true
+      ? { thinkingBlockCacheControlPreserved: true }
       : {}),
   };
   return Object.freeze(evidence);

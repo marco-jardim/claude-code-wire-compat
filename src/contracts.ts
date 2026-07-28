@@ -182,11 +182,20 @@ export interface ThinkingBlock {
   readonly signature: string;
   readonly thinking: string;
   readonly type: "thinking";
+  /**
+   * Accepted ONLY when `ClaudeCodeRequestInput.preserveThinkingBlockCacheControl`
+   * is `true`; otherwise the key is rejected with `INVALID_INPUT`. When
+   * accepted it is copied to the body verbatim. See that field's JSDoc for the
+   * 400 this exists to avoid.
+   */
+  readonly cache_control?: CacheControlEphemeral | null;
 }
 
 export interface RedactedThinkingBlock {
   readonly data: string;
   readonly type: "redacted_thinking";
+  /** Same seam-gated key as `ThinkingBlock.cache_control`. */
+  readonly cache_control?: CacheControlEphemeral | null;
 }
 
 export interface SearchResultBlock {
@@ -705,7 +714,13 @@ export interface ClaudeCodeCacheControlInput {
   readonly messageBreakpoint?: boolean | null;
   /**
    * Emits the canonical identity system block (index 1) WITHOUT a
-   * `cache_control` marker.
+   * `cache_control` marker. The block itself is still emitted, text intact.
+   *
+   * NOT the same field as the root `suppressIdentityBlock` of
+   * `ClaudeCodeRequestInput`, which removes the identity BLOCK from the
+   * emitted `system` array. This one only drops the block's marker. When the
+   * root seam removed the block there is nothing left to mark, so this field
+   * has no effect.
    *
    * PACKAGE EXTENSION, not observed Claude Code behaviour: the genuine client
    * always marks that block. Defaults to `false`, which reproduces the
@@ -902,6 +917,66 @@ export interface ClaudeCodeRequestInput {
    */
   readonly suppressBillingBlock?: boolean;
   /**
+   * Omits the canonical identity block — the whole block, text included — from
+   * the emitted request.
+   *
+   * NOT the same field as `cacheControl.suppressIdentityBlock`, which KEEPS the
+   * identity block and only emits it WITHOUT its `cache_control` marker. This
+   * root field removes the block entirely; the two are independent and may be
+   * combined, in which case this one wins because there is no block left to
+   * mark. With `suppressBillingBlock` also set, the canonical prefix is empty
+   * and the emitted `system` array carries caller blocks only.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour: the genuine client
+   * always emits that block. It exists so a consumer that exposes a lean-system
+   * switch to its users can honour it, instead of the switch being a silent
+   * no-op.
+   *
+   * Defaults to `false`. Omitting the field, or passing `false`, leaves the
+   * emitted request byte-identical. Any non-boolean value fails with
+   * `INVALID_INPUT`.
+   */
+  readonly suppressIdentityBlock?: boolean;
+  /**
+   * Accepts `cache_control` on `thinking` and `redacted_thinking` blocks and
+   * copies it to the body VERBATIM.
+   *
+   * WHY THIS EXISTS. The Anthropic API rejects a request whose latest assistant
+   * message carries a MUTATED reasoning block:
+   *
+   * > `400 ... thinking or redacted_thinking blocks in the latest assistant
+   * > message cannot be modified. These blocks must remain as they were in the
+   * > original response.`
+   *
+   * A consumer that receives such a block with `cache_control` attached cannot
+   * strip the key before handing the message to this package — `delete
+   * block.cache_control` IS a modification and triggers that very 400. Without
+   * this seam the strict thinking-block allowlist rejected the whole request
+   * with `INVALID_INPUT`, leaving the consumer no legal move. That is a
+   * production failure, not a test artefact.
+   *
+   * SCOPE. The allowlist grows by `cache_control` and by nothing else: an
+   * unknown key on a thinking block is still `INVALID_INPUT` with the seam
+   * active. The value is validated by the same `cache_control` validator every
+   * other block uses — `{ type: "ephemeral" }` with an optional `ttl` — so a
+   * malformed marker still fails closed. The `scope` key that `text` blocks
+   * tolerate for legacy reasons is NOT accepted here; the API never returns it
+   * on a reasoning block.
+   *
+   * PASSTHROUGH, not participation. The preserved marker takes no part in this
+   * package's cache-control machinery: no TTL is applied to it, no message or
+   * system breakpoint is moved onto or off a thinking block, and
+   * `cacheControl.*` is unaffected.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour. Defaults to `false`.
+   * Omitting the field, or passing `false`, leaves the emitted request
+   * byte-identical and keeps `cache_control` on a reasoning block an
+   * `INVALID_INPUT`. The strict default is deliberate: accepting the key
+   * unconditionally would silently widen a wire contract this package exists to
+   * reproduce exactly. Any non-boolean value fails with `INVALID_INPUT`.
+   */
+  readonly preserveThinkingBlockCacheControl?: boolean;
+  /**
    * Overrides beta-header gates that the genuine client resolves from host
    * state this package cannot observe.
    *
@@ -1054,6 +1129,33 @@ export interface RedactedRequestEvidence {
    * byte-identical.
    */
   readonly billingBlockSuppressed?: boolean;
+  /**
+   * Records that the root `suppressIdentityBlock` removed the canonical
+   * identity block. Together with `billingBlockSuppressed` it states the length
+   * of the canonical system prefix — two, one or zero blocks — which the parser
+   * then verifies block by block.
+   *
+   * Refers to the ROOT seam, not `cacheControl.suppressIdentityBlock`: the
+   * latter only drops the identity block's `cache_control` marker and is never
+   * recorded here, because the block itself still ships.
+   *
+   * Emitted ONLY when the seam was active. When it is omitted or `false`, the
+   * key is ABSENT rather than present and `false`, so existing evidence stays
+   * byte-identical.
+   */
+  readonly identityBlockSuppressed?: boolean;
+  /**
+   * Records that `preserveThinkingBlockCacheControl` was active AND that at
+   * least one emitted `thinking` or `redacted_thinking` block actually carried
+   * a `cache_control` key.
+   *
+   * Emitted ONLY when both hold. A request that opts into the seam without
+   * using it leaves the key ABSENT rather than present and `false`, on the same
+   * discipline as `billingBlockSuppressed`: evidence records what the seam DID,
+   * not what it was allowed to do. `parseBuiltClaudeCodeRequest` verifies the
+   * claim structurally against the body rather than trusting it.
+   */
+  readonly thinkingBlockCacheControlPreserved?: boolean;
 }
 
 /**
