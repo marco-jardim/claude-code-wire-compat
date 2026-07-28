@@ -2,7 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.12] - Unreleased
+## [0.1.0-rc.13] - Unreleased
+
+### Added
+
+A fourth additive consumer seam. Like the three before it, it is an extension of
+THIS package, not observed Claude Code behaviour, and is recorded as such in
+`docs/source-trace.md` under governance ledger L11. It is a no-op when omitted:
+`test/validation/seam-additivity.test.ts` builds the same request with and
+without the field and compares `body` byte for byte, plus `headers` and
+`evidence` in full.
+
+- `ClaudeCodeRequestInput.metadataOverrides` substitutes the `metadata.user_id`
+  value the genuine client derives from host state. It carries two MUTUALLY
+  EXCLUSIVE members, because the two consumer behaviours it covers are
+  structurally different: `userId` replaces the emitted `user_id` verbatim, for
+  a host carrying an opaque identifier of its own, while `userIdFields` keeps
+  the derived JSON object and adds members to it. Caller members are written
+  first and the correlation triple (`device_id`, `account_uuid`, `session_id`)
+  last, so correlation always wins; supplying one of those three keys inside
+  `userIdFields` fails with `INVALID_INPUT` instead of being silently
+  overwritten. Supplying both members fails with `INVALID_INPUT`.
+
+  The seam is opt-in and relaxes nothing by default. With the field omitted, a
+  supplied `metadata.user_id` that diverges from the derived value keeps failing
+  with `INVALID_INPUT`. With the field supplied, the guard is re-pointed rather
+  than removed: a supplied `metadata.user_id` must equal the seam-resolved
+  value, and `device_id`, `account_uuid` and `session_id` supplied at the
+  `metadata` level stay pinned to the runtime identity. No evidence key is
+  added, so `RedactedRequestEvidence` is unchanged for every request.
+
+  Known consequence: a request built with `metadataOverrides.userId` is rejected
+  by `parseBuiltClaudeCodeRequest`, which proves that `metadata.user_id` carries
+  the same `session_id` as the `x-claude-code-session-id` header. An opaque
+  replacement makes that unprovable, and the parser stays strict rather than
+  weakening the invariant for every caller. `metadataOverrides.userIdFields`
+  round-trips normally.
+
+## [0.1.0-rc.12] - 2026-07-27
 
 ### Added
 
