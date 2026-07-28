@@ -275,6 +275,7 @@ const CACHE_CONTROL_INPUT_KEYS = new Set([
   "systemBreakpoint",
   "toolBreakpoint",
   "messageBreakpoint",
+  "suppressIdentityBlock",
 ]);
 const JSON_OUTPUT_FORMAT_KEYS = new Set(["schema", "type"]);
 const TOOL_CHOICE_PARALLEL_KEYS = new Set([
@@ -297,6 +298,9 @@ const INPUT_KEYS = [
   "cacheControl",
   "runtime",
   "capabilities",
+  // Package extension: consumed by beta composition and evidence only. The
+  // canonical body carries no trace of it.
+  "betaOverrides",
   "thinking",
   "effort",
   "metadata",
@@ -583,9 +587,15 @@ function applySystemCacheControl(
   value: readonly TextBlock[],
   input: ClaudeCodeCacheControlInput,
 ): readonly TextBlock[] {
-  const result = value.map((block, index) =>
-    index === 1 ? withBreakpoint(block, breakpoint(input)) : block,
-  );
+  // Package extension: `suppressIdentityBlock` is the only way to emit the
+  // identity block without a marker. Default (`undefined`/`false`) keeps the
+  // unconditional overwrite the genuine client performs.
+  const result = value.map((block, index) => {
+    if (index !== 1) return block;
+    return input.suppressIdentityBlock === true
+      ? withoutCacheControl(block)
+      : withBreakpoint(block, breakpoint(input));
+  });
   if (
     input.enabled === true &&
     input.systemBreakpoint === true &&

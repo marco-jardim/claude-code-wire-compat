@@ -5,6 +5,7 @@ import type {
   ClaudeCodeCapabilities,
   ClaudeCodeProtocolProfile,
 } from "./contracts.js";
+import { ClaudeCodeWireError } from "./contracts.js";
 import {
   supportsMidConversationSystem,
   supportsStructuredOutputs,
@@ -29,6 +30,47 @@ export interface ComposeBetasInput {
   readonly thinkingDisplayActive: boolean;
   readonly cacheTtl?: "5m" | "1h" | null;
   readonly speed?: "standard" | "fast" | null;
+  /**
+   * Package extension, not observed upstream behaviour. Consumer-supplied beta
+   * identifiers appended AFTER the derived canonical set. See
+   * `docs/source-trace.md`, governance ledger L10.
+   */
+  readonly additionalBetas?: readonly string[];
+  /**
+   * Package extension, not observed upstream behaviour. Forces (`true`) or
+   * suppresses (`false`) the 1M-context beta for this request, overriding the
+   * `[1m]` model marker. See `docs/source-trace.md`, governance ledger L10.
+   */
+  readonly use1MContextOverride?: boolean;
+}
+
+/**
+ * Bounds the caller-supplied beta list. The header is a comma-joined single
+ * field, so a comma, control character, or whitespace in an entry would let a
+ * caller synthesize extra beta values (or, with CR/LF, an entirely separate
+ * header). The allowlist below is deliberately narrower than the observed
+ * upstream identifiers require, because every genuine beta name in
+ * `BETA_REGISTRY` matches it.
+ */
+const ADDITIONAL_BETA_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
+const MAX_ADDITIONAL_BETA_LENGTH = 128;
+const MAX_ADDITIONAL_BETAS = 32;
+
+function validateAdditionalBetas(value: unknown): readonly string[] {
+  if (!Array.isArray(value) || value.length > MAX_ADDITIONAL_BETAS) {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  return value.map((entry: unknown): string => {
+    if (
+      typeof entry !== "string" ||
+      entry.length === 0 ||
+      entry.length > MAX_ADDITIONAL_BETA_LENGTH ||
+      !ADDITIONAL_BETA_PATTERN.test(entry)
+    ) {
+      throw new ClaudeCodeWireError("INVALID_INPUT");
+    }
+    return entry;
+  });
 }
 
 export function composeBetas(
@@ -42,7 +84,12 @@ export function composeBetas(
   if (!input.normalizedId.includes("haiku"))
     out.push(BETA_REGISTRY.CLAUDE_CODE.header);
   if (policy.oauthAuthenticated) out.push(BETA_REGISTRY.OAUTH_AUTH.header);
-  if (policy.oneMillionContextEnabled && /\[1m\]/iu.test(input.rawModel)) {
+  // Package extension: `use1MContextOverride` replaces the model-marker gate
+  // for this request. The profile gate still applies, so an override cannot
+  // enable a beta the pinned profile declares unavailable.
+  const oneMillionRequested =
+    input.use1MContextOverride ?? /\[1m\]/iu.test(input.rawModel);
+  if (policy.oneMillionContextEnabled && oneMillionRequested) {
     out.push(BETA_REGISTRY.LONG_CONTEXT.header);
   }
   if (
@@ -107,5 +154,15 @@ export function composeBetas(
   }
 
   // No advisor-tool beta: upstream has no observed unconditional push site.
+
+  // Package extension. Canonical, upstream-derived identifiers always precede
+  // caller-supplied ones, and a caller entry that duplicates an already-emitted
+  // identifier is dropped rather than reordering the canonical prefix.
+  if (input.additionalBetas !== undefined) {
+    for (const beta of validateAdditionalBetas(input.additionalBetas)) {
+      if (!out.includes(beta)) out.push(beta);
+    }
+  }
+
   return Object.freeze(out);
 }

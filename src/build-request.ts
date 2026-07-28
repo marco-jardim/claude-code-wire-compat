@@ -4,7 +4,9 @@ import { composeBetas } from "./betas.js";
 import type {
   BuiltClaudeCodeCountTokensRequest,
   BuiltClaudeCodeRequest,
+  ClaudeCodeBetaOverrides,
   ClaudeCodeCapabilities,
+  ClaudeCodeCapabilityDecisions,
   ClaudeCodeProfileOverride,
   ClaudeCodeProtocolProfile,
   ClaudeCodeCountTokensInput,
@@ -75,9 +77,12 @@ const INPUT_KEYS = new Set([
   "claudeRemoteSessionId",
   "clientApp",
   "anthropicAdditionalProtection",
+  "additionalBetas",
+  "betaOverrides",
   "extraHeaders",
   "crypto",
 ]);
+const BETA_OVERRIDE_KEYS = new Set(["use1MContext"]);
 const COUNT_TOKENS_INPUT_KEYS = new Set([
   "accessToken",
   "model",
@@ -122,6 +127,11 @@ const CAPABILITY_KEYS = [
   "rejectsDisabledThinking",
 ] as const;
 const CAPABILITY_KEY_SET = new Set(CAPABILITY_KEYS);
+/** Adds the optional package-extension override keys carried by evidence. */
+const CAPABILITY_DECISION_KEY_SET = new Set([
+  ...CAPABILITY_KEYS,
+  "use1MContext",
+]);
 const OVERRIDE_KEYS = new Set([
   "id",
   "cliVersion",
@@ -507,6 +517,23 @@ function validateProfileOverride(value: unknown): ClaudeCodeProfileOverride {
   });
 }
 
+/**
+ * Validates the package-extension beta overrides.
+ *
+ * An explicitly present key with an `undefined` value is rejected rather than
+ * silently treated as absent, so the tri-state stays observable: the caller
+ * either states a decision or omits the key.
+ */
+function validateBetaOverrides(value: unknown): ClaudeCodeBetaOverrides {
+  if (!isRecord(value)) fail();
+  assertExactKeys(value, BETA_OVERRIDE_KEYS);
+  return Object.freeze({
+    ...(Object.hasOwn(value, "use1MContext")
+      ? { use1MContext: parseBoolean(ownValue(value, "use1MContext")) }
+      : {}),
+  });
+}
+
 function createEffectiveProfile(
   pinnedProfile: ClaudeCodeProtocolProfile,
   override: ClaudeCodeProfileOverride | undefined,
@@ -537,6 +564,7 @@ function validateInput(input: ClaudeCodeRequestInput): {
   readonly clientRequestId: string;
   readonly crypto: Pick<Crypto, "subtle"> | undefined;
   readonly profileOverride: ClaudeCodeProfileOverride | undefined;
+  readonly betaOverrides: ClaudeCodeBetaOverrides | undefined;
 } {
   if (!isRecord(input)) fail();
   assertExactKeys(input, INPUT_KEYS);
@@ -574,11 +602,15 @@ function validateInput(input: ClaudeCodeRequestInput): {
   const profileOverride = Object.hasOwn(input, "profileOverride")
     ? validateProfileOverride(ownValue(input, "profileOverride"))
     : undefined;
+  const betaOverrides = Object.hasOwn(input, "betaOverrides")
+    ? validateBetaOverrides(ownValue(input, "betaOverrides"))
+    : undefined;
   return {
     source: input,
     clientRequestId,
     crypto: cryptoValue,
     profileOverride,
+    betaOverrides,
   };
 }
 
@@ -742,9 +774,14 @@ function parseHeaders(value: unknown): readonly HeaderPair[] {
   });
 }
 
-function parseCapabilities(value: unknown): ClaudeCodeCapabilities {
+function parseCapabilityDecisions(
+  value: unknown,
+): ClaudeCodeCapabilityDecisions {
   if (!isRecord(value)) fail();
-  assertExactKeys(value, CAPABILITY_KEY_SET);
+  // The nine capability keys are mandatory; the package-extension override keys
+  // are optional and must survive the round-trip untouched, so they are allowed
+  // here but never synthesized.
+  assertExactKeys(value, CAPABILITY_DECISION_KEY_SET);
   // Read each key through a narrowing helper rather than building a record and
   // re-checking it afterwards. The re-check was unreachable -- every value was
   // already proven boolean -- which cost coverage and produced mutants that
@@ -755,6 +792,9 @@ function parseCapabilities(value: unknown): ClaudeCodeCapabilities {
     return entry;
   };
   return {
+    ...(Object.hasOwn(value, "use1MContext")
+      ? { use1MContext: readBoolean("use1MContext") }
+      : {}),
     thinking: readBoolean("thinking"),
     adaptiveThinking: readBoolean("adaptiveThinking"),
     interleavedThinking: readBoolean("interleavedThinking"),
@@ -811,7 +851,7 @@ function parseEvidence(value: unknown): RedactedRequestEvidence {
     bodyByteLength,
     messageCount,
     systemBlockCount,
-    capabilityDecisions: parseCapabilities(
+    capabilityDecisions: parseCapabilityDecisions(
       ownValue(value, "capabilityDecisions"),
     ),
   };
@@ -888,6 +928,7 @@ function evidenceRequest(
     tools?: NonNullable<ClaudeCodeRequestInput["tools"]>;
     cacheControl?: Exclude<ClaudeCodeRequestInput["cacheControl"], undefined>;
     capabilities?: NonNullable<ClaudeCodeRequestInput["capabilities"]>;
+    betaOverrides?: NonNullable<ClaudeCodeRequestInput["betaOverrides"]>;
     thinking?: NonNullable<ClaudeCodeRequestInput["thinking"]>;
     effort?: NonNullable<ClaudeCodeRequestInput["effort"]>;
     metadata?: NonNullable<ClaudeCodeRequestInput["metadata"]>;
@@ -921,6 +962,8 @@ function evidenceRequest(
     request.cacheControl = present(input.cacheControl);
   if (input.capabilities !== undefined)
     request.capabilities = input.capabilities;
+  if (input.betaOverrides !== undefined)
+    request.betaOverrides = input.betaOverrides;
   if (input.thinking !== undefined) request.thinking = input.thinking;
   if (input.effort !== undefined) request.effort = input.effort;
   if (input.metadata !== undefined) request.metadata = input.metadata;
@@ -1119,6 +1162,12 @@ export async function buildClaudeCodeRequest(
         ...(validated.source.speed === undefined
           ? {}
           : { speed: validated.source.speed }),
+        ...(validated.source.additionalBetas === undefined
+          ? {}
+          : { additionalBetas: validated.source.additionalBetas }),
+        ...(validated.betaOverrides?.use1MContext === undefined
+          ? {}
+          : { use1MContextOverride: validated.betaOverrides.use1MContext }),
       },
       effectiveProfile,
     );

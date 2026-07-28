@@ -703,6 +703,33 @@ export interface ClaudeCodeCacheControlInput {
   readonly systemBreakpoint?: boolean | null;
   readonly toolBreakpoint?: boolean | null;
   readonly messageBreakpoint?: boolean | null;
+  /**
+   * Emits the canonical identity system block (index 1) WITHOUT a
+   * `cache_control` marker.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour: the genuine client
+   * always marks that block. Defaults to `false`, which reproduces the
+   * unconditional marker byte-for-byte.
+   */
+  readonly suppressIdentityBlock?: boolean | null;
+}
+
+/**
+ * Per-request substitutes for beta gates the genuine client reads from host
+ * state.
+ *
+ * PACKAGE EXTENSION, not observed Claude Code behaviour. Every member is a
+ * tri-state: `true` forces the beta, `false` suppresses it, and omission keeps
+ * the upstream-derived decision. Recorded in
+ * `RedactedRequestEvidence.capabilityDecisions` only when supplied.
+ */
+export interface ClaudeCodeBetaOverrides {
+  /**
+   * Replaces the `[1m]` model-marker gate for `context-1m-2025-08-07`. The
+   * profile gate `betaPolicy.oneMillionContextEnabled` still applies, so an
+   * override cannot enable a beta the pinned profile declares unavailable.
+   */
+  readonly use1MContext?: boolean;
 }
 
 export interface ClaudeCodeRequestInput {
@@ -754,6 +781,30 @@ export interface ClaudeCodeRequestInput {
   readonly clientApp?: string;
   /** Supplies the Anthropic additional-protection header. */
   readonly anthropicAdditionalProtection?: string;
+  /**
+   * Appends caller-supplied beta identifiers to the `anthropic-beta` header.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour. The genuine client
+   * derives its beta set entirely from the profile and the model; this seam
+   * exists so a consumer can carry user-configured betas without forking the
+   * composer. Entries are appended AFTER the derived canonical set, in caller
+   * order, and an entry equal to an already-emitted identifier is dropped.
+   *
+   * Each entry must match `/^[A-Za-z0-9][A-Za-z0-9._-]*$/` and be at most 128
+   * characters; at most 32 entries are accepted. Anything else fails with
+   * `INVALID_INPUT`, because the header is a single comma-joined field.
+   *
+   * Omitting the field leaves the emitted request byte-identical.
+   */
+  readonly additionalBetas?: readonly string[];
+  /**
+   * Overrides beta-header gates that the genuine client resolves from host
+   * state this package cannot observe.
+   *
+   * PACKAGE EXTENSION, not observed Claude Code behaviour. Omitting the field,
+   * or omitting any member, leaves the emitted request byte-identical.
+   */
+  readonly betaOverrides?: ClaudeCodeBetaOverrides;
   /** Appends validated non-canonical headers in caller order. */
   readonly extraHeaders?: readonly HeaderPair[];
   /** Injects the Web Crypto provider used to hash the request body. */
@@ -851,10 +902,24 @@ export interface RedactedRequestEvidence {
   readonly bodyByteLength: number;
   readonly messageCount: number;
   readonly systemBlockCount: number;
-  readonly capabilityDecisions: Readonly<
-    Record<keyof ClaudeCodeCapabilities, boolean>
-  >;
+  readonly capabilityDecisions: ClaudeCodeCapabilityDecisions;
 }
+
+/**
+ * Records the nine model capability decisions, plus any package-extension beta
+ * override the caller supplied.
+ *
+ * The override keys are OPTIONAL and are emitted only when the corresponding
+ * member of `betaOverrides` is present, so evidence for a request that omits
+ * `betaOverrides` is byte-identical to evidence produced before the seam
+ * existed.
+ */
+export type ClaudeCodeCapabilityDecisions = Readonly<
+  Record<keyof ClaudeCodeCapabilities, boolean>
+> & {
+  /** Mirrors `betaOverrides.use1MContext`; absent when it was not supplied. */
+  readonly use1MContext?: boolean;
+};
 
 export interface BuiltClaudeCodeRequest {
   readonly url: "https://api.anthropic.com/v1/messages?beta=true";

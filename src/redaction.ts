@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type {
-  ClaudeCodeCapabilities,
+  ClaudeCodeCapabilityDecisions,
   ClaudeCodeModelFamily,
   ClaudeCodeProtocolProfile,
   ClaudeCodeRequestInput,
@@ -206,9 +206,13 @@ function toHex(bytes: Uint8Array): string {
 
 function capabilityDecisions(
   input: BuildRedactedEvidenceInput,
-): Readonly<Record<keyof ClaudeCodeCapabilities, boolean>> {
+): ClaudeCodeCapabilityDecisions {
   const requested = input.request.capabilities;
+  const use1MContext = input.request.betaOverrides?.use1MContext;
   return Object.freeze({
+    // Package extension: emitted only when the caller stated a decision, so
+    // evidence for requests without `betaOverrides` keeps its original shape.
+    ...(use1MContext === undefined ? {} : { use1MContext }),
     thinking: requested?.thinking ?? false,
     adaptiveThinking: requested?.adaptiveThinking ?? false,
     effort: requested?.effort ?? false,
