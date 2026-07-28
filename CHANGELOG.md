@@ -2,7 +2,47 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.11] - Unreleased
+## [0.1.0-rc.12] - Unreleased
+
+### Added
+
+Three additive consumer seams. All three are extensions of THIS package, not
+observed Claude Code behaviour, and are recorded as such in
+`docs/source-trace.md` under governance ledger L10. Every one of them is a no-op
+when omitted: `test/validation/seam-additivity.test.ts` builds the same request
+with and without each field and compares `body` byte for byte, plus `headers`
+and `evidence` in full.
+
+- `ClaudeCodeRequestInput.additionalBetas` appends caller-supplied beta
+  identifiers to `anthropic-beta`, AFTER the upstream-derived set and in caller
+  order. An entry equal to an already-emitted identifier is dropped rather than
+  reordering the canonical prefix. Because the header is one comma-joined field,
+  entries must match `/^[A-Za-z0-9][A-Za-z0-9._-]*$/`, be at most 128 characters,
+  and number at most 32; anything else fails with `INVALID_INPUT`.
+
+- `ClaudeCodeRequestInput.betaOverrides.use1MContext` decides the
+  `context-1m-2025-08-07` beta per request: `true` forces it without the `[1m]`
+  model marker, `false` suppresses it despite the marker. The profile gate
+  `betaPolicy.oneMillionContextEnabled` still applies, so an override cannot
+  enable a beta the pinned profile declares unavailable. The decision appears in
+  `evidence.capabilityDecisions.use1MContext`, which is OPTIONAL and present only
+  when the caller supplied the override.
+
+- `ClaudeCodeRequestInput.cacheControl.suppressIdentityBlock` emits the canonical
+  identity system block without a `cache_control` marker. It defaults to `false`,
+  which reproduces the unconditional marker the genuine client always sends.
+
+### Changed
+
+- `RedactedRequestEvidence.capabilityDecisions` is now typed as
+  `ClaudeCodeCapabilityDecisions`: the nine capability booleans stay mandatory,
+  plus an optional `use1MContext` emitted only when the override was supplied.
+  Evidence for a request that omits `betaOverrides` is unchanged.
+
+- New public type exports: `ClaudeCodeBetaOverrides` and
+  `ClaudeCodeCapabilityDecisions`.
+
+## [0.1.0-rc.11] - 2026-07-27
 
 ### Changed
 
