@@ -2,7 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0-rc.15] - Unreleased
+## [0.1.0-rc.16] - Unreleased
+
+### Added
+
+- **`suppressBillingBlock` (seam S7).** The canonical billing block at `system[0]`
+  was composed unconditionally, so a consumer switch whose meaning is "do not
+  send the billing block" — `CLAUDE_CODE_ATTRIBUTION_HEADER=0` in
+  `opencode-anthropic-fix` — was a silent no-op. `suppressBillingBlock: true`
+  emits `[identity]` as the canonical prefix instead of `[billing, identity]`.
+  Only a boolean is accepted; anything else is `INVALID_INPUT`.
+  `evidence.billingBlockSuppressed` is emitted only when the block was actually
+  removed, so evidence stays byte-identical for every request that ignores the
+  seam. Suppressing the block changes what Anthropic sees for attribution
+  purposes: that is a deliberate consumer decision, and the package does not
+  guard it. Recorded in `docs/source-trace.md` as governance ledger L15.
+
+### Changed
+
+- **`parseBuiltClaudeCodeRequest` infers the canonical system prefix
+  structurally.** The flag never reaches the wire, so the parser can no longer
+  subtract a constant. It locates the byte-exact identity text — index 1 means a
+  two-block prefix, index 0 means a one-block prefix, neither means the envelope
+  was not produced by this package — matching on TEXT and never on
+  `cache_control`, because `cacheControl.suppressIdentityBlock` can legitimately
+  emit the identity block with no cache marker. The assertion remains an
+  equality.
+
+### Fixed
+
+- **`evidence.systemBlockCount` counted the caller's blocks, not the emitted
+  ones.** `buildCanonicalSystem` merges adjacent caller blocks that share a
+  `cache_control` and drops any block equal to the identity text, so the emitted
+  array was routinely shorter than the caller's while the parser asserted
+  equality against it. Any request with two or more mergeable system blocks was
+  rejected by `parseBuiltClaudeCodeRequest` with an opaque `INVALID_INPUT` and
+  `safeDetails: {}` — a 403 in production with no diagnosable cause, since the
+  parser's only consumer is a proxy validating envelopes from a Worker. Evidence
+  now records the length of the array actually serialized.
+
+## [0.1.0-rc.15] - 2026-07-28
 
 ### Fixed
 
