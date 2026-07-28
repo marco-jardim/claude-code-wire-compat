@@ -618,6 +618,78 @@ models the wire of the official Claude Code client talking to `api.anthropic.com
 remains pinned to `anthropic` and Bedrock, Vertex, Foundry and Mantle stay permanently out of
 scope.
 
+### Governance ledger L15 — `suppressBillingBlock`, and the parser's structural prefix discriminator
+
+**Claim.** `ClaudeCodeRequestInput.suppressBillingBlock` is an extension of THIS package, exactly
+like the L10 and L14 seams. It is **not** observed Claude Code behaviour: the genuine client always
+emits the billing block.
+
+**Why it exists.** Until now this package composed the canonical billing block at `system[0]`
+unconditionally. The first real consumer (`opencode-anthropic-fix`) exposes
+`CLAUDE_CODE_ATTRIBUTION_HEADER=0`, a user switch whose entire meaning is "do not send the billing
+block". With no seam, that switch was a silent no-op — the worst outcome, because the user believes
+it worked. This is the same failure mode L14 documents for the removal-shaped beta switches.
+
+**Semantics.**
+
+- Absent or `false`, the canonical prefix is `[billing, identity]` and every byte of the request is
+  what it was before the seam existed. `true` emits `[identity]` alone.
+- Only a boolean is accepted. `validateSuppressBillingBlock` rejects a truthy string or `0` with
+  `INVALID_INPUT` rather than coercing, because coercion would silently change what Anthropic
+  receives.
+- `evidence.billingBlockSuppressed` is emitted **only when the block was actually removed**, never
+  as `false`. That is the `droppedExtraHeaderNames` / `suppressedBetaNames` precedent from rc.14 and
+  rc.15, and it keeps evidence byte-identical for every request that ignores the seam.
+- `evidence.systemBlockCount` continues to count only the CALLER's emitted blocks, so the canonical
+  prefix subtracted is `CANONICAL_SYSTEM_BLOCKS_WITHOUT_BILLING = 1` when suppression is active and
+  `CANONICAL_SYSTEM_BLOCKS = 2` otherwise.
+
+**The parser discriminator changed from arithmetic to structural recognition.**
+`parseBuiltClaudeCodeRequest` receives only `{url, method, headers, body, evidence}` — the flag is
+never on the wire, so the parser cannot be told the prefix length; it must **infer** it. It used to
+subtract the constant `CANONICAL_SYSTEM_BLOCKS`, which is now ambiguous: a two-block prefix and a
+one-block prefix are both legitimate. The parser therefore locates the byte-exact `IDENTITY_TEXT`:
+at `system[1]` the prefix is 2, at `system[0]` the prefix is 1, and at neither position the envelope
+was not produced by this package and the parser refuses. The identity text appears **at most once**,
+because `buildCanonicalSystem` drops any caller block equal to it, so the probe is unambiguous.
+
+The match is on **TEXT, never on `cache_control`**. The L10 `cacheControl.suppressIdentityBlock`
+seam can emit the identity block with no cache marker, so a marker-based probe would misread a
+legitimate request as a forgery. The assertion also stays an **EQUALITY**
+(`systemBlockCount === system.length - prefix`), not an inequality: an envelope whose caller-block
+count merely "fits" is still a forgery.
+
+Byte-length ordering matters when testing this. `bodyByteLength` is checked before the prefix
+discriminator, so the negative test forges a **length-preserving** system array; a shorter forgery
+would be rejected earlier and would prove nothing about the discriminator.
+
+**The attribution consequence is the consumer's, and it is deliberate.** Suppressing the billing
+block changes what Anthropic sees for attribution purposes. This package does not judge that: it
+composes the wire faithfully and refuses to be the consumer's babysitter, exactly as L14 states for
+suppressing `oauth-2025-04-20`. The consumer owns the switch semantics; this seam owns only the
+mechanics. There is no guard, and a guard here would be a second, undocumented policy layer that
+silently disagrees with the caller.
+
+**Additivity is the contract**, enforced as in L10 and L14, and locked by
+`test/validation/suppress-billing-block.test.ts`.
+
+### Governance ledger L15 (A) — `evidence.systemBlockCount` counts EMITTED blocks
+
+**Confirmed production defect, not a refactor.** `systemBlockCount` was the raw length of the
+caller's `system` array, but `buildCanonicalSystem` **merges adjacent caller blocks that carry the
+same `cache_control`** and drops any block equal to the identity text. The emitted array was
+therefore routinely shorter than the caller's, while the parser asserted
+`systemBlockCount === body.system.length - <canonical>`.
+
+Consequence: any request with two or more mergeable caller system blocks was rejected by
+`parseBuiltClaudeCodeRequest` with an opaque `INVALID_INPUT` and `safeDetails: {}`. The only
+consumer of the parser is a proxy validating envelopes emitted by a Worker, so this would have
+produced a 403 in production with no diagnosable cause.
+
+The fix records `emittedSystemBlockCount` — the length of the array actually serialized — and the
+build path subtracts the canonical prefix from that. Locked by the block-merging test committed
+alongside the fix.
+
 ## Header order is logical only
 
 The package guarantees deterministic **logical** ordering through `readonly HeaderPair[]`, locked by `test/headers.test.ts` and `test/golden-fixtures.test.ts`. It explicitly does **not** guarantee on-wire field ordering: `Headers`, `fetch`, and undici may normalize, combine, or reorder fields, and no supported API guarantees wire order. Consumers may rely on pair sequence before transport, but must not treat observed socket order as part of this contract.
