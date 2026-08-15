@@ -1,0 +1,1 @@
+var U0=[{id:"claude-opus-9",family:"opus",mystery_field:{deep:[1,2,{x:!0,y:"z"}]},another:"ignored",context:{window:5e5,unknown_context_flag:!0},max_output_tokens:{default:32000,upper:64000,ceiling:99999},capabilities:["effort",!0,42,"thinking"],pricing:{tier:"custom"},advisor_rank:"not-a-number",[Symbol.iterator]:null,...U1}];
