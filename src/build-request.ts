@@ -29,6 +29,7 @@ import {
 } from "./metadata.js";
 import { resolveModel } from "./models.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
+import { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
 import type { NormalizedRequestInput } from "./redaction.js";
 import { buildRedactedEvidence, toSafeErrorDetails } from "./redaction.js";
 import {
@@ -315,8 +316,10 @@ function containsString(value: unknown, target: string): boolean {
 }
 
 /**
- * The profiles this package will assemble a request for. One entry today; a
- * 2.1.222+ profile joins it in Wave 2 without touching `validateProfile`.
+ * The profiles this package will assemble a request for. Two entries: the
+ * 2.1.195 default and the 2.1.233 profile, which callers must pass
+ * explicitly. Admitting a profile is exactly this list -- `validateProfile`
+ * did not change to accept the second one.
  *
  * Membership is by REFERENCE, deliberately. A structural check would accept a
  * caller-built object that merely looks like a pinned profile, and every wire
@@ -332,7 +335,21 @@ function containsString(value: unknown, target: string): boolean {
  */
 const ACCEPTED_PROFILES: ReadonlySet<ClaudeCodeProtocolProfile> = new Set([
   CLAUDE_CODE_2_1_195_PROFILE,
+  CLAUDE_CODE_2_1_233_PROFILE,
 ]);
+
+/**
+ * The profile every public entry point resolves to when the caller supplies
+ * none. Declared once so that the default is a single, greppable seam: a test
+ * that means "whatever the default is" reads THIS instead of naming a
+ * version, which keeps a default switch to a one-line diff and keeps tests
+ * that genuinely mean 2.1.195 honest about saying so.
+ *
+ * Exported for tests, which deep-import it. It is deliberately NOT re-exported
+ * from `src/index.ts`: the public runtime surface stays closed.
+ */
+export const DEFAULT_PROFILE: ClaudeCodeProtocolProfile =
+  CLAUDE_CODE_2_1_233_PROFILE;
 
 function validateProfile(
   profile: ClaudeCodeProtocolProfile,
@@ -1012,7 +1029,19 @@ function parseCapabilityDecisions(
   };
 }
 
-function parseEvidence(value: unknown): RedactedRequestEvidence {
+/**
+ * Validates evidence against the profile the request was parsed under, not
+ * against a hardcoded singleton. `parseBuiltClaudeCodeRequest` already
+ * validates `url` against `pinnedProfile.endpoint`; the profile id is the one
+ * remaining field where the two pinned profiles differ, so it has to follow
+ * the same source or a request built with a non-default profile could never
+ * be re-parsed. Still fail-closed: the profile reaching here has already
+ * passed `validateProfile`.
+ */
+function parseEvidence(
+  value: unknown,
+  pinnedProfile: ClaudeCodeProtocolProfile,
+): RedactedRequestEvidence {
   if (!isRecord(value)) fail();
   assertExactKeys(value, EVIDENCE_KEYS);
   const modelFamily = ownValue(value, "modelFamily");
@@ -1031,8 +1060,8 @@ function parseEvidence(value: unknown): RedactedRequestEvidence {
   const messageCount = ownValue(value, "messageCount");
   const systemBlockCount = ownValue(value, "systemBlockCount");
   if (
-    ownValue(value, "profileId") !== CLAUDE_CODE_2_1_195_PROFILE.id ||
-    ownValue(value, "url") !== CLAUDE_CODE_2_1_195_PROFILE.endpoint ||
+    ownValue(value, "profileId") !== pinnedProfile.id ||
+    ownValue(value, "url") !== pinnedProfile.endpoint ||
     ownValue(value, "method") !== METHOD ||
     typeof bodySha256 !== "string" ||
     !/^[0-9a-f]{64}$/u.test(bodySha256) ||
@@ -1046,8 +1075,8 @@ function parseEvidence(value: unknown): RedactedRequestEvidence {
     fail();
   }
   return {
-    profileId: CLAUDE_CODE_2_1_195_PROFILE.id,
-    url: CLAUDE_CODE_2_1_195_PROFILE.endpoint,
+    profileId: pinnedProfile.id,
+    url: pinnedProfile.endpoint,
     method: METHOD,
     modelFamily,
     logicalHeaderNames: parseStringArray(ownValue(value, "logicalHeaderNames")),
@@ -1354,7 +1383,7 @@ function countTokensEvidenceRequest(
 /** Builds a canonical Claude Code count-tokens request. */
 export async function buildClaudeCodeCountTokensRequest(
   input: ClaudeCodeCountTokensInput,
-  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+  profile: ClaudeCodeProtocolProfile = DEFAULT_PROFILE,
 ): Promise<BuiltClaudeCodeCountTokensRequest> {
   try {
     const pinnedProfile = validateProfile(profile);
@@ -1449,7 +1478,7 @@ export async function buildClaudeCodeCountTokensRequest(
  */
 export async function buildClaudeCodeRequest(
   input: ClaudeCodeRequestInput,
-  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+  profile: ClaudeCodeProtocolProfile = DEFAULT_PROFILE,
 ): Promise<BuiltClaudeCodeRequest> {
   try {
     const pinnedProfile = validateProfile(profile);
@@ -1621,7 +1650,7 @@ export async function buildClaudeCodeRequest(
  */
 export function parseBuiltClaudeCodeRequest(
   value: unknown,
-  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+  profile: ClaudeCodeProtocolProfile = DEFAULT_PROFILE,
 ): BuiltClaudeCodeRequest {
   try {
     const pinnedProfile = validateProfile(profile);
@@ -1638,7 +1667,7 @@ export function parseBuiltClaudeCodeRequest(
     if (typeof body !== "string") fail();
     const parsedBody = parseBody(body);
     const headers = parseHeaders(ownValue(value, "headers"));
-    const evidence = parseEvidence(ownValue(value, "evidence"));
+    const evidence = parseEvidence(ownValue(value, "evidence"), pinnedProfile);
     // Reading evidence is not trusting evidence. A claim that the seam
     // preserved a marker is confirmed against the body, and it is confirmed
     // HERE — before the byte-length and digest checks — so that a forgery which

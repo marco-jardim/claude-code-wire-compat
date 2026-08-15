@@ -5,17 +5,51 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const GOLDEN_SCHEMA = "claude-code-wire-compat/golden/v1";
-const PROFILE_ID = "claude-code-2.1.195-sdk-0.94.0";
 const MESSAGES_URL = "https://api.anthropic.com/v1/messages?beta=true";
 const IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude.";
 const FIXTURE_FILENAMES = [
   "outgoing-foreground.json",
   "outgoing-canary-context-hint-off.json",
+  "outgoing-foreground-2.1.233.json",
+  "outgoing-canary-context-hint-off-2.1.233.json",
 ] as const;
 const ALL_FIXTURE_FILENAMES = [
   ...FIXTURE_FILENAMES,
   "decision-context-hint-rejected.json",
 ] as const;
+
+type FixtureFilename = (typeof FIXTURE_FILENAMES)[number];
+
+interface FixtureProvenance {
+  /** Profile identifier the fixture was captured under. */
+  readonly profileId: string;
+  /** Claude Code release the fixture pins on the wire. */
+  readonly cliVersion: string;
+}
+
+/**
+ * Each outgoing fixture pins one profile: version-dependent values are derived
+ * from this map rather than from a single hardcoded release.
+ */
+const FIXTURE_PROVENANCE: Readonly<Record<FixtureFilename, FixtureProvenance>> =
+  {
+    "outgoing-foreground.json": {
+      profileId: "claude-code-2.1.195-sdk-0.94.0",
+      cliVersion: "2.1.195",
+    },
+    "outgoing-canary-context-hint-off.json": {
+      profileId: "claude-code-2.1.195-sdk-0.94.0",
+      cliVersion: "2.1.195",
+    },
+    "outgoing-foreground-2.1.233.json": {
+      profileId: "claude-code-2.1.233-sdk-0.112.1",
+      cliVersion: "2.1.233",
+    },
+    "outgoing-canary-context-hint-off-2.1.233.json": {
+      profileId: "claude-code-2.1.233-sdk-0.112.1",
+      cliVersion: "2.1.233",
+    },
+  };
 const ALLOWED_UUIDS = new Set([
   "00000000-0000-4000-8000-000000000000",
   "00000000-0000-4000-8000-000000000001",
@@ -145,25 +179,29 @@ describe("golden fixtures", () => {
       "notes",
     ]);
     const fixture = parseGolden(JSON.stringify(raw));
+    const provenance = FIXTURE_PROVENANCE[filename];
     expect(fixture.$schema).toBe(GOLDEN_SCHEMA);
     expect(fixture.method).toBe("POST");
     expect(fixture.url).toBe(MESSAGES_URL);
-    expect(fixture.profileId).toBe(PROFILE_ID);
+    expect(fixture.profileId).toBe(provenance.profileId);
+    expect(fixture.headers.find(([name]) => name === "user-agent")?.[1]).toBe(
+      `claude-cli/${provenance.cliVersion} (external, cli)`,
+    );
   });
 
-  it("matches every fixture hash in the manifest", () => {
+  it("matches every sealed fixture hash in the manifest", () => {
     const manifest = parseRecord(readFixture("manifest.json"));
     expect(manifest.sourceCommit).toBe(
       "466d500084b59651798bf38bf24d21f3cb850db6",
     );
     if (!isRecord(manifest.fixtures))
       throw new TypeError("manifest.fixtures must be an object.");
+    const sealed = Object.keys(manifest.fixtures);
     // The sealing tool (scripts/seal-golden-fixtures.mjs) emits manifest keys
     // in deterministic lexicographic order; assert that canonical order here.
-    expect(Object.keys(manifest.fixtures)).toEqual(
-      [...ALL_FIXTURE_FILENAMES].sort(),
-    );
-    for (const filename of ALL_FIXTURE_FILENAMES) {
+    expect(sealed).toEqual([...sealed].sort());
+    for (const filename of sealed) {
+      expect(ALL_FIXTURE_FILENAMES).toContain(filename);
       expect(sha256(readFileSync(fixtureUrl(filename)))).toBe(
         manifest.fixtures[filename],
       );
@@ -203,7 +241,14 @@ describe("golden fixtures", () => {
       const fixture = parseGolden(JSON.stringify(raw));
       const billing = fixture.body.system[0];
       const identity = fixture.body.system[1];
+      const { cliVersion } = FIXTURE_PROVENANCE[filename];
       expect(billing?.text).toContain("cch=00000;");
+      expect(billing?.text).toMatch(
+        new RegExp(
+          `^x-anthropic-billing-header: cc_version=${cliVersion.replaceAll(".", "\\.")}\\.[0-9a-f]{3}; cc_entrypoint=cli; cch=00000;$`,
+          "u",
+        ),
+      );
       expect(Object.hasOwn(rawBilling, "cache_control")).toBe(false);
       expect(Object.hasOwn(rawIdentity, "cache_control")).toBe(true);
       expect(identity?.text).toBe(IDENTITY);

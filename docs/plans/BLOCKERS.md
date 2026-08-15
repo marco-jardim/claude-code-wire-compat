@@ -55,3 +55,66 @@ derivation methods, not a latent incoherence this repo introduced.
   exclusion list and resolve maximally permissive (`true` everywhere except
   `temperature`, whose allowlist returns `false`). This behavior is
   preserved by the refactor.
+
+## 2026-08-15 — W2-F1: capability derivation was pinned to one profile (RESOLVED INLINE)
+
+**Context:** preparation of the 2.1.233 catalogue.
+
+**Finding:** capability derivation and output-token limits still read the
+2.1.195 profile unconditionally. `deriveCapabilities` and
+`modelOutputTokenLimits` consulted the profile singleton rather than the
+profile they were being asked about, and the active profile stopped
+propagating at two boundaries:
+
+| Boundary                              | Symptom                                    |
+| ------------------------------------- | ------------------------------------------ |
+| `models.ts` → `model-capabilities.ts` | derivation fell back to the pinned profile |
+| `request-body.ts` → `thinking.ts`     | limits resolved against the pinned profile |
+
+**Analysis:** with a single registered profile the defect is invisible —
+the only value the singleton can return is the correct one. A second
+profile makes it wire-incorrect, and the failure is silent rather than
+loud: `claude-opus-4-5` would inherit the 2.1.195 `effort` exception on a
+profile where the catalogue is authoritative and says otherwise; models
+introduced after 2.1.195 would lose `mid_conv_system` because the older
+catalogue has no entry for them; `claude-mythos-5`, catalogued from
+2.1.233 onward, would keep resolving through the unknown-id path to the
+maximally permissive fallback. Each of those is a request the package
+would build differently from the client it claims to mimic.
+
+**Resolution (behavior-preserving):**
+
+1. The active profile is threaded through every derivation site as an
+   explicit parameter, defaulting to `2.1.195`. The default keeps every
+   existing call site meaning exactly what it meant before.
+2. 2.1.195 behavior is unchanged, and that is proved rather than
+   asserted: the equivalence suites were not modified and the `test:pack`
+   digests are identical across the change.
+3. The change is a refinement of the behavior/data separation already
+   recorded for C1 — the derivation code stays behavioral, the catalogue
+   stays data, and the profile is now the parameter that binds them.
+   Profiles added later inherit the seam and need no further work at
+   these boundaries.
+
+## 2026-08-15 — Non-blocking observations from the 2.1.233 data port
+
+Recorded for future maintenance; neither blocks execution.
+
+**O1 — drift fixture mirrors duplicate the golden manifest.** The seven
+synthetic source trees under `test/drift/fixtures/` each carry a copy of
+`test/fixtures/golden/manifest.json`'s `fixtures` map. Sealing new golden
+fixtures therefore requires hand-updating six of the seven mirrors (the
+`golden-hash` case keeps its deliberate mismatch). Deriving the mirrors
+from the real manifest at test time would remove the duplication without
+weakening the guard; until then, every fixture addition must touch the
+mirrors in the same commit as the seal.
+
+**O2 — four parameterised suites cover the second profile only partially.**
+`build-request-mutants`, `model-wire-identity`, `model-identity`, and
+`request-body-mutants` run only a slice of their cases under the profile
+matrix; the bulk of their assertions are pinned to 2.1.195 vectors by the
+coupling-map classification (version-specific known vectors, e.g. billing
+fingerprints). The 2.1.233 profile is instead covered by its dedicated
+catalogue, beta-registry, fixture, differential, and threading suites plus
+the per-profile coverage floor. Version-specific vectors for 2.1.233
+(fingerprint, billing block) arrive with the divergence-semantics work.

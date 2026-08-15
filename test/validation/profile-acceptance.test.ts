@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { DEFAULT_PROFILE } from "../../src/build-request.js";
 import {
   CLAUDE_CODE_2_1_195_PROFILE,
   buildClaudeCodeRequest,
@@ -64,10 +65,9 @@ describe("profile acceptance: the pinned singleton", () => {
   });
 
   it("accepts an omitted profile, which is the same singleton", async () => {
-    const explicit = await buildClaudeCodeRequest(
-      BASE,
-      CLAUDE_CODE_2_1_195_PROFILE,
-    );
+    // Deliberately the default seam, not a named version: the claim is that
+    // omitting the argument selects the default, whatever the default is.
+    const explicit = await buildClaudeCodeRequest(BASE, DEFAULT_PROFILE);
     const implicit = await buildClaudeCodeRequest(BASE);
 
     expect(implicit.body).toBe(explicit.body);
@@ -83,7 +83,7 @@ describe("profile acceptance: the pinned singleton", () => {
   it("treats an explicit undefined as the default, not as a rejection", async () => {
     const result = await buildClaudeCodeRequest(BASE, undefined);
 
-    expect(result.evidence.profileId).toBe(CLAUDE_CODE_2_1_195_PROFILE.id);
+    expect(result.evidence.profileId).toBe(DEFAULT_PROFILE.id);
   });
 });
 

@@ -11,6 +11,7 @@ import type {
   ClaudeCodeWireErrorCode,
   HeaderPair,
 } from "../../src/index.js";
+import { DEFAULT_PROFILE } from "../../src/build-request.js";
 import {
   buildClaudeCodeRequest,
   ClaudeCodeWireError,
@@ -866,7 +867,8 @@ describe("build-request surviving parser mutants", () => {
       "capabilityDecisions",
     ]);
     expect(built.evidence).toMatchObject({
-      profileId: "claude-code-2.1.195-sdk-0.94.0",
+      // Built with the default profile, so the id follows the builder seam.
+      profileId: DEFAULT_PROFILE.id,
       url: "https://api.anthropic.com/v1/messages?beta=true",
       method: "POST",
       modelFamily: "sonnet",

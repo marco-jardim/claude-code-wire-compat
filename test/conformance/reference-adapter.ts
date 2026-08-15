@@ -11,7 +11,10 @@ import type {
 } from "../../src/contracts.js";
 
 export type ReferenceFixtureName =
-  "outgoing-foreground.json" | "outgoing-canary-context-hint-off.json";
+  | "outgoing-foreground.json"
+  | "outgoing-canary-context-hint-off.json"
+  | "outgoing-foreground-2.1.233.json"
+  | "outgoing-canary-context-hint-off-2.1.233.json";
 
 export interface ReferenceFixture {
   readonly url: string;

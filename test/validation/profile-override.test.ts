@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { DEFAULT_PROFILE } from "../../src/build-request.js";
 import { buildClaudeCodeRequest } from "../../src/index.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
 
@@ -165,8 +166,12 @@ describe("catalogue entry validation coverage", () => {
 
 function buildWithOverride(profileOverride: unknown) {
   const input: Record<string, unknown> = { ...base, profileOverride };
+  // Pinned to 2.1.195 because the override cases are stated in its terms --
+  // they spread its `betaPolicy` and assert its beta push positions. The
+  // 2.1.233 beta registry has no `narration_summaries` entry at all.
   return buildClaudeCodeRequest(
     input as Parameters<typeof buildClaudeCodeRequest>[0],
+    CLAUDE_CODE_2_1_195_PROFILE,
   );
 }
 
@@ -175,7 +180,7 @@ describe("protocol profile override", () => {
     const result = await buildClaudeCodeRequest(base);
 
     expect(headerValue(result.headers, "user-agent")).toBe(
-      "claude-cli/2.1.195 (external, cli)",
+      DEFAULT_PROFILE.userAgent,
     );
     expect(headerValue(result.headers, "anthropic-version")).toBe("2023-06-01");
   });

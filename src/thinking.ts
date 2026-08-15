@@ -3,6 +3,7 @@
 import type {
   ClaudeCodeBetaPolicy,
   ClaudeCodeCapabilities,
+  ClaudeCodeProtocolProfile,
 } from "./contracts.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
@@ -105,9 +106,9 @@ export interface ResolvedThinking {
  */
 export function modelOutputTokenLimits(
   normalizedId: string,
+  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
 ): ModelOutputTokenLimits {
-  const declared =
-    CLAUDE_CODE_2_1_195_PROFILE.supportedModels[normalizedId]?.maxOutputTokens;
+  const declared = profile.supportedModels[normalizedId]?.maxOutputTokens;
   if (declared !== undefined) {
     // `upper` is the catalogue's name for what this module calls `upperLimit`;
     // the rename happens here and nowhere else.
@@ -179,8 +180,12 @@ export function modelOutputTokenLimits(
 export function clampMaxTokens(
   requested: number,
   normalizedId: string,
+  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
 ): number {
-  return Math.min(requested, modelOutputTokenLimits(normalizedId).default);
+  return Math.min(
+    requested,
+    modelOutputTokenLimits(normalizedId, profile).default,
+  );
 }
 
 /**
@@ -229,6 +234,7 @@ export function resolveThinking(
   capabilities: ClaudeCodeCapabilities,
   betaPolicy: ClaudeCodeBetaPolicy,
   maxTokens: number,
+  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
 ): ResolvedThinking {
   // Upstream `nr = n.type !== "disabled" && !CLAUDE_CODE_DISABLE_THINKING`.
   const requestActive = request !== undefined && request.type !== "disabled";
@@ -251,7 +257,7 @@ export function resolveThinking(
       // `Tr = Math.min(Fi - 1, Tr)` where `Fi` is the emitted `max_tokens`.
       const requested =
         request.budgetTokens ??
-        modelOutputTokenLimits(normalizedId).upperLimit - 1;
+        modelOutputTokenLimits(normalizedId, profile).upperLimit - 1;
       emitted = { budget_tokens: Math.min(maxTokens - 1, requested) };
       emitted["type"] = "enabled";
       if (display !== undefined) emitted["display"] = display;

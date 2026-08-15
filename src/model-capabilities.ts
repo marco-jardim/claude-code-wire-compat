@@ -3,6 +3,7 @@
 import type {
   ClaudeCodeCapabilities,
   ClaudeCodeCatalogueEntry,
+  ClaudeCodeProtocolProfile,
 } from "./contracts.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
@@ -230,7 +231,9 @@ export function supportsContextManagement(normalizedId: string): boolean {
  *
  * Stays predicate-derived and takes no part in the catalogue path: no
  * `structured_outputs` string exists in any catalogue entry, so there is
- * nothing to read.
+ * nothing to read. Deliberately takes no profile parameter -- upstream does
+ * not gate this beta on the catalogue in any modelled version, so making it
+ * profile-aware would invent behaviour rather than port it.
  */
 export function supportsStructuredOutputs(normalizedId: string): boolean {
   return !(
@@ -249,16 +252,25 @@ export function supportsStructuredOutputs(normalizedId: string): boolean {
  * excludes `claude-opus-4-8`. Do not merge them.
  * This beta-only gate is intentionally absent from `ClaudeCodeCapabilities`.
  *
- * DELIBERATELY LEFT PREDICATE-DERIVED even though `mid_conv_system` does
- * exist as a catalogue string. Two reasons. `src/betas.ts` consumes this gate
- * by id, outside `ClaudeCodeCapabilities`, so routing it through the
- * catalogue would widen the blast radius of this refactor to the beta
- * assembly with no wire-visible benefit. And the equivalence between the
- * predicate and the catalogue string is already pinned by
- * `test/validation/capability-equivalence.test.ts`, so switching it later is
- * a mechanical, guarded change rather than a leap.
+ * Catalogue-first WHEN a profile is supplied and that profile catalogues the
+ * id: `mid_conv_system` exists as a catalogue string, and from 2.1.222+ the
+ * catalogue is what upstream reads. The switch is behaviour-preserving for
+ * 2.1.195, which is the point of the equivalence pinning in
+ * `test/validation/capability-equivalence.test.ts`: in the 2.1.195 catalogue
+ * exactly `claude-opus-4-8` and `claude-fable-5` carry the string, and those
+ * are exactly the two ids the exclusion list below admits.
+ *
+ * Without a profile -- or for an id the profile does not catalogue, such as
+ * `claude-mythos-5` under 2.1.195 -- the predicate remains authoritative.
  */
-export function supportsMidConversationSystem(normalizedId: string): boolean {
+export function supportsMidConversationSystem(
+  normalizedId: string,
+  profile?: ClaudeCodeProtocolProfile,
+): boolean {
+  const entry = profile?.supportedModels[normalizedId];
+  if (entry !== undefined) {
+    return entry.capabilities.includes("mid_conv_system");
+  }
   return !(
     normalizedId.includes("claude-3-") ||
     normalizedId === "claude-opus-4-0" ||
@@ -400,8 +412,9 @@ function deriveCapabilitiesFromPredicates(
 
 export function deriveCapabilities(
   normalizedId: string,
+  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
 ): ClaudeCodeCapabilities {
-  const entry = CLAUDE_CODE_2_1_195_PROFILE.supportedModels[normalizedId];
+  const entry = profile.supportedModels[normalizedId];
   if (entry === undefined) {
     return deriveCapabilitiesFromPredicates(normalizedId);
   }
@@ -418,12 +431,16 @@ export function deriveCapabilities(
    * therefore wire-authoritative for this profile, and the golden fixtures
    * and packed-consumer digests prove `effort: true` is what 2.1.195 sends.
    *
-   * Scope. This exception belongs to the 2.1.195 profile only. Upstream
-   * 2.1.222+ switches derivation to the catalogue, which makes
-   * `effort: false` genuine there; a profile ported from those versions must
-   * NOT inherit this block.
+   * Scope. This exception belongs to the 2.1.195 profile only, and the
+   * profile-id guard below enforces that mechanically. Upstream 2.1.222+
+   * switches derivation to the catalogue, which makes `effort: false`
+   * genuine there: for those profiles the catalogue IS the truth, so a
+   * profile ported from them does NOT inherit this block.
    */
-  if (normalizedId === "claude-opus-4-5") {
+  if (
+    profile.id === CLAUDE_CODE_2_1_195_PROFILE.id &&
+    normalizedId === "claude-opus-4-5"
+  ) {
     return Object.freeze({
       ...capabilities,
       effort: supportsEffort(normalizedId),

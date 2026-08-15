@@ -3,7 +3,9 @@
 import { describe, expect, it } from "vitest";
 
 import { BETA_REGISTRY } from "../../src/beta-registry.js";
+import { BETA_REGISTRY_2_1_233 } from "../../src/profiles/beta-registry-2.1.233.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
+import { CLAUDE_CODE_2_1_233_PROFILE } from "../../src/profiles/claude-code-2.1.233.js";
 import type { ProfileUnderTest } from "../support/profile-matrix.js";
 import {
   assertValidProfileRegistry,
@@ -29,31 +31,76 @@ describe("profile matrix registry", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("mirrors the 2.1.195 profile metadata verbatim", () => {
-    const entry = entryById(CLAUDE_CODE_2_1_195_PROFILE.id);
+  it.each([
+    { label: "2.1.195", profile: CLAUDE_CODE_2_1_195_PROFILE },
+    { label: "2.1.233", profile: CLAUDE_CODE_2_1_233_PROFILE },
+  ])("mirrors the $label profile metadata verbatim", ({ profile }) => {
+    const entry = entryById(profile.id);
 
-    expect(entry.profile).toBe(CLAUDE_CODE_2_1_195_PROFILE);
-    expect(entry.id).toBe(CLAUDE_CODE_2_1_195_PROFILE.id);
-    expect(entry.cliVersion).toBe(CLAUDE_CODE_2_1_195_PROFILE.cliVersion);
-    expect(entry.sdkVersion).toBe(CLAUDE_CODE_2_1_195_PROFILE.sdkVersion);
-    expect(entry.endpoint).toBe(CLAUDE_CODE_2_1_195_PROFILE.endpoint);
-    expect(entry.userAgent).toBe(CLAUDE_CODE_2_1_195_PROFILE.userAgent);
+    expect(entry.profile).toBe(profile);
+    expect(entry.id).toBe(profile.id);
+    expect(entry.cliVersion).toBe(profile.cliVersion);
+    expect(entry.sdkVersion).toBe(profile.sdkVersion);
+    expect(entry.endpoint).toBe(profile.endpoint);
+    expect(entry.userAgent).toBe(profile.userAgent);
   });
 
-  it("carries counts derived from the real registry and catalogue", () => {
-    const entry = entryById(CLAUDE_CODE_2_1_195_PROFILE.id);
+  /**
+   * The beta registry is no longer profile-invariant: 2.1.195 draws from the
+   * shared module, 2.1.233 pins its own. Each entry is therefore paired with
+   * the registry it must derive its count from.
+   */
+  it.each([
+    {
+      label: "2.1.195",
+      profile: CLAUDE_CODE_2_1_195_PROFILE,
+      betaRegistry: BETA_REGISTRY,
+    },
+    {
+      label: "2.1.233",
+      profile: CLAUDE_CODE_2_1_233_PROFILE,
+      betaRegistry: BETA_REGISTRY_2_1_233,
+    },
+  ])(
+    "carries $label counts derived from the real registry and catalogue",
+    ({ profile, betaRegistry }) => {
+      const entry = entryById(profile.id);
 
-    expect(entry.expectedBetaCount).toBe(Object.keys(BETA_REGISTRY).length);
-    expect(entry.expectedModelCount).toBe(
-      Object.keys(CLAUDE_CODE_2_1_195_PROFILE.supportedModels).length,
-    );
-  });
+      expect(entry.expectedBetaCount).toBe(Object.keys(betaRegistry).length);
+      expect(entry.expectedModelCount).toBe(
+        Object.keys(profile.supportedModels).length,
+      );
+    },
+  );
 
-  it("pins the observed beta and model counts", () => {
-    const entry = entryById(CLAUDE_CODE_2_1_195_PROFILE.id);
+  it.each([
+    {
+      label: "2.1.195",
+      profile: CLAUDE_CODE_2_1_195_PROFILE,
+      betaCount: 28,
+      modelCount: 14,
+    },
+    {
+      label: "2.1.233",
+      profile: CLAUDE_CODE_2_1_233_PROFILE,
+      betaCount: 31,
+      modelCount: 17,
+    },
+  ])(
+    "pins the observed $label beta and model counts",
+    ({ profile, betaCount, modelCount }) => {
+      const entry = entryById(profile.id);
 
-    expect(entry.expectedBetaCount).toBe(28);
-    expect(entry.expectedModelCount).toBe(14);
+      expect(entry.expectedBetaCount).toBe(betaCount);
+      expect(entry.expectedModelCount).toBe(modelCount);
+    },
+  );
+
+  it("registers every profile that ships a pinned expectation", () => {
+    expect(PROFILES_UNDER_TEST.map((entry) => entry.id)).toEqual([
+      CLAUDE_CODE_2_1_195_PROFILE.id,
+      CLAUDE_CODE_2_1_233_PROFILE.id,
+    ]);
   });
 });
 

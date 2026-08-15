@@ -1413,22 +1413,26 @@ function capabilityBoolean(value: unknown, fallback: boolean): boolean {
   return value;
 }
 
-function modelResolution(value: unknown): ModelResolution {
+function modelResolution(
+  value: unknown,
+  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+): ModelResolution {
   const record = requireRecord(value);
   const capabilityValue = record["capabilities"];
-  // A catalogue-shaped capability array is accepted at this boundary, but it
-  // never affects derivation: on first party every predicate depends only on
-  // the normalized id. See the header of `model-capabilities.ts`. The elements
-  // are still validated so that malformed input fails closed.
+  // A catalogue-shaped capability array is accepted at this boundary, but its
+  // elements never drive derivation: the active profile's catalogue does,
+  // falling back to the id predicates. See the header of
+  // `model-capabilities.ts`. The elements are still validated so that
+  // malformed input fails closed.
   if (Array.isArray(capabilityValue)) {
     for (const capability of capabilityValue) {
       if (typeof capability !== "string") fail("INVALID_INPUT");
     }
   }
   const capabilities = Array.isArray(capabilityValue)
-    ? deriveCapabilities(String(record["id"]))
+    ? deriveCapabilities(String(record["id"]), profile)
     : requireRecord(capabilityValue);
-  const derived = deriveCapabilities(String(record["id"]));
+  const derived = deriveCapabilities(String(record["id"]), profile);
   if (
     (capabilities.thinking !== undefined &&
       typeof capabilities.thinking !== "boolean") ||
@@ -1739,7 +1743,8 @@ export function buildCanonicalBody(
   const input = requireRecord(rawInput);
   assertExactKeys(input, INPUT_KEY_SET);
   requireKeys(input, ["maxTokens", "messages"]);
-  const resolvedModel = modelResolution(rawResolvedModel);
+  const effectiveProfile = profile ?? CLAUDE_CODE_2_1_195_PROFILE;
+  const resolvedModel = modelResolution(rawResolvedModel, effectiveProfile);
   if (
     hasOwn(input, "model") &&
     (typeof input["model"] !== "string" ||
@@ -1775,6 +1780,7 @@ export function buildCanonicalBody(
   const maxTokens = clampMaxTokens(
     requirePositiveInteger(input["maxTokens"]),
     resolvedModel.id,
+    effectiveProfile,
   );
   const result: Record<string, unknown> = {
     model: resolvedModel.wireId,
@@ -1828,8 +1834,9 @@ export function buildCanonicalBody(
     thinkingRequest,
     resolvedModel.id,
     resolvedModel.capabilities,
-    (profile ?? CLAUDE_CODE_2_1_195_PROFILE).betaPolicy,
+    effectiveProfile.betaPolicy,
     maxTokens,
+    effectiveProfile,
   );
   if (resolved.emitted !== undefined) result["thinking"] = resolved.emitted;
 

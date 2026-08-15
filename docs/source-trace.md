@@ -16,12 +16,74 @@ This document is the normative trace from the pinned upstream implementation to 
 
 ## Pinned profile
 
-| Field           | Pinned value                                      |
-| --------------- | ------------------------------------------------- |
-| Claude Code CLI | `2.1.195`                                         |
-| Anthropic SDK   | `0.94.0`                                          |
-| Endpoint        | `https://api.anthropic.com/v1/messages?beta=true` |
-| Profile id      | `claude-code-2.1.195-sdk-0.94.0`                  |
+Every wire profile this package recognizes is registered here. A profile is registered against its
+analysis document, which is the evidence of record; the `src/profiles/` module is code that follows
+the evidence, not the other way round. A trace entry may therefore precede its TypeScript module by
+one phase, and one currently does.
+
+### Profile `claude-code-2.1.195-sdk-0.94.0`
+
+| Field           | Pinned value                                             |
+| --------------- | -------------------------------------------------------- |
+| Profile id      | `claude-code-2.1.195-sdk-0.94.0`                         |
+| Claude Code CLI | `2.1.195`                                                |
+| Anthropic SDK   | `0.94.0`                                                 |
+| Endpoint        | `https://api.anthropic.com/v1/messages?beta=true`        |
+| Build time      | `2026-06-26T01:00:56Z`                                   |
+| Git SHA         | `4603aa3f2ea164bd0974f82eb413ae7acc99a7ee`               |
+| Analysis        | `docs/protocol/versions/claude-code-2.1.195-analysis.md` |
+| Profile module  | `src/profiles/claude-code-2.1.195.ts`                    |
+
+### Profile `claude-code-2.1.233-sdk-0.112.1`
+
+| Field           | Pinned value                                             |
+| --------------- | -------------------------------------------------------- |
+| Profile id      | `claude-code-2.1.233-sdk-0.112.1`                        |
+| Claude Code CLI | `2.1.233`                                                |
+| Anthropic SDK   | `0.112.1`                                                |
+| Build time      | `2026-08-14T17:21:48Z`                                   |
+| Git SHA         | `f8d57569aaf350fe25dc4dfa10cad59db8ea4d45`               |
+| Analysis        | `docs/protocol/versions/claude-code-2.1.233-analysis.md` |
+| Profile module  | not yet present — added in the catalogue phase           |
+
+`src/profiles/claude-code-2.1.233.ts` does not exist yet, and its absence is deliberate rather than
+an oversight. This entry is anchored in the analysis document above, which is committed and is the
+sole source for the values in the table. Registering the trace entry first keeps the order of
+operations honest: the evidence is recorded, reviewable, and testable before any code claims to
+implement it. The profile module is added in the catalogue phase, and the governance test in
+`test/governance/source-trace-profiles.test.ts` enforces the invariant that survives both states —
+every profile module must be registered here, and every entry registered here must cite an analysis
+document that exists.
+
+## Conscious and permanent divergences
+
+The behaviours below exist upstream and are **not** ported. They are not gaps to be closed later;
+each one is out of scope permanently, for the same structural reason. This package is pure: it
+performs no I/O, reads no environment, fetches no remote configuration, and holds no process state.
+Anything whose value is only knowable by doing one of those things cannot be a fact this package
+emits, so reproducing it would require inventing the input — which is worse than omitting the
+output.
+
+| Upstream behaviour                                                         | Origin                          | Disposition                                                                                                                                               |
+| -------------------------------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `heather_vale`                                                             | remote-config override          | Out of scope. It overrides `max_output_tokens` from a remote gate; the package has no remote-config channel and clamps against the model default instead. |
+| `ignoreEnvOptOut` on the billing block (2.1.233)                           | process environment             | Out of scope. Its entire purpose is to decide whether an environment opt-out is honoured, and the package reads no environment.                           |
+| `tengu_*` gates                                                            | remote-config                   | Out of scope. Remote gates are resolved at runtime by the client; a pure builder has no value to resolve them to.                                         |
+| `server_side_fallback`, `server_side_fallback-category`, `fallback_credit` | lane runtime, via remote-config | Not emitted by this package. These betas are pushed by the client's fallback lane, which is process state the package does not model.                     |
+| `per_message_effort`                                                       | lane runtime, via remote-config | Not emitted by this package. Same reason: the flag is gated on remote configuration read at runtime.                                                      |
+
+Consequence for consumers: a request built by this package is a subset of what a live client may
+send, and the difference is confined to the rows above. A consumer that needs one of these betas
+must push it explicitly through the existing `additionalBetas` seam; the package will not derive it.
+
+The rows below are a second kind of divergence: the datum exists in the upstream static catalogue
+and is knowable without I/O, but it does not participate in constructing a `/v1/messages` request.
+Carrying it would widen the package's surface with values no request ever reads.
+
+| Upstream datum                                                    | Origin           | Disposition                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `effort_cost_index` (2.1.233)                                     | static catalogue | Not ported. Present on `claude-sonnet-5`, `claude-opus-4-8`, `claude-opus-5` and `claude-fable-5` as a `{low, medium, high, xhigh, max}` record of costs relative to `high = 1`. It is advisory cost data consumed by the client's UI and mode selector; no request field is derived from it. Same precedent as `pricing`, `image_limits`, `advisor_rank` and `provider_ids`, omitted from the 2.1.195 catalogue for the same reason. |
+| Capabilities `refusal_fallback`, `opus_5_prompt_bundle` (2.1.233) | static catalogue | Transcribed verbatim as catalogue strings, but **no** field was added to `ClaudeCodeCapabilities`, because neither one changes the request the package builds. `refusal_fallback` arms the server-side fallback lane, which is runtime state and out of scope by the table above. `opus_5_prompt_bundle` selects an internal client prompt bundle and never reaches the wire.                                                         |
 
 ## Build configuration decision
 
@@ -163,11 +225,13 @@ supersedes, if any.
 
 ### Fixture integrity
 
-| Fixture                                                      | Model                 | SHA-256                                                            |
-| ------------------------------------------------------------ | --------------------- | ------------------------------------------------------------------ |
-| `test/fixtures/golden/decision-context-hint-rejected.json`   | n/a (decision record) | `6957d363e1e9512eb1a8d2c7170fa208b92e28460e7fb3b8576aa3814cdf4582` |
-| `test/fixtures/golden/outgoing-canary-context-hint-off.json` | `claude-opus-4-8`     | `af9fa1a299ba9b3cf493e1e5b2e0bb8b935e1089c2679ead615fe87c459bf3db` |
-| `test/fixtures/golden/outgoing-foreground.json`              | `claude-sonnet-4-5`   | `62748f01fcc20ae48f40dc4b628a094db5e06cd809d64d0c9163c0e69b0a98ea` |
+| Fixture                                                              | Model                 | SHA-256                                                            |
+| -------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------ |
+| `test/fixtures/golden/decision-context-hint-rejected.json`           | n/a (decision record) | `6957d363e1e9512eb1a8d2c7170fa208b92e28460e7fb3b8576aa3814cdf4582` |
+| `test/fixtures/golden/outgoing-canary-context-hint-off-2.1.233.json` | `claude-opus-4-8`     | `03d89e63545585041ebfba41ddcdb878efc24d3033e55130d96eab3b3c1fd6f6` |
+| `test/fixtures/golden/outgoing-canary-context-hint-off.json`         | `claude-opus-4-8`     | `af9fa1a299ba9b3cf493e1e5b2e0bb8b935e1089c2679ead615fe87c459bf3db` |
+| `test/fixtures/golden/outgoing-foreground-2.1.233.json`              | `claude-sonnet-4-5`   | `5926a3403f87e3b1c023c76075e0844266b5cb910f038bad5802deba45e14feb` |
+| `test/fixtures/golden/outgoing-foreground.json`                      | `claude-sonnet-4-5`   | `62748f01fcc20ae48f40dc4b628a094db5e06cd809d64d0c9163c0e69b0a98ea` |
 
 `test/fixtures/golden/manifest.json` is the machine-readable copy of these hashes and is the
 **source of truth**. This table and the manifest **MUST** both be updated when any fixture is
