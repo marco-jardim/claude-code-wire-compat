@@ -856,11 +856,14 @@ function validateInput(input: ClaudeCodeRequestInput): {
  * patterns. A non-string is still a caller bug and fails like every other
  * mistyped field.
  *
- * `undefined` passes through as "absent", so an explicitly-undefined field is
- * indistinguishable from an omitted one, as elsewhere in this input.
+ * There is deliberately no `undefined` arm: `inspectGraph` has already rejected
+ * an explicitly-undefined value for every key but `crypto` by the time this
+ * runs, so such an arm would be unreachable. An explicitly-undefined id is
+ * therefore `INVALID_INPUT` here, as it is for every other field, and is NOT
+ * equivalent to omitting the key — unlike at the `createBillingBlock` seam,
+ * which does treat the two alike. `billing-prev-req.test.ts` pins both halves.
  */
-function validateBillingChainId(value: unknown): string | undefined {
-  if (value === undefined) return undefined;
+function validateBillingChainId(value: unknown): string {
   if (typeof value !== "string") fail();
   return value;
 }
