@@ -265,8 +265,86 @@ Resolution order:
 
 ## 9. D5 — the 1M-context predicate
 
-Catalogue-driven, via the per-model `native_1m`, `supports_1m_beta` and
-`supports_1m_suffix` flags recorded in §5. Identical in 2.1.222 and 2.1.233.
+**Corrected.** An earlier record described this gate as catalogue-driven, via
+the per-model `native_1m`, `supports_1m_beta` and `supports_1m_suffix` flags of
+§5. That is wrong. The predicate that decides whether `context-1m-2025-08-07`
+joins the base beta list is **purely marker-based**: it tests the model
+identifier for a `[1m]` substring and consults no catalogue entry at all.
+
+The whole function, verbatim, in 2.1.233 at absolute offset `287567706`:
+
+```js
+function KE(e) {
+  if (lce()) return !1;
+  return /\[1m\]/i.test(e);
+}
+```
+
+and in 2.1.222 at absolute offset `263213749`:
+
+```js
+function ZS(e) {
+  if (c9e()) return !1;
+  return /\[1m\]/i.test(e);
+}
+```
+
+Both are 57 bytes and token-identical; the pair differs only by minified name.
+`lce()` / `c9e()` is the kill switch reading the environment variable
+`CLAUDE_CODE_DISABLE_1M_CONTEXT`. There is **no** hardcoded model identifier in
+this chain, in either version.
+
+The consequences of a marker-only gate are worth stating plainly, because they
+are counter-intuitive and they are what the package must reproduce:
+
+- A model declaring `native_1m`, presented **without** the `[1m]` suffix, does
+  **not** get the beta.
+- A model declaring `supports_1m_beta`, presented without the suffix, does
+  **not** get the beta either.
+- **Any** identifier carrying `[1m]` gets the beta, with **no** validation that
+  the model supports 1M context at all — including identifiers absent from the
+  catalogue.
+
+The catalogue flags therefore do not participate in emitting this beta on the
+base list. They remain transcribed in §5 as catalogue data, and
+`supports_1m_suffix` describes which models the client's own UI is willing to
+attach the marker to — a different question from which requests carry the beta.
+
+### The `claude-mythos-5` red herring
+
+There is no `claude-mythos-5` special case in the 1M chain. The only `mythos`
+literal anywhere in it is `"claude-mythos-preview"` — a **different
+identifier** — and it sits in the native-1M chain (`t2` / `xO`, helper `L4u`),
+not in the beta gate. That chain feeds `w4u`, which **appends** the `[1m]`
+suffix to native-1M models; it is an identifier-normalisation path, and its
+presence on the request path is **not confirmed**.
+
+### Alternative paths, all out of scope
+
+Four routes can produce the 1M beta outside the base list. None is modelled:
+
+| Route                                   | Nature                                                                                       |
+| --------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `w4u` suffix auto-append                | Identifier normalisation for native-1M models. Not confirmed on the request path.              |
+| `EMo` / `kelp_forest_sonnet`            | Remote-configuration gate, and only for `claude-sonnet-4-6`.                                   |
+| `ANTHROPIC_BETAS`                       | Process environment.                                                                           |
+| `CLAUDE_CODE_DISABLE_1M_CONTEXT`        | Process environment; the kill switch inside `KE` / `ZS` above.                                 |
+
+### What the package does
+
+The package gate is
+
+```
+policy.oneMillionContextEnabled && (use1MContextOverride ?? /\[1m\]/i.test(model))
+```
+
+which is faithful to the upstream predicate: the same regular expression against
+the same input, with the environment kill switch necessarily absent since the
+package reads no environment. `use1MContextOverride` is a documented **package
+extension** — a consumer seam that substitutes the marker test for callers who
+resolve the decision themselves. It replaces only the marker half; the profile
+policy gate still applies. Recorded in `docs/source-trace.md` under governance
+ledger L10 and locked by `test/validation/beta-overrides-1m.test.ts`.
 
 ---
 
