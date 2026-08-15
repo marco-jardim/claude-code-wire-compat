@@ -338,6 +338,19 @@ const ACCEPTED_PROFILES: ReadonlySet<ClaudeCodeProtocolProfile> = new Set([
   CLAUDE_CODE_2_1_233_PROFILE,
 ]);
 
+/**
+ * The profile every public entry point resolves to when the caller supplies
+ * none. Declared once so that the default is a single, greppable seam: a test
+ * that means "whatever the default is" reads THIS instead of naming a
+ * version, which keeps a default switch to a one-line diff and keeps tests
+ * that genuinely mean 2.1.195 honest about saying so.
+ *
+ * Exported for tests, which deep-import it. It is deliberately NOT re-exported
+ * from `src/index.ts`: the public runtime surface stays closed.
+ */
+export const DEFAULT_PROFILE: ClaudeCodeProtocolProfile =
+  CLAUDE_CODE_2_1_195_PROFILE;
+
 function validateProfile(
   profile: ClaudeCodeProtocolProfile,
 ): ClaudeCodeProtocolProfile {
@@ -1370,7 +1383,7 @@ function countTokensEvidenceRequest(
 /** Builds a canonical Claude Code count-tokens request. */
 export async function buildClaudeCodeCountTokensRequest(
   input: ClaudeCodeCountTokensInput,
-  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+  profile: ClaudeCodeProtocolProfile = DEFAULT_PROFILE,
 ): Promise<BuiltClaudeCodeCountTokensRequest> {
   try {
     const pinnedProfile = validateProfile(profile);
@@ -1465,7 +1478,7 @@ export async function buildClaudeCodeCountTokensRequest(
  */
 export async function buildClaudeCodeRequest(
   input: ClaudeCodeRequestInput,
-  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+  profile: ClaudeCodeProtocolProfile = DEFAULT_PROFILE,
 ): Promise<BuiltClaudeCodeRequest> {
   try {
     const pinnedProfile = validateProfile(profile);
@@ -1637,7 +1650,7 @@ export async function buildClaudeCodeRequest(
  */
 export function parseBuiltClaudeCodeRequest(
   value: unknown,
-  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+  profile: ClaudeCodeProtocolProfile = DEFAULT_PROFILE,
 ): BuiltClaudeCodeRequest {
   try {
     const pinnedProfile = validateProfile(profile);

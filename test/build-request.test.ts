@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import type { BuiltClaudeCodeRequest, HeaderPair } from "../src/contracts.js";
+import { CLAUDE_CODE_2_1_195_PROFILE } from "../src/profiles/claude-code-2.1.195.js";
 import {
   expectModuleUnimplemented,
   loadWave2Function,
@@ -146,7 +147,12 @@ describe("build-request (Wave 1 RED specification)", () => {
       "buildClaudeCodeRequest",
     );
     const golden = readGolden(filename);
-    const built = await build(syntheticInput(golden));
+    // The goldens are 2.1.195 captures; the profile is named so that the
+    // comparison stays about 2.1.195 rather than about the current default.
+    const built = await build(
+      syntheticInput(golden),
+      CLAUDE_CODE_2_1_195_PROFILE,
+    );
     expect(built.url).toBe(golden.url);
     expect(built.method).toBe(golden.method);
     expect(built.headers).toEqual(golden.headers);

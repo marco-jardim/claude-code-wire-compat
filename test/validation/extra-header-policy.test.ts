@@ -29,6 +29,7 @@ import {
   CLAUDE_CODE_2_1_195_PROFILE,
   parseBuiltClaudeCodeRequest,
 } from "../../src/index.js";
+import { DEFAULT_PROFILE } from "../../src/build-request.js";
 import { buildOrderedHeaders } from "../../src/headers.js";
 
 const BASE: ClaudeCodeRequestInput = {
@@ -241,7 +242,9 @@ describe("extraHeaderPolicy dropConflicting", () => {
       built.evidence.betaFeatures.join(","),
     ]);
     expect(headerValues(built.headers, "user-agent")).toEqual([
-      CLAUDE_CODE_2_1_195_PROFILE.userAgent,
+      // Built with the default profile: the canonical value that replaces the
+      // dropped caller header is the default's user-agent.
+      DEFAULT_PROFILE.userAgent,
     ]);
     expect(headerValues(built.headers, "x-meu-header")).toEqual(["kept"]);
   });

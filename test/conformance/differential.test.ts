@@ -36,8 +36,17 @@ function parseRequestBody(body: string): Record<string, unknown> {
 }
 
 async function expectEvidenceSafe(input: ClaudeCodeRequestInput) {
-  const built = await buildClaudeCodeRequest(input);
-  const parsed = parseBuiltClaudeCodeRequest(built);
+  // The reference fixtures are 2.1.195 captures, so the profile is named
+  // rather than defaulted: this suite is a statement about 2.1.195 and must
+  // keep making it whichever profile the builder defaults to.
+  const built = await buildClaudeCodeRequest(
+    input,
+    CLAUDE_CODE_2_1_195_PROFILE,
+  );
+  const parsed = parseBuiltClaudeCodeRequest(
+    built,
+    CLAUDE_CODE_2_1_195_PROFILE,
+  );
   expect(parsed).toEqual(built);
   expect(built.evidence.profileId).toBe(CLAUDE_CODE_2_1_195_PROFILE.id);
   expect(built.evidence.modelFamily).toMatch(/^(?:haiku|sonnet|opus|fable)$/u);

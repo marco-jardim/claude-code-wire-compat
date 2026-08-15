@@ -9,6 +9,7 @@ import { createHash, webcrypto } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
+import { DEFAULT_PROFILE } from "../../src/build-request.js";
 import type { BuiltClaudeCodeRequest } from "../../src/contracts.js";
 import {
   expectModuleUnimplemented,
@@ -41,8 +42,10 @@ function input(system: string, message: string): Record<string, unknown> {
   };
 }
 
+// Seeded by the CLI version of the profile that built the request; these
+// cases build with the default, so the seam supplies it.
 function fingerprint(text: string): string {
-  const payload = `59cf53e54c78${text[4] ?? "0"}${text[7] ?? "0"}${text[20] ?? "0"}2.1.195`;
+  const payload = `59cf53e54c78${text[4] ?? "0"}${text[7] ?? "0"}${text[20] ?? "0"}${DEFAULT_PROFILE.cliVersion}`;
   return createHash("sha256").update(payload, "utf8").digest("hex").slice(0, 3);
 }
 
@@ -102,7 +105,7 @@ describe("runtime/runtime-neutral (Wave 1 RED specification)", () => {
     // system text here previously drove the builder to an invented
     // system-vs-message branch that broke golden parity.
     expect(billing["text"]).toContain(
-      `cc_version=2.1.195.${fingerprint(messageText)}`,
+      `cc_version=${DEFAULT_PROFILE.cliVersion}.${fingerprint(messageText)}`,
     );
     expect(billing["text"]).not.toContain(fingerprint(systemText));
   });
