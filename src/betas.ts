@@ -12,6 +12,7 @@ import {
 } from "./model-capabilities.js";
 import { BETA_REGISTRY_2_1_233 } from "./profiles/beta-registry-2.1.233.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
+import { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
 
 /*
  * Provenance. The emitted order is a port of the genuine client's base beta set
@@ -71,7 +72,7 @@ export interface ComposableBetaRegistry {
 const PROFILE_BETA_REGISTRIES: ReadonlyMap<string, ComposableBetaRegistry> =
   new Map<string, ComposableBetaRegistry>([
     [CLAUDE_CODE_2_1_195_PROFILE.id, BETA_REGISTRY],
-    ["claude-code-2.1.233-sdk-0.112.1", BETA_REGISTRY_2_1_233],
+    [CLAUDE_CODE_2_1_233_PROFILE.id, BETA_REGISTRY_2_1_233],
   ]);
 
 /**

@@ -29,6 +29,7 @@ import {
 } from "./metadata.js";
 import { resolveModel } from "./models.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
+import { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
 import type { NormalizedRequestInput } from "./redaction.js";
 import { buildRedactedEvidence, toSafeErrorDetails } from "./redaction.js";
 import {
@@ -315,8 +316,10 @@ function containsString(value: unknown, target: string): boolean {
 }
 
 /**
- * The profiles this package will assemble a request for. One entry today; a
- * 2.1.222+ profile joins it in Wave 2 without touching `validateProfile`.
+ * The profiles this package will assemble a request for. Two entries: the
+ * 2.1.195 default and the 2.1.233 profile, which callers must pass
+ * explicitly. Admitting a profile is exactly this list -- `validateProfile`
+ * did not change to accept the second one.
  *
  * Membership is by REFERENCE, deliberately. A structural check would accept a
  * caller-built object that merely looks like a pinned profile, and every wire
@@ -332,6 +335,7 @@ function containsString(value: unknown, target: string): boolean {
  */
 const ACCEPTED_PROFILES: ReadonlySet<ClaudeCodeProtocolProfile> = new Set([
   CLAUDE_CODE_2_1_195_PROFILE,
+  CLAUDE_CODE_2_1_233_PROFILE,
 ]);
 
 function validateProfile(

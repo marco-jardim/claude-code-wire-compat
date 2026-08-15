@@ -64,6 +64,7 @@ describe("runtime/runtime-neutral (Wave 1 RED specification)", () => {
     // fails this assertion.
     expect(Object.keys(first).sort()).toEqual([
       "CLAUDE_CODE_2_1_195_PROFILE",
+      "CLAUDE_CODE_2_1_233_PROFILE",
       "ClaudeCodeWireError",
       "DEFAULT_ANTI_VERBOSITY_POLICY",
       "antiVerbosityText",
