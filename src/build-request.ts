@@ -1016,7 +1016,19 @@ function parseCapabilityDecisions(
   };
 }
 
-function parseEvidence(value: unknown): RedactedRequestEvidence {
+/**
+ * Validates evidence against the profile the request was parsed under, not
+ * against a hardcoded singleton. `parseBuiltClaudeCodeRequest` already
+ * validates `url` against `pinnedProfile.endpoint`; the profile id is the one
+ * remaining field where the two pinned profiles differ, so it has to follow
+ * the same source or a request built with a non-default profile could never
+ * be re-parsed. Still fail-closed: the profile reaching here has already
+ * passed `validateProfile`.
+ */
+function parseEvidence(
+  value: unknown,
+  pinnedProfile: ClaudeCodeProtocolProfile,
+): RedactedRequestEvidence {
   if (!isRecord(value)) fail();
   assertExactKeys(value, EVIDENCE_KEYS);
   const modelFamily = ownValue(value, "modelFamily");
@@ -1035,8 +1047,8 @@ function parseEvidence(value: unknown): RedactedRequestEvidence {
   const messageCount = ownValue(value, "messageCount");
   const systemBlockCount = ownValue(value, "systemBlockCount");
   if (
-    ownValue(value, "profileId") !== CLAUDE_CODE_2_1_195_PROFILE.id ||
-    ownValue(value, "url") !== CLAUDE_CODE_2_1_195_PROFILE.endpoint ||
+    ownValue(value, "profileId") !== pinnedProfile.id ||
+    ownValue(value, "url") !== pinnedProfile.endpoint ||
     ownValue(value, "method") !== METHOD ||
     typeof bodySha256 !== "string" ||
     !/^[0-9a-f]{64}$/u.test(bodySha256) ||
@@ -1050,8 +1062,8 @@ function parseEvidence(value: unknown): RedactedRequestEvidence {
     fail();
   }
   return {
-    profileId: CLAUDE_CODE_2_1_195_PROFILE.id,
-    url: CLAUDE_CODE_2_1_195_PROFILE.endpoint,
+    profileId: pinnedProfile.id,
+    url: pinnedProfile.endpoint,
     method: METHOD,
     modelFamily,
     logicalHeaderNames: parseStringArray(ownValue(value, "logicalHeaderNames")),
@@ -1642,7 +1654,7 @@ export function parseBuiltClaudeCodeRequest(
     if (typeof body !== "string") fail();
     const parsedBody = parseBody(body);
     const headers = parseHeaders(ownValue(value, "headers"));
-    const evidence = parseEvidence(ownValue(value, "evidence"));
+    const evidence = parseEvidence(ownValue(value, "evidence"), pinnedProfile);
     // Reading evidence is not trusting evidence. A claim that the seam
     // preserved a marker is confirmed against the body, and it is confirmed
     // HERE — before the byte-length and digest checks — so that a forgery which
