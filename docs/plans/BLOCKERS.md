@@ -95,3 +95,26 @@ would build differently from the client it claims to mimic.
    stays data, and the profile is now the parameter that binds them.
    Profiles added later inherit the seam and need no further work at
    these boundaries.
+
+## 2026-08-15 — Non-blocking observations from the 2.1.233 data port
+
+Recorded for future maintenance; neither blocks execution.
+
+**O1 — drift fixture mirrors duplicate the golden manifest.** The seven
+synthetic source trees under `test/drift/fixtures/` each carry a copy of
+`test/fixtures/golden/manifest.json`'s `fixtures` map. Sealing new golden
+fixtures therefore requires hand-updating six of the seven mirrors (the
+`golden-hash` case keeps its deliberate mismatch). Deriving the mirrors
+from the real manifest at test time would remove the duplication without
+weakening the guard; until then, every fixture addition must touch the
+mirrors in the same commit as the seal.
+
+**O2 — four parameterised suites cover the second profile only partially.**
+`build-request-mutants`, `model-wire-identity`, `model-identity`, and
+`request-body-mutants` run only a slice of their cases under the profile
+matrix; the bulk of their assertions are pinned to 2.1.195 vectors by the
+coupling-map classification (version-specific known vectors, e.g. billing
+fingerprints). The 2.1.233 profile is instead covered by its dedicated
+catalogue, beta-registry, fixture, differential, and threading suites plus
+the per-profile coverage floor. Version-specific vectors for 2.1.233
+(fingerprint, billing block) arrive with the divergence-semantics work.
