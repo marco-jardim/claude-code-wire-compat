@@ -20,6 +20,6 @@ Test quality is enforced statically rather than through mutation testing. `npm r
 
 Regenerate a fixture, run `npm run fixtures:seal`, and commit the fixture together with the manifest and the trace. The command refuses to run when the working tree carries modified tracked files outside those two targets, or an untracked file inside `test/fixtures/golden/` — an uncommitted fixture would otherwise be sealed into a hash no commit carries.
 
-CI runs `npm run fixtures:check` only. It verifies the recorded hashes against the files on disk in both directions and never writes; `fixtures:seal` must not be added to any workflow.
+CI runs `npm run fixtures:check` only. It verifies the recorded hashes against the files on disk in both directions and never writes; `fixtures:seal` must not be added to any workflow. `test/governance/ci-policy.test.ts` scans every workflow for the sealing command, and the script itself refuses to write with `refused=ci-environment` whenever `CI` is set to a truthy value, so sealing stays a reviewed local act.
 
 Keep public commit messages neutral and use Conventional Commits. Changes to the public API must include tests and documentation.

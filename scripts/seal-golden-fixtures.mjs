@@ -285,7 +285,28 @@ function sealedTrace(trace, hashes, models) {
   return trace.slice(0, bounds.start) + sealedSection + trace.slice(bounds.end);
 }
 
+/*
+ * Sealing is an authoring step, not a verification step: it regenerates the
+ * recorded hashes from whatever bytes are on disk, so automation that sealed
+ * would mint a self-consistent integrity claim nobody reviewed. CI policy
+ * forbids it in workflow text; this refusal makes the script itself unusable in
+ * that role even when invoked indirectly.
+ */
+function ciEnvironment() {
+  const flag = process.env.CI;
+  if (flag === undefined) return false;
+
+  const normalized = flag.trim().toLowerCase();
+  return normalized.length > 0 && normalized !== "0" && normalized !== "false";
+}
+
 function write(paths, root) {
+  if (ciEnvironment()) {
+    console.log("refused=ci-environment");
+    process.exitCode = FAILURE_EXIT_CODE;
+    return;
+  }
+
   const refused = refusals(root, [
     `${GOLDEN_PREFIX}${MANIFEST_NAME}`,
     "docs/source-trace.md",

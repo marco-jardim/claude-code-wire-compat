@@ -118,11 +118,27 @@ function makeTree(options: TreeOptions = {}): Tree {
   return { root, goldenRoot, manifestPath, docPath, hashes };
 }
 
-function seal(root: string, ...args: readonly string[]) {
+function run(
+  root: string,
+  args: readonly string[],
+  env: Record<string, string | undefined>,
+) {
   return spawnSync(process.execPath, [scriptPath, ...args, "--root", root], {
     cwd: repositoryRoot,
     encoding: "utf8",
+    env,
   });
+}
+
+/** The script refuses to write under CI, so the default run must not claim to be one. */
+function seal(root: string, ...args: readonly string[]) {
+  const env = { ...process.env };
+  delete env.CI;
+  return run(root, args, env);
+}
+
+function sealUnderCi(ci: string, root: string, ...args: readonly string[]) {
+  return run(root, args, { ...process.env, CI: ci });
 }
 
 function git(root: string, ...args: readonly string[]) {
@@ -351,6 +367,30 @@ describe("golden fixture sealing script", () => {
     expect(result.stdout).not.toContain("refused=dirty-tree");
     expect(snapshot(tree.root)).toEqual(before);
   });
+
+  it("refuses to write under a CI environment but still verifies", () => {
+    const tree = makeTree();
+    const before = snapshot(tree.root);
+
+    const result = sealUnderCi("true", tree.root, "--write");
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("refused=ci-environment\n");
+    expect(snapshot(tree.root)).toEqual(before);
+    expect(sealUnderCi("true", tree.root, "--check").status).toBe(0);
+  });
+
+  it.each(["false", "0", "", "  "])(
+    "writes when CI carries the falsy value %j",
+    (ci) => {
+      const tree = makeTree();
+
+      const result = sealUnderCi(ci, tree.root, "--write");
+
+      expect(result.stdout).not.toContain("refused=");
+      expect(result.status).toBe(0);
+    },
+  );
 
   it("writes despite untracked files outside the golden directory", () => {
     const tree = commitTree(makeTree());
