@@ -3,10 +3,17 @@ import { describe, expect, it } from "vitest";
 import { resolveModel } from "../src/models.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../src/profiles/claude-code-2.1.195.js";
 
-describe("catalogue capability arrays do not participate in capability derivation", () => {
-  it("cannot remove or grant id-derived capabilities", () => {
-    // This guards the deliberate simplification documented in the header comment of
-    // src/model-capabilities.ts: first-party capabilities are pure functions of model ids.
+describe("profile-override capability arrays do not participate in capability derivation", () => {
+  it("cannot remove or grant capabilities by overriding the profile catalogue", () => {
+    // Since T1.1.2 the six catalogue-backed capabilities ARE read from a
+    // catalogue -- but from the pinned 2.1.195 profile, because
+    // `deriveCapabilities` takes only a normalized id and no profile. So a
+    // caller-supplied profile cannot move a capability row: the expectations
+    // below are the pinned catalogue's values, not the override's.
+    //
+    // `claude-opus-4-5` keeps `effort: true` through the demarcated C1
+    // exception (docs/plans/BLOCKERS.md); `claude-opus-4-7` keeps its four
+    // effort-family capabilities even though the override empties its array.
     const supportedModels = {
       ...CLAUDE_CODE_2_1_195_PROFILE.supportedModels,
       "claude-opus-4-7": {
@@ -42,7 +49,10 @@ describe("catalogue capability arrays do not participate in capability derivatio
   });
 });
 
-describe("capability predicate exclusion lists remain independent", () => {
+describe("capability rows remain independent per model", () => {
+  // These rows are catalogue-backed now, except `temperature`, which has no
+  // catalogue string and stays on its allowlist predicate. Either way the
+  // distinguishing rows must not collapse into one another.
   it("preserves every distinguishing model row and temperature allowlist polarity", () => {
     const opus45 = resolveModel("claude-opus-4-5").capabilities;
     expect(opus45).toMatchObject({
