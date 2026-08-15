@@ -33,9 +33,33 @@ function profileSection(markdown: string): string {
   return end < 0 ? rest : rest.slice(0, end);
 }
 
-/** Profile ids declared by the shipped modules, discovered by readdir. */
-function moduleProfileIds(): ReadonlyMap<string, string> {
+interface ProfileModules {
+  /** Protocol profiles, by filename, with the id each declares. */
+  readonly ids: ReadonlyMap<string, string>;
+  /**
+   * Files outside the `claude-code-` prefix that declare an `id` anyway. A
+   * protocol profile shipped under a non-conforming filename would land here,
+   * and `declares every profile under the conforming name` fails on it.
+   */
+  readonly misnamed: readonly string[];
+}
+
+/**
+ * Profile modules, discovered by readdir rather than named.
+ *
+ * `src/profiles/` holds two kinds of file. A protocol profile is
+ * `claude-code-<version>.ts` and declares an `id`; a versioned registry
+ * artifact is `beta-registry-<version>.ts` and is transcribed upstream data
+ * with no id to declare. Requiring an `id` of the second kind would demand a
+ * field the artifact cannot honestly have.
+ *
+ * The prefix is not taken on trust: a file that skips the prefix but declares
+ * an `id` is recorded as `misnamed` and fails below, so renaming a profile is
+ * not a way around direction A.
+ */
+function profileModules(): ProfileModules {
   const ids = new Map<string, string>();
+  const misnamed: string[] = [];
   for (const entry of readdirSync(profilesDir, { withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith(".ts")) {
       continue;
@@ -45,17 +69,21 @@ function moduleProfileIds(): ReadonlyMap<string, string> {
     }
     const source = readFileSync(join(profilesDir, entry.name), "utf8");
     const id = MODULE_ID.exec(source)?.[1];
+    if (!entry.name.startsWith("claude-code-")) {
+      if (id !== undefined) misnamed.push(entry.name);
+      continue;
+    }
     if (id === undefined) {
       throw new Error(`src/profiles/${entry.name} declares no \`id\``);
     }
     ids.set(entry.name, id);
   }
-  return ids;
+  return { ids, misnamed };
 }
 
 const trace = readFileSync(tracePath, "utf8");
 const section = profileSection(trace);
-const modules = moduleProfileIds();
+const { ids: modules, misnamed } = profileModules();
 const registeredIds = [...new Set(section.match(PROFILE_ID) ?? [])];
 const citedDocs = [...new Set(section.match(ANALYSIS_DOC) ?? [])].map((match) =>
   match.replaceAll("`", ""),
@@ -68,6 +96,10 @@ describe("source-trace profile registry", () => {
 
   it("has registered profile entries to enforce", () => {
     expect(registeredIds.length).toBeGreaterThan(0);
+  });
+
+  it("declares every profile under the conforming name", () => {
+    expect(misnamed).toEqual([]);
   });
 
   /*

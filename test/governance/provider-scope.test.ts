@@ -55,6 +55,15 @@ const REFERENCE_IDENTIFIERS: ReadonlyMap<string, string> = new Map([
       "provider can select it. Removing it would delete reverse-engineering " +
       "knowledge; keeping it costs no runtime surface.",
   ],
+  [
+    "BEDROCK_UNSUPPORTED_BETAS_2_1_233",
+    "Static reference data, not a selectable branch. The 2.1.233 transcription " +
+      "of the set above, taken from upstream `pts` and exported for documentary " +
+      "value; it is consumed by NOTHING in `src/`, so no provider can select " +
+      "it. The name keeps the upstream meaning verbatim on purpose: renaming " +
+      "the constant to keep the word out of this scan would be obfuscation, " +
+      "which is a worse outcome than an allowlist entry that says what it is.",
+  ],
 ]);
 
 /**
