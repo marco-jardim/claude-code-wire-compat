@@ -1,0 +1,12 @@
+{
+  "sourceCommit": "0000000000000000000000000000000000000000",
+  "models": {
+    "beta.canary.json": "model-beta",
+    "alpha.json": "model-alpha"
+  },
+  "fixtures": {
+    "decision.json": "{{hash:decision.json}}",
+    "alpha.json": "{{hash:alpha.json}}",
+    "beta.canary.json": "{{hash:beta.canary.json}}"
+  }
+}

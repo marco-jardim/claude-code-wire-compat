@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -10,6 +10,16 @@ const publish = readFileSync(
   "utf8",
 );
 const packageJson = readFileSync(join(root, "package.json"), "utf8");
+const workflowRoot = join(root, ".github", "workflows");
+const workflows = readdirSync(workflowRoot)
+  .filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"))
+  .sort()
+  .map((name) => ({
+    name,
+    source: readFileSync(join(workflowRoot, name), "utf8"),
+  }));
+
+const SEALING_COMMANDS = ["fixtures:seal", "seal-golden-fixtures.mjs --write"];
 
 describe("CI policy", () => {
   it.each(["node-20:", "node-22:", "node-24:", "bun:", "workerd:", "quality:"])(
@@ -23,6 +33,7 @@ describe("CI policy", () => {
     "npm run lint",
     "npm run typecheck",
     "npm test",
+    "npm run fixtures:check",
     "npm run test:coverage",
     "npm run build",
     "npm run pack:check",
@@ -47,6 +58,41 @@ describe("CI policy", () => {
     expect(packageJson).not.toContain("test:mutation");
     expect(packageJson).not.toContain("stryker");
     expect(ci).not.toContain("npm run test:mutation");
+  });
+
+  /*
+   * Sealing rewrites the manifest and the trace table from whatever bytes are
+   * on disk, so a workflow that sealed would launder a corrupted or unreviewed
+   * fixture into a fresh, self-consistent integrity claim — and the reviewer
+   * would see a green check. Automation may verify the seal, never mint it.
+   * The scan covers every workflow file, not just ci.yml: the hazard is the
+   * command, not the job it hides in.
+   */
+  it("never seals golden fixtures from a workflow", () => {
+    expect(workflows.length).toBeGreaterThan(0);
+
+    const offenders = workflows
+      .filter(({ source }) =>
+        SEALING_COMMANDS.some((command) => source.includes(command)),
+      )
+      .map(({ name }) => name);
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("detects a sealing command added to any workflow", () => {
+    // Proves the scan above is not vacuously true: it must reject the exact
+    // shapes a contributor would reach for, in a file that is not ci.yml.
+    const scan = (source: string) =>
+      SEALING_COMMANDS.filter((command) => source.includes(command));
+
+    expect(scan("      - run: npm run fixtures:seal")).toEqual([
+      "fixtures:seal",
+    ]);
+    expect(
+      scan("      - run: node scripts/seal-golden-fixtures.mjs --write"),
+    ).toEqual(["seal-golden-fixtures.mjs --write"]);
+    expect(scan("      - run: npm run fixtures:check")).toEqual([]);
   });
 
   it("does not consume repository secrets for pull requests", () => {

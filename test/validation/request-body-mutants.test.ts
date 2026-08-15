@@ -6,8 +6,8 @@ import { composeBetas } from "../../src/betas.js";
 import { ClaudeCodeWireError } from "../../src/contracts.js";
 import type { ClaudeCodeWireErrorCode } from "../../src/contracts.js";
 import { resolveModel } from "../../src/models.js";
-import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
 import { buildCanonicalBody } from "../../src/request-body.js";
+import { describeEachProfile } from "../support/profile-matrix.js";
 
 const model = {
   id: "m",
@@ -486,7 +486,7 @@ describe("request body canonicalization mutation boundaries", () => {
   });
 });
 
-describe("request body capability and freeze behavior", () => {
+describeEachProfile("request body capability and freeze behavior", (entry) => {
   it("enables context hints only when request and profile enable it", () => {
     const requested = { ...baseInput(), capabilities: { contextHint: true } };
     const enabled = buildCanonicalBody(
@@ -494,18 +494,12 @@ describe("request body capability and freeze behavior", () => {
       model,
       [],
       {},
-      { ...CLAUDE_CODE_2_1_195_PROFILE, contextHintEnabled: true },
+      { ...entry.profile, contextHintEnabled: true },
     );
     expect(enabled["context_hint"]).toEqual({ enabled: true });
 
     expect(
-      buildCanonicalBody(
-        baseInput(),
-        model,
-        [],
-        {},
-        CLAUDE_CODE_2_1_195_PROFILE,
-      ),
+      buildCanonicalBody(baseInput(), model, [], {}, entry.profile),
     ).not.toHaveProperty("context_hint");
     expect(
       buildCanonicalBody(
@@ -516,7 +510,7 @@ describe("request body capability and freeze behavior", () => {
         },
         [],
         {},
-        { ...CLAUDE_CODE_2_1_195_PROFILE, contextHintEnabled: true },
+        { ...entry.profile, contextHintEnabled: true },
       ),
     ).toHaveProperty("context_hint", { enabled: true });
     expect(build(requested)).not.toHaveProperty("context_hint");
@@ -528,13 +522,7 @@ describe("request body capability and freeze behavior", () => {
         ...baseInput(),
         capabilities: { contextHint: requested },
       };
-      const result = buildCanonicalBody(
-        input,
-        model,
-        [],
-        {},
-        CLAUDE_CODE_2_1_195_PROFILE,
-      );
+      const result = buildCanonicalBody(input, model, [], {}, entry.profile);
       expect(result).not.toHaveProperty("context_hint");
     }
     const result = buildCanonicalBody(
@@ -542,7 +530,7 @@ describe("request body capability and freeze behavior", () => {
       model,
       [],
       {},
-      CLAUDE_CODE_2_1_195_PROFILE,
+      entry.profile,
     );
     expect(result).not.toHaveProperty("context_hint");
   });
@@ -550,7 +538,7 @@ describe("request body capability and freeze behavior", () => {
   it("inspects a supplied profile and rejects cycles inside it", () => {
     const cycle: unknown[] = [];
     cycle.push(cycle);
-    const profile = { ...CLAUDE_CODE_2_1_195_PROFILE, cycle };
+    const profile = { ...entry.profile, cycle };
     expectWireCode(
       () => buildCanonicalBody(baseInput(), model, [], {}, profile),
       "CYCLIC_INPUT",
@@ -665,13 +653,15 @@ describe("beta composition mutants", () => {
     ]);
   });
 
-  it("gates context hint on the profile", () => {
-    const profile = {
-      ...CLAUDE_CODE_2_1_195_PROFILE,
-      contextHintEnabled: true,
-    };
-    expect(composeBetas(input, profile)).toContain("context-hint-2026-04-09");
-    expect(composeBetas(input)).not.toContain("context-hint-2026-04-09");
+  describeEachProfile("profile gating", (entry) => {
+    it("gates context hint on the profile", () => {
+      const profile = {
+        ...entry.profile,
+        contextHintEnabled: true,
+      };
+      expect(composeBetas(input, profile)).toContain("context-hint-2026-04-09");
+      expect(composeBetas(input)).not.toContain("context-hint-2026-04-09");
+    });
   });
 
   it("does not duplicate guarded builder betas", () => {

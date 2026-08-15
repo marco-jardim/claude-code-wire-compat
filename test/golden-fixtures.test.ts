@@ -158,7 +158,11 @@ describe("golden fixtures", () => {
     );
     if (!isRecord(manifest.fixtures))
       throw new TypeError("manifest.fixtures must be an object.");
-    expect(Object.keys(manifest.fixtures)).toEqual(ALL_FIXTURE_FILENAMES);
+    // The sealing tool (scripts/seal-golden-fixtures.mjs) emits manifest keys
+    // in deterministic lexicographic order; assert that canonical order here.
+    expect(Object.keys(manifest.fixtures)).toEqual(
+      [...ALL_FIXTURE_FILENAMES].sort(),
+    );
     for (const filename of ALL_FIXTURE_FILENAMES) {
       expect(sha256(readFileSync(fixtureUrl(filename)))).toBe(
         manifest.fixtures[filename],

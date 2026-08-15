@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
+import type { ClaudeCodeProtocolProfile } from "../../src/contracts.js";
 import { buildOrderedHeaders } from "../../src/headers.js";
-import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
+import { describeEachProfile } from "../support/profile-matrix.js";
 
 const ACCESS_TOKEN = "sentinel-token-header-mutants";
 
 function headerInput(
+  profile: ClaudeCodeProtocolProfile,
   overrides: Readonly<Record<string, unknown>> = {},
 ): unknown {
   return {
@@ -24,21 +26,21 @@ function headerInput(
     app: "cli",
     stainlessRetryCount: 0,
     extraHeaders: [],
-    profile: CLAUDE_CODE_2_1_195_PROFILE,
+    profile,
     ...overrides,
   };
 }
 
-function expectCode(
-  overrides: Readonly<Record<string, unknown>>,
-  code: string,
-): void {
-  expect(() => buildOrderedHeaders(headerInput(overrides))).toThrow(
-    expect.objectContaining({ code }),
-  );
-}
+describeEachProfile("expanded header validation mutants", (entry) => {
+  function expectCode(
+    overrides: Readonly<Record<string, unknown>>,
+    code: string,
+  ): void {
+    expect(() =>
+      buildOrderedHeaders(headerInput(entry.profile, overrides)),
+    ).toThrow(expect.objectContaining({ code }));
+  }
 
-describe("expanded header validation mutants", () => {
   it.each(["background", null, 1])("rejects invalid app %#", (app) => {
     expectCode({ app }, "INVALID_INPUT");
   });
