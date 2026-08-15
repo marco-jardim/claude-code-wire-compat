@@ -21,11 +21,32 @@ const consumerNames = [
 const consumerDirectories = consumerNames.map((name) =>
   join(temporaryRoot, name),
 );
+/*
+ * The cases every consumer runs, in this order.
+ *
+ * `default` exercises the package's implicit default and is what this script
+ * has always measured. It is kept, but it is no longer the only signal: a
+ * default switch moves it by design, which is precisely why it cannot be the
+ * canary for an unintended change. The explicit cases are the canary — each
+ * names its profile, so its digest is a statement about THAT profile and must
+ * not move for any reason other than a change to that profile's own wire
+ * output.
+ *
+ * The request input is identical across cases on purpose, so the profile is
+ * the only variable between their digests. The model is catalogued
+ * identically by both profiles, which keeps the comparison about profile
+ * scalars and beta composition rather than about catalogue deltas.
+ */
+const CASE_NAMES = ["default", "2.1.195", "2.1.233"];
 const consumerSource = `
-import { buildClaudeCodeRequest } from "@tormentalabs/claude-code-wire-compat";
+import {
+  CLAUDE_CODE_2_1_195_PROFILE,
+  CLAUDE_CODE_2_1_233_PROFILE,
+  buildClaudeCodeRequest,
+} from "@tormentalabs/claude-code-wire-compat";
 
 const token = "test-token-not-a-secret";
-const request = await buildClaudeCodeRequest({
+const input = {
   accessToken: token,
   model: "claude-sonnet-4-5",
   maxTokens: 128,
@@ -41,30 +62,42 @@ const request = await buildClaudeCodeRequest({
     arch: "x64",
   },
   clientRequestId: "00000000-0000-4000-8000-000000000002",
-});
-
-const headers = [...new Headers(request.headers).entries()]
-  .filter(([name]) => name !== "authorization" && name !== "x-api-key")
-  .sort(([left], [right]) => left.localeCompare(right));
-const normalized = {
-  url: request.url,
-  method: request.method,
-  headers,
-  body: request.body,
 };
-const serialized = JSON.stringify(normalized);
-if (serialized.includes(token)) {
-  throw new Error("Normalized request contains the synthetic token");
-}
-const digestBytes = await crypto.subtle.digest(
-  "SHA-256",
-  new TextEncoder().encode(serialized),
-);
-const digest = [...new Uint8Array(digestBytes)]
-  .map((byte) => byte.toString(16).padStart(2, "0"))
-  .join("");
 
-export const report = { digest };
+async function digestFor(profile) {
+  const request =
+    profile === undefined
+      ? await buildClaudeCodeRequest(input)
+      : await buildClaudeCodeRequest(input, profile);
+  const headers = [...new Headers(request.headers).entries()]
+    .filter(([name]) => name !== "authorization" && name !== "x-api-key")
+    .sort(([left], [right]) => left.localeCompare(right));
+  const normalized = {
+    url: request.url,
+    method: request.method,
+    headers,
+    body: request.body,
+  };
+  const serialized = JSON.stringify(normalized);
+  if (serialized.includes(token)) {
+    throw new Error("Normalized request contains the synthetic token");
+  }
+  const digestBytes = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(serialized),
+  );
+  return [...new Uint8Array(digestBytes)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export const report = {
+  digests: {
+    "default": await digestFor(undefined),
+    "2.1.195": await digestFor(CLAUDE_CODE_2_1_195_PROFILE),
+    "2.1.233": await digestFor(CLAUDE_CODE_2_1_233_PROFILE),
+  },
+};
 `;
 
 function run(command, args, options = {}) {
@@ -127,13 +160,26 @@ function safeRemove(directory) {
   rmSync(directory, { recursive: true, force: true });
 }
 
-function parseDigest(output, runtime) {
+function parseDigests(output, runtime) {
   const lines = output.split(/\r?\n/u).filter(Boolean);
   const report = JSON.parse(lines.at(-1));
-  if (typeof report.digest !== "string") {
-    throw new Error(`${runtime} did not return a digest`);
+  const digests = report.digests;
+  if (digests === null || typeof digests !== "object") {
+    throw new Error(`${runtime} did not return digests`);
   }
-  return report.digest;
+  // Exact case set, not a subset: a consumer that silently skips a profile
+  // would otherwise pass by reporting fewer digests than it was asked for.
+  if (JSON.stringify(Object.keys(digests)) !== JSON.stringify(CASE_NAMES)) {
+    throw new Error(
+      `${runtime} reported cases ${JSON.stringify(Object.keys(digests))}`,
+    );
+  }
+  for (const name of CASE_NAMES) {
+    if (typeof digests[name] !== "string" || digests[name].length !== 64) {
+      throw new Error(`${runtime} did not return a digest for ${name}`);
+    }
+  }
+  return digests;
 }
 
 if (!existsSync(temporaryRoot)) {
@@ -204,14 +250,14 @@ try {
   const digests = new Map();
   digests.set(
     "node",
-    parseDigest(
+    parseDigests(
       run(process.execPath, ["run.mjs"], { cwd: nodeDirectory }),
       "node",
     ),
   );
   digests.set(
     "bun",
-    parseDigest(run("bun", ["run.mjs"], { cwd: bunDirectory }), "bun"),
+    parseDigests(run("bun", ["run.mjs"], { cwd: bunDirectory }), "bun"),
   );
 
   const mf = new Miniflare({
@@ -232,16 +278,33 @@ try {
     if (!response.ok) {
       throw new Error(`workerd returned HTTP ${response.status}`);
     }
-    digests.set("workerd", parseDigest(await response.text(), "workerd"));
+    digests.set("workerd", parseDigests(await response.text(), "workerd"));
   } finally {
     await mf.dispose();
   }
 
-  for (const [runtime, digest] of digests) {
-    console.log(`${runtime}: ${digest}`);
+  // Cross-runtime equality is asserted PER CASE. A profile whose digest
+  // differs between runtimes fails even if every other profile agrees.
+  const mismatched = [];
+  for (const name of CASE_NAMES) {
+    const perRuntime = [...digests].map(([runtime, byCase]) => [
+      runtime,
+      byCase[name],
+    ]);
+    for (const [runtime, digest] of perRuntime) {
+      console.log(`${name} ${runtime}: ${digest}`);
+    }
+    const distinct = new Set(perRuntime.map(([, digest]) => digest));
+    if (distinct.size !== 1) {
+      mismatched.push(name);
+      continue;
+    }
+    console.log(`${name}: identical across runtimes.`);
   }
-  if (new Set(digests.values()).size !== 1) {
-    throw new Error("Packed consumer digests do not match");
+  if (mismatched.length > 0) {
+    throw new Error(
+      `Packed consumer digests do not match for: ${mismatched.join(", ")}`,
+    );
   }
   console.log("Packed consumer digests are identical.");
 } finally {
