@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const FAILURE_EXIT_CODE = 1;
 const MANIFEST_NAME = "manifest.json";
+const GOLDEN_PREFIX = "test/fixtures/golden/";
 const SECTION_HEADING = "### Fixture integrity";
 const SHA256_HEX = /\b[0-9a-f]{64}\b/gu;
 const TABLE_BLOCK = /(?:^[ \t]*\|[^\r\n]*(?:\r?\n|$))+/mu;
@@ -197,29 +198,52 @@ function check(paths) {
 }
 
 /*
+ * An untracked path is hazardous only when it sits in the golden directory:
+ * sealing it would publish a manifest hash for content no commit carries. Any
+ * other untracked file can neither be corrupted by the reseal nor ride along in
+ * its commit, so refusing on it is a false positive.
+ */
+function untrackedHazard(target) {
+  return (
+    target.startsWith(GOLDEN_PREFIX) ||
+    (target.endsWith("/") && GOLDEN_PREFIX.startsWith(target))
+  );
+}
+
+/*
  * Resealing rewrites two tracked files, so it must not run on top of unrelated
  * uncommitted work: the operator could not otherwise tell the reseal apart from
  * whatever else was in flight. A tree with no git at all (a synthetic fixture
  * tree) has nothing to confuse and is allowed.
  */
-function dirtyPaths(root, allowed) {
+function refusals(root, allowed) {
   const status = spawnSync("git", ["status", "--porcelain"], {
     cwd: root,
     encoding: "utf8",
   });
   if (status.error !== undefined || status.status !== 0) return [];
 
-  const dirty = [];
+  const refused = [];
   for (const line of status.stdout.split("\n")) {
     if (line.trim().length === 0) continue;
+    const code = line.slice(0, 2);
     const entry = line.slice(3).trim();
     const target = entry.includes(" -> ")
       ? entry.slice(entry.indexOf(" -> ") + 4)
       : entry;
     const normalized = target.replaceAll('"', "").replaceAll("\\", "/");
-    if (!allowed.includes(normalized)) dirty.push(normalized);
+
+    if (code === "??") {
+      if (untrackedHazard(normalized)) {
+        refused.push(`refused=untracked-fixture path=${normalized}`);
+      }
+      continue;
+    }
+    if (!allowed.includes(normalized)) {
+      refused.push(`refused=dirty-tree path=${normalized}`);
+    }
   }
-  return dirty.sort();
+  return refused.sort();
 }
 
 function sealedManifest(manifest, hashes, eol) {
@@ -262,14 +286,12 @@ function sealedTrace(trace, hashes, models) {
 }
 
 function write(paths, root) {
-  const dirty = dirtyPaths(root, [
-    "test/fixtures/golden/manifest.json",
+  const refused = refusals(root, [
+    `${GOLDEN_PREFIX}${MANIFEST_NAME}`,
     "docs/source-trace.md",
   ]);
-  if (dirty.length > 0) {
-    for (const target of dirty) {
-      console.log(`refused=dirty-tree path=${target}`);
-    }
+  if (refused.length > 0) {
+    for (const refusal of refused) console.log(refusal);
     process.exitCode = FAILURE_EXIT_CODE;
     return;
   }

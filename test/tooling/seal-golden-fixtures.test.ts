@@ -141,6 +141,15 @@ function git(root: string, ...args: readonly string[]) {
   );
 }
 
+/** Commit the synthetic tree so later edits carry a real git status code. */
+function commitTree(tree: Tree): Tree {
+  writeFileSync(path.join(tree.root, "README.md"), "synthetic\n");
+  expect(git(tree.root, "init", "-q").status).toBe(0);
+  expect(git(tree.root, "add", "-A").status).toBe(0);
+  expect(git(tree.root, "commit", "-q", "-m", "synthetic").status).toBe(0);
+  return tree;
+}
+
 function snapshot(root: string): ReadonlyMap<string, string> {
   const targets = [
     path.join(root, "docs", "source-trace.md"),
@@ -312,11 +321,8 @@ describe("golden fixture sealing script", () => {
     expect(section).toContain("| n/a (decision record) |");
   });
 
-  it("refuses to write over an unrelated dirty tree", () => {
-    const tree = makeTree();
-    expect(git(tree.root, "init", "-q").status).toBe(0);
-    expect(git(tree.root, "add", "-A").status).toBe(0);
-    expect(git(tree.root, "commit", "-q", "-m", "synthetic").status).toBe(0);
+  it("refuses to write over a modified tracked file outside the targets", () => {
+    const tree = commitTree(makeTree());
     writeFileSync(path.join(tree.root, "README.md"), "dirty\n");
     const before = snapshot(tree.root);
 
@@ -325,6 +331,44 @@ describe("golden fixture sealing script", () => {
     expect(result.status).not.toBe(0);
     expect(result.stdout).toContain("refused=dirty-tree path=README.md\n");
     expect(snapshot(tree.root)).toEqual(before);
+  });
+
+  /*
+   * Sealing an uncommitted fixture would publish a hash for content no commit
+   * carries, which is the exact broken state the refusal exists to prevent.
+   */
+  it("refuses to write while the golden directory holds untracked files", () => {
+    const tree = commitTree(makeTree());
+    writeFileSync(path.join(tree.goldenRoot, "gamma.json"), "{}\n");
+    const before = snapshot(tree.root);
+
+    const result = seal(tree.root, "--write");
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain(
+      "refused=untracked-fixture path=test/fixtures/golden/gamma.json\n",
+    );
+    expect(result.stdout).not.toContain("refused=dirty-tree");
+    expect(snapshot(tree.root)).toEqual(before);
+  });
+
+  it("writes despite untracked files outside the golden directory", () => {
+    const tree = commitTree(makeTree());
+    writeFileSync(path.join(tree.root, "notes.md"), "untracked\n");
+    mkdirSync(path.join(tree.root, "docs", "plans"), { recursive: true });
+    writeFileSync(
+      path.join(tree.root, "docs", "plans", "unrelated.md"),
+      "untracked\n",
+    );
+
+    const result = seal(tree.root, "--write");
+
+    expect(result.stdout).not.toContain("refused=");
+    expect(result.status).toBe(0);
+    expect(seal(tree.root, "--check").status).toBe(0);
+    expect(readFileSync(path.join(tree.root, "notes.md"), "utf8")).toBe(
+      "untracked\n",
+    );
   });
 
   it("writes nothing in check mode", () => {
