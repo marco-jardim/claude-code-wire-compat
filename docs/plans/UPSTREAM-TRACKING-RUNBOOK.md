@@ -34,8 +34,12 @@ npm pack @anthropic-ai/claude-code-<platform>@<version>
 ```
 
 `<platform>` is a target triple such as `win32-x64`, `darwin-arm64`, or
-`linux-x64`. Any platform works for extraction purposes; the embedded
-JavaScript is identical across them. Pick whichever downloads fastest.
+`linux-x64`. Any platform works for extraction purposes: the wire-relevant
+data — beta registry, model catalogue, version, endpoints — is the same
+across them. The bundles are not byte-identical, though: each build embeds
+platform-tagged constants (the sourcemap group, for example) and may carry a
+different build timestamp. Extract every scalar from the same platform's
+build; do not mix values from two platforms' bundles.
 
 Extract the tarball. Inside is a single large executable produced by the Bun
 compiler. That executable embeds the entire application as one contiguous run
