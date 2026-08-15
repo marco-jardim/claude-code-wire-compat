@@ -68,6 +68,7 @@ required](./docs/protocol/versions/README.md):
 - [Claude Code 2.1.150](./docs/protocol/versions/claude-code-2.1.150-analysis.md)
 - [Claude Code 2.1.159](./docs/protocol/versions/claude-code-2.1.159-analysis.md)
 - [Claude Code 2.1.195](./docs/protocol/versions/claude-code-2.1.195-analysis.md)
+- [Claude Code 2.1.233](./docs/protocol/versions/claude-code-2.1.233-analysis.md)
   — the release this package's profile pins.
 
 ## Development

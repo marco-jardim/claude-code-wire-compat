@@ -21,9 +21,19 @@ what a client must send to stay wire-compatible with that release.
 | [claude-code-2.1.150-analysis.md](./claude-code-2.1.150-analysis.md) | `2.1.150`           |
 | [claude-code-2.1.159-analysis.md](./claude-code-2.1.159-analysis.md) | `2.1.159`           |
 | [claude-code-2.1.195-analysis.md](./claude-code-2.1.195-analysis.md) | `2.1.195`           |
+| [claude-code-2.1.233-analysis.md](./claude-code-2.1.233-analysis.md) | `2.1.233`           |
 
-These analyses are ported from the upstream project and reproduced verbatim; see
-each file's provenance header and [../../ATTRIBUTION.md](../../ATTRIBUTION.md).
+These analyses come in two kinds, and each file's provenance header states which
+it is:
+
+- **Ported** — reproduced from the upstream project, carrying a provenance
+  header that names the source repository, source path, source commit and
+  licence, and declaring whether the port is verbatim. Every ported document is
+  also listed in [../../ATTRIBUTION.md](../../ATTRIBUTION.md).
+- **First-party** — researched and authored in this repository, carrying a
+  provenance header that says so and names the analysis method instead of a
+  source repository. Nothing in a first-party document is reproduced from an
+  external project, so it has no attribution row.
 
 ## Adding a profile requires a new analysis
 
