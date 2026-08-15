@@ -4,6 +4,7 @@ import type {
   ClaudeCodeBetaPolicy,
   ClaudeCodeCapabilities,
 } from "./contracts.js";
+import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
 /**
  * Extended-thinking resolution, ported from the genuine client's request
@@ -73,9 +74,21 @@ export interface ResolvedThinking {
 
 /**
  * Per-model output token limits, ported from upstream `Xxe` at byte offset
- * 227378240. Keyed on the NORMALISED model id, and deliberately independent of
- * the catalogue: `claude-3-opus`, `claude-3-sonnet` and `claude-3-haiku` are
- * reachable through the normaliser but have no catalogue entry.
+ * 227378240. Keyed on the NORMALISED model id.
+ *
+ * Resolution order, since Fase 1.2:
+ *
+ *   1. The pinned 2.1.195 catalogue, when the id has an entry carrying
+ *      `maxOutputTokens`. That is the single source of truth for every model
+ *      the profile knows, and `token-limits-equivalence.test.ts` pins the two
+ *      sources cell by cell.
+ *   2. Otherwise the transcribed `Xxe` table below, preserved intact as the
+ *      demarcated fallback. It is NOT dead code and must not be trimmed to
+ *      "only the ids the catalogue lacks": `claude-3-opus`, `claude-3-sonnet`
+ *      and `claude-3-haiku` are reachable through the normaliser with no
+ *      catalogue entry, `claude-mythos-5` is absent from the catalogue by
+ *      product decision D-1, and any id from a newer client lands on the
+ *      final fallback row.
  *
  * Both fields are load-bearing. `upperLimit` seeds the thinking budget when the
  * caller supplies none (upstream `wvi = Xxe(e).upperLimit - 1`); `default` caps
@@ -93,34 +106,43 @@ export interface ResolvedThinking {
 export function modelOutputTokenLimits(
   normalizedId: string,
 ): ModelOutputTokenLimits {
-  if (normalizedId === "claude-fable-5" || normalizedId === "claude-mythos-5") {
+  const declared =
+    CLAUDE_CODE_2_1_195_PROFILE.supportedModels[normalizedId]?.maxOutputTokens;
+  if (declared !== undefined) {
+    // `upper` is the catalogue's name for what this module calls `upperLimit`;
+    // the rename happens here and nowhere else.
+    return { default: declared.default, upperLimit: declared.upper };
+  }
+
+  /*
+   * ---- Demarcated fallback: the reachable remainder of `Xxe`. ----
+   *
+   * No catalogue id reaches this point. Every entry of the 2.1.195 catalogue
+   * declares `maxOutputTokens`, and `capability-equivalence.test.ts` fails if
+   * one stops doing so, which is what keeps the rows below to the ids the
+   * catalogue genuinely cannot answer for:
+   *
+   *   - `claude-mythos-5` has no catalogue entry by product decision D-1.
+   *   - `claude-3-opus`, `claude-3-sonnet` and `claude-3-haiku` are reachable
+   *     through the normaliser and predate the catalogue.
+   *
+   * The rows for catalogued ids were deleted rather than kept "just in case":
+   * they were unreachable, so they could be neither covered nor
+   * mutation-killed, and a second copy of a limit that no longer serves any
+   * request is exactly the duplicated table
+   * `test/governance/single-source-of-truth.test.ts` exists to prevent.
+   *
+   * This mirrors upstream 2.1.222, where derivation is catalogue-first and
+   * the surviving legacy rows are the `claude-3-*` ones plus a generic tail.
+   *
+   * If a future profile omits `maxOutputTokens` for some id, that id lands on
+   * the generic tail below -- 32000/128000 -- rather than on a stale
+   * per-model row. That is deliberate: a wrong-but-loud generic limit is
+   * recoverable, a silently stale per-model limit is not. The equivalence
+   * guard fires first in any case.
+   */
+  if (normalizedId === "claude-mythos-5") {
     return { default: 64000, upperLimit: 128000 };
-  }
-  if (normalizedId === "claude-opus-4-8") {
-    return { default: 64000, upperLimit: 128000 };
-  }
-  if (normalizedId === "claude-opus-4-7") {
-    return { default: 64000, upperLimit: 128000 };
-  }
-  if (normalizedId === "claude-sonnet-4-6") {
-    return { default: 32000, upperLimit: 128000 };
-  }
-  if (normalizedId === "claude-opus-4-6") {
-    return { default: 64000, upperLimit: 128000 };
-  }
-  if (
-    normalizedId === "claude-opus-4-5" ||
-    normalizedId === "claude-sonnet-4-0" ||
-    normalizedId === "claude-sonnet-4-5" ||
-    normalizedId === "claude-haiku-4-5"
-  ) {
-    return { default: 32000, upperLimit: 64000 };
-  }
-  if (
-    normalizedId === "claude-opus-4-1" ||
-    normalizedId === "claude-opus-4-0"
-  ) {
-    return { default: 32000, upperLimit: 32000 };
   }
   if (normalizedId === "claude-3-opus") {
     return { default: 4096, upperLimit: 4096 };
@@ -130,15 +152,6 @@ export function modelOutputTokenLimits(
   }
   if (normalizedId === "claude-3-haiku") {
     return { default: 4096, upperLimit: 4096 };
-  }
-  if (
-    normalizedId === "claude-3-5-sonnet" ||
-    normalizedId === "claude-3-5-haiku"
-  ) {
-    return { default: 8192, upperLimit: 8192 };
-  }
-  if (normalizedId === "claude-3-7-sonnet") {
-    return { default: 32000, upperLimit: 64000 };
   }
   return { default: 32000, upperLimit: 128000 };
 }
