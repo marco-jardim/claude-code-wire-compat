@@ -2,6 +2,71 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-08-15
+
+### Breaking
+
+- **The default protocol profile is now Claude Code 2.1.233 (SDK 0.112.1).** Any
+  call to `buildClaudeCodeRequest`, `buildClaudeCodeCountTokensRequest` or
+  `parseBuiltClaudeCodeRequest` that does not pass `profile` explicitly now
+  produces the 2.1.233 wire shape instead of the 2.1.195 one. Concretely, a
+  default-profile request changes in all of the following ways:
+
+  - the user agent becomes `claude-cli/2.1.233 (external, cli)`;
+  - `x-stainless-package-version` becomes `0.112.1`;
+  - `anthropic-beta` is selected from the 2.1.233 beta registry (31 entries).
+    `summarize-connector-text-2026-03-13` no longer exists upstream, so
+    `betaPolicy.narrationSummariesEnabled` is inert under the default profile —
+    it is still accepted, and still effective under the 2.1.195 profile;
+  - the model catalogue has 17 entries, adding `claude-sonnet-5`,
+    `claude-opus-5` and `claude-mythos-5`;
+  - the canonical billing block announces `cc_version=2.1.233.<fp>`.
+
+  **To keep the previous behaviour, pass the exported
+  `CLAUDE_CODE_2_1_195_PROFILE` singleton as `profile`.** Its output is
+  byte-identical to `0.1.0` — headers, body and evidence digest — so pinning it
+  is a complete rollback of this change with no other edit required.
+
+### Added
+
+- **`CLAUDE_CODE_2_1_233_PROFILE`**, exported from the package root and from the
+  new `./profiles/claude-code-2.1.233` subpath, alongside the existing
+  `CLAUDE_CODE_2_1_195_PROFILE` and `./profiles/claude-code-2.1.195`. Both are
+  pinned singletons: the fail-closed rule is unchanged, and any other object —
+  including a structurally identical clone — is still rejected with
+  `INVALID_INPUT`.
+- **`ClaudeCodeRequestInput.previousRequestId` and
+  `ClaudeCodeRequestInput.promptId`**, both optional. Under the 2.1.233 profile
+  they are emitted as the `cc_prev_req` and `cc_prompt_id` segments of the
+  canonical billing block. A value whose format is not recognised is omitted
+  silently rather than rejected, matching the genuine client, and neither field
+  is emitted under the 2.1.195 profile.
+- **A request-derived upper bound on output tokens under 2.1.233.** A request
+  asking for `maxTokens >= 4096` raises the ceiling applied to `max_tokens`
+  instead of being clamped to the model's default limit, mirroring upstream.
+  The 2.1.195 profile keeps the previous clamp.
+- **`maxOutputTokens` on catalogue entries.** Every model entry now carries its
+  own output-token limit, so the limit a request is clamped against is readable
+  from the profile rather than implied.
+- Per-version behaviour is data-driven: a profile is data, and the behaviour it
+  selects is internal. Selecting a profile is therefore the only supported way
+  to select a protocol version, and adding a version does not change any
+  existing one.
+
+### Changed
+
+- **Capabilities and token limits are resolved from the active profile's
+  catalogue** rather than from a single pinned table. Requests built with
+  `CLAUDE_CODE_2_1_195_PROFILE` are byte-identical to `0.1.0`, which
+  `npm run test:pack` confirms by an unchanged consumer digest.
+
+### Fixed
+
+- **Evidence parsing follows the profile it was given.** `parseBuiltClaudeCodeRequest`
+  validated evidence against the pinned profile regardless of which profile
+  built the request, so a round trip through a non-default profile failed. It
+  now reads the validated profile, and every profile round-trips.
+
 ## [0.1.0] - 2026-07-28
 
 First stable release.
