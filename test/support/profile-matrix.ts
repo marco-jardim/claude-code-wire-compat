@@ -16,7 +16,11 @@ import { describe } from "vitest";
 
 import type { ClaudeCodeProtocolProfile } from "../../src/contracts.js";
 import { BETA_REGISTRY } from "../../src/beta-registry.js";
-import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
+import { BETA_REGISTRY_2_1_233 } from "../../src/profiles/beta-registry-2.1.233.js";
+import {
+  CLAUDE_CODE_2_1_195_PROFILE,
+  CLAUDE_CODE_2_1_233_PROFILE,
+} from "../../src/index.js";
 
 /** One pinned profile, plus the metadata a parametrised suite asserts on. */
 export interface ProfileUnderTest {
@@ -27,9 +31,11 @@ export interface ProfileUnderTest {
   readonly endpoint: ClaudeCodeProtocolProfile["endpoint"];
   readonly userAgent: string;
   /**
-   * Size of the shared beta registry. The registry is a module shared by every
-   * profile, so this is currently profile-invariant; it is carried per entry
-   * because a future profile may pin its own registry.
+   * Size of the beta registry the profile draws from. This is NOT
+   * profile-invariant: 2.1.195 draws from the shared `BETA_REGISTRY` module
+   * while 2.1.233 pins its own `BETA_REGISTRY_2_1_233`. A suite asserting on
+   * registry size must read it from the entry rather than importing a registry
+   * directly.
    */
   readonly expectedBetaCount: number;
   /** Number of keys in the profile's `supportedModels` catalogue. */
@@ -64,7 +70,10 @@ export function assertValidProfileRegistry(
   }
 }
 
-function entryFor(profile: ClaudeCodeProtocolProfile): ProfileUnderTest {
+function entryFor(
+  profile: ClaudeCodeProtocolProfile,
+  betaRegistry: Readonly<Record<string, unknown>>,
+): ProfileUnderTest {
   return {
     profile,
     id: profile.id,
@@ -72,14 +81,15 @@ function entryFor(profile: ClaudeCodeProtocolProfile): ProfileUnderTest {
     sdkVersion: profile.sdkVersion,
     endpoint: profile.endpoint,
     userAgent: profile.userAgent,
-    expectedBetaCount: Object.keys(BETA_REGISTRY).length,
+    expectedBetaCount: Object.keys(betaRegistry).length,
     expectedModelCount: Object.keys(profile.supportedModels).length,
   };
 }
 
 /** Every profile a parametrised suite must hold for. */
 export const PROFILES_UNDER_TEST: readonly ProfileUnderTest[] = Object.freeze([
-  entryFor(CLAUDE_CODE_2_1_195_PROFILE),
+  entryFor(CLAUDE_CODE_2_1_195_PROFILE, BETA_REGISTRY),
+  entryFor(CLAUDE_CODE_2_1_233_PROFILE, BETA_REGISTRY_2_1_233),
 ]);
 
 assertValidProfileRegistry(PROFILES_UNDER_TEST);
