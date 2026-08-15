@@ -10,6 +10,7 @@ import type {
   HeaderPair,
 } from "../../src/contracts.js";
 import {
+  DEFAULT_PROFILE,
   buildClaudeCodeRequest,
   parseBuiltClaudeCodeRequest,
 } from "../../src/build-request.js";
@@ -86,13 +87,17 @@ function billingText(built: BuiltClaudeCodeRequest): string {
   return billing.text;
 }
 
+// The billing header is a function of the CLI version of whichever profile
+// built the request, and these cases build with the default. Derived from the
+// builder seam so the expectation follows the default rather than naming it.
 function expectedBilling(firstUserText: string): string {
-  const material = `59cf53e54c78${firstUserText[4] ?? "0"}${firstUserText[7] ?? "0"}${firstUserText[20] ?? "0"}2.1.195`;
+  const cliVersion = DEFAULT_PROFILE.cliVersion;
+  const material = `59cf53e54c78${firstUserText[4] ?? "0"}${firstUserText[7] ?? "0"}${firstUserText[20] ?? "0"}${cliVersion}`;
   const fingerprint = createHash("sha256")
     .update(material)
     .digest("hex")
     .slice(0, 3);
-  return `x-anthropic-billing-header: cc_version=2.1.195.${fingerprint}; cc_entrypoint=cli; cch=00000;`;
+  return `x-anthropic-billing-header: cc_version=${cliVersion}.${fingerprint}; cc_entrypoint=cli; cch=00000;`;
 }
 
 function cloneBuilt(

@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { DEFAULT_PROFILE } from "../../src/build-request.js";
 import { buildClaudeCodeRequest } from "../../src/index.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
 
@@ -71,6 +72,71 @@ describe("catalogue entry validation coverage", () => {
     ).rejects.toMatchObject({ code: "INVALID_INPUT" });
   });
 
+  /*
+   * `maxOutputTokens` is catalogue data that bounds the emitted `max_tokens`
+   * and seeds the thinking budget, so a malformed one must not survive into
+   * `modelOutputTokenLimits`. Both fields are required when the object is
+   * present: a half-populated entry would resolve the missing half from the
+   * legacy fallback table, silently mixing two profiles' limits.
+   */
+  it.each([
+    ["non-object maxOutputTokens", "not-an-object"],
+    ["null maxOutputTokens", null],
+    ["array maxOutputTokens", [64000, 128000]],
+    ["unknown maxOutputTokens key", { default: 64000, upper: 128000, x: 1 }],
+    ["missing default", { upper: 128000 }],
+    ["missing upper", { default: 64000 }],
+    ["non-numeric default", { default: "64000", upper: 128000 }],
+    ["non-numeric upper", { default: 64000, upper: "128000" }],
+    ["fractional default", { default: 64000.5, upper: 128000 }],
+    ["fractional upper", { default: 64000, upper: 128000.5 }],
+    ["zero default", { default: 0, upper: 128000 }],
+    ["zero upper", { default: 64000, upper: 0 }],
+    ["negative default", { default: -1, upper: 128000 }],
+    ["negative upper", { default: 64000, upper: -1 }],
+    ["NaN default", { default: Number.NaN, upper: 128000 }],
+    ["infinite upper", { default: 64000, upper: Number.POSITIVE_INFINITY }],
+    [
+      "unsafe integer default",
+      { default: Number.MAX_SAFE_INTEGER + 2, upper: 128000 },
+    ],
+  ])("rejects %s", async (_name, maxOutputTokens) => {
+    await expect(
+      buildWithOverride({
+        supportedModels: {
+          [modelId]: { ...catalogueEntry, maxOutputTokens },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+
+  it("accepts a well-formed maxOutputTokens", async () => {
+    await expect(
+      buildWithOverride({
+        supportedModels: {
+          [modelId]: {
+            ...catalogueEntry,
+            maxOutputTokens: { default: 1000, upper: 2000 },
+          },
+        },
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it("accepts a catalogue entry with no maxOutputTokens at all", async () => {
+    const withoutLimits = Object.fromEntries(
+      Object.entries(catalogueEntry).filter(
+        ([key]) => key !== "maxOutputTokens",
+      ),
+    );
+
+    await expect(
+      buildWithOverride({
+        supportedModels: { [modelId]: withoutLimits },
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it("rejects an invalid defaultEffort", async () => {
     await expect(
       buildWithOverride({
@@ -100,8 +166,12 @@ describe("catalogue entry validation coverage", () => {
 
 function buildWithOverride(profileOverride: unknown) {
   const input: Record<string, unknown> = { ...base, profileOverride };
+  // Pinned to 2.1.195 because the override cases are stated in its terms --
+  // they spread its `betaPolicy` and assert its beta push positions. The
+  // 2.1.233 beta registry has no `narration_summaries` entry at all.
   return buildClaudeCodeRequest(
     input as Parameters<typeof buildClaudeCodeRequest>[0],
+    CLAUDE_CODE_2_1_195_PROFILE,
   );
 }
 
@@ -110,7 +180,7 @@ describe("protocol profile override", () => {
     const result = await buildClaudeCodeRequest(base);
 
     expect(headerValue(result.headers, "user-agent")).toBe(
-      "claude-cli/2.1.195 (external, cli)",
+      DEFAULT_PROFILE.userAgent,
     );
     expect(headerValue(result.headers, "anthropic-version")).toBe("2023-06-01");
   });

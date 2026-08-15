@@ -9,7 +9,7 @@ import {
   stripModelMarkers,
 } from "../../src/model-identity.js";
 import { resolveModel } from "../../src/models.js";
-import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
+import { describeEachProfile } from "../support/profile-matrix.js";
 
 describe("model identity", () => {
   it.each([
@@ -77,31 +77,60 @@ describe("model identity", () => {
     expect(modelFamilyOf(normalizeModelId("gpt-4o"))).toBe("unknown");
   });
 
-  it("guards product decision D-1: claude-mythos-5 is a catalogue-less capability bearer", () => {
-    expect(normalizeModelId("claude-mythos-5")).toBe("claude-mythos-5");
-    expect(() => resolveModel("claude-mythos-5")).not.toThrow();
-    expect(resolveModel("claude-mythos-5")).toEqual({
-      id: "claude-mythos-5",
-      wireId: "claude-mythos-5",
-      family: "mythos",
-      capabilities: {
-        thinking: true,
-        adaptiveThinking: true,
-        interleavedThinking: true,
-        effort: true,
-        maxEffort: true,
-        xhighEffort: true,
-        contextManagement: true,
-        temperature: false,
-        rejectsDisabledThinking: true,
-      },
+  /**
+   * Whether a profile catalogues `claude-mythos-5` in `supportedModels`.
+   *
+   * Product decision D-1 says capability resolution is independent of
+   * catalogue membership, so mythos resolves to a full capability set on every
+   * profile. Membership itself is per-profile: 2.1.195 ships mythos as a
+   * catalogue-less capability bearer, 2.1.233 catalogues it. Keyed by profile
+   * id so a new profile fails loudly here instead of silently inheriting the
+   * wrong literal.
+   */
+  const MYTHOS_CATALOGUED_BY_PROFILE: Readonly<Record<string, boolean>> =
+    Object.freeze({
+      "claude-code-2.1.195-sdk-0.94.0": false,
+      "claude-code-2.1.233-sdk-0.112.1": true,
     });
-    expect(
-      Object.hasOwn(
-        CLAUDE_CODE_2_1_195_PROFILE.supportedModels,
-        "claude-mythos-5",
-      ),
-    ).toBe(false);
+
+  describeEachProfile("catalogue coupling", (entry) => {
+    it("guards product decision D-1: claude-mythos-5 bears capabilities independently of catalogue membership", () => {
+      expect(normalizeModelId("claude-mythos-5")).toBe("claude-mythos-5");
+      expect(() => resolveModel("claude-mythos-5")).not.toThrow();
+      expect(resolveModel("claude-mythos-5")).toEqual({
+        id: "claude-mythos-5",
+        wireId: "claude-mythos-5",
+        family: "mythos",
+        capabilities: {
+          thinking: true,
+          adaptiveThinking: true,
+          interleavedThinking: true,
+          effort: true,
+          maxEffort: true,
+          xhighEffort: true,
+          contextManagement: true,
+          temperature: false,
+          rejectsDisabledThinking: true,
+        },
+      });
+      const catalogued = MYTHOS_CATALOGUED_BY_PROFILE[entry.id];
+      expect(
+        typeof catalogued,
+        `no D-1 catalogue expectation registered for profile "${entry.id}"`,
+      ).toBe("boolean");
+      expect(
+        Object.hasOwn(entry.profile.supportedModels, "claude-mythos-5"),
+      ).toBe(catalogued);
+    });
+
+    it("keeps catalogue families aligned with normalized ids", () => {
+      for (const [id, definition] of Object.entries(
+        entry.profile.supportedModels,
+      )) {
+        expect(modelFamilyOf(id)).toBe(definition.family);
+        expect(normalizeModelId(id)).toBe(id);
+      }
+    });
   });
 
   it.each([
@@ -159,14 +188,5 @@ describe("model identity", () => {
     expect(resolveModel("claude-sonnet-4-5-20250929").capabilities).toEqual(
       resolveModel("claude-sonnet-4-5").capabilities,
     );
-  });
-
-  it("keeps catalogue families aligned with normalized ids", () => {
-    for (const [id, definition] of Object.entries(
-      CLAUDE_CODE_2_1_195_PROFILE.supportedModels,
-    )) {
-      expect(modelFamilyOf(id)).toBe(definition.family);
-      expect(normalizeModelId(id)).toBe(id);
-    }
   });
 });

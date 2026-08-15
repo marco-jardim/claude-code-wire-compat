@@ -65,6 +65,17 @@ export interface BuildRedactedEvidenceInput {
 const MAX_INPUT_DEPTH = 100;
 const MAX_INPUT_SIZE = 1_000_000;
 const ENDPOINT = "https://api.anthropic.com/v1/messages?beta=true";
+/**
+ * The profile ids evidence may claim, spelled out here for the same reason
+ * `ENDPOINT` is: this module validates UNTRUSTED evidence records, so it
+ * compares them against literals of its own rather than importing the
+ * profiles it is checking. Membership stays exact -- an id outside this set
+ * is rejected, as a free-form id always was.
+ */
+const PINNED_PROFILE_IDS: ReadonlySet<string> = new Set([
+  "claude-code-2.1.195-sdk-0.94.0",
+  "claude-code-2.1.233-sdk-0.112.1",
+]);
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const SAFE_ERROR_CODES = new Set([
   "INVALID_INPUT",
@@ -285,7 +296,11 @@ function assertEvidenceSources(value: unknown): void {
   const logicalHeaders = readOwnValue(value, "logicalHeaders");
   const betaFeatures = readOwnValue(value, "betaFeatures");
 
-  if (profileId !== "claude-code-2.1.195-sdk-0.94.0" || endpoint !== ENDPOINT) {
+  if (
+    typeof profileId !== "string" ||
+    !PINNED_PROFILE_IDS.has(profileId) ||
+    endpoint !== ENDPOINT
+  ) {
     throw wireError("INVALID_INPUT");
   }
   if (effectiveProfile !== undefined) {

@@ -16,12 +16,95 @@ This document is the normative trace from the pinned upstream implementation to 
 
 ## Pinned profile
 
-| Field           | Pinned value                                      |
-| --------------- | ------------------------------------------------- |
-| Claude Code CLI | `2.1.195`                                         |
-| Anthropic SDK   | `0.94.0`                                          |
-| Endpoint        | `https://api.anthropic.com/v1/messages?beta=true` |
-| Profile id      | `claude-code-2.1.195-sdk-0.94.0`                  |
+Every wire profile this package recognizes is registered here. A profile is registered against its
+analysis document, which is the evidence of record; the `src/profiles/` module is code that follows
+the evidence, not the other way round. A trace entry may therefore precede its TypeScript module by
+one phase, and one currently does.
+
+### Profile `claude-code-2.1.195-sdk-0.94.0`
+
+| Field           | Pinned value                                             |
+| --------------- | -------------------------------------------------------- |
+| Profile id      | `claude-code-2.1.195-sdk-0.94.0`                         |
+| Claude Code CLI | `2.1.195`                                                |
+| Anthropic SDK   | `0.94.0`                                                 |
+| Endpoint        | `https://api.anthropic.com/v1/messages?beta=true`        |
+| Build time      | `2026-06-26T01:00:56Z`                                   |
+| Git SHA         | `4603aa3f2ea164bd0974f82eb413ae7acc99a7ee`               |
+| Analysis        | `docs/protocol/versions/claude-code-2.1.195-analysis.md` |
+| Profile module  | `src/profiles/claude-code-2.1.195.ts`                    |
+
+### Profile `claude-code-2.1.233-sdk-0.112.1`
+
+| Field           | Pinned value                                             |
+| --------------- | -------------------------------------------------------- |
+| Profile id      | `claude-code-2.1.233-sdk-0.112.1`                        |
+| Claude Code CLI | `2.1.233`                                                |
+| Anthropic SDK   | `0.112.1`                                                |
+| Build time      | `2026-08-14T17:21:48Z`                                   |
+| Git SHA         | `f8d57569aaf350fe25dc4dfa10cad59db8ea4d45`               |
+| Analysis        | `docs/protocol/versions/claude-code-2.1.233-analysis.md` |
+| Profile module  | not yet present — added in the catalogue phase           |
+
+`src/profiles/claude-code-2.1.233.ts` does not exist yet, and its absence is deliberate rather than
+an oversight. This entry is anchored in the analysis document above, which is committed and is the
+sole source for the values in the table. Registering the trace entry first keeps the order of
+operations honest: the evidence is recorded, reviewable, and testable before any code claims to
+implement it. The profile module is added in the catalogue phase, and the governance test in
+`test/governance/source-trace-profiles.test.ts` enforces the invariant that survives both states —
+every profile module must be registered here, and every entry registered here must cite an analysis
+document that exists.
+
+### Drift monitoring covers 2.1.195 only
+
+The drift check verifies the `claude-code-2.1.195-sdk-0.94.0` profile and no other. That scope is
+deliberate, not an omission: drift is measured against an external consumer project, and that
+project publishes protocol data for 2.1.195 alone. There is nothing for a 2.1.233 entry to compare
+against, and a monitored profile with no external counterpart would report a permanent absence
+rather than a real divergence. The profile joins the check if and when an external source for it
+exists.
+
+## Conscious and permanent divergences
+
+The behaviours below exist upstream and are **not** ported. They are not gaps to be closed later;
+each one is out of scope permanently, for the same structural reason. This package is pure: it
+performs no I/O, reads no environment, fetches no remote configuration, and holds no process state.
+Anything whose value is only knowable by doing one of those things cannot be a fact this package
+emits, so reproducing it would require inventing the input — which is worse than omitting the
+output.
+
+| Upstream behaviour                                                         | Origin                          | Disposition                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `heather_vale`                                                             | remote-config override          | Out of scope. It overrides `max_output_tokens` from a remote gate; the package has no remote-config channel and clamps against the model default instead.                                                                                                                                                                                                                                    |
+| `Vkd` / `bvi` output-limit adjustments                                     | host config, dead code          | Out of scope. `Vkd` reads the `heather_vale` object above; `bvi` sits behind a predicate that returns a hard `false` upstream.                                                                                                                                                                                                                                                               |
+| `ignoreEnvOptOut` on the billing block (2.1.233)                           | process environment             | Out of scope. Its entire purpose is to decide whether an environment opt-out is honoured, and the package reads no environment.                                                                                                                                                                                                                                                              |
+| `tengu_*` gates                                                            | remote-config                   | Out of scope. Remote gates are resolved at runtime by the client; a pure builder has no value to resolve them to.                                                                                                                                                                                                                                                                            |
+| `server_side_fallback`, `server_side_fallback-category`, `fallback_credit` | lane runtime, via remote-config | Not emitted by this package. These betas are pushed by the client's fallback lane, which is process state the package does not model.                                                                                                                                                                                                                                                        |
+| `per_message_effort`                                                       | lane runtime, via remote-config | Not emitted by this package. Same reason: the flag is gated on remote configuration read at runtime.                                                                                                                                                                                                                                                                                         |
+| `w4u` 1M suffix auto-append                                                | identifier normalisation        | Not modelled. It appends the `[1m]` marker to native-1M model identifiers before the beta gate sees them, so it can turn a bare identifier into a 1M request. Its presence on the request path is **not confirmed**, and the package sends the caller's model string verbatim rather than rewriting it. A caller wanting the beta supplies the marker, or uses `betaOverrides.use1MContext`. |
+| `EMo` / `kelp_forest_sonnet` 1M gate                                       | remote-config                   | Out of scope. A second route to the 1M beta, gated on remote configuration and scoped to `claude-sonnet-4-6` alone.                                                                                                                                                                                                                                                                          |
+| `CLAUDE_CODE_DISABLE_1M_CONTEXT`                                           | process environment             | Out of scope. The upstream kill switch inside the 1M predicate itself: when set, the beta is suppressed regardless of the model marker. The package reads no environment, so its gate is the marker test alone.                                                                                                                                                                              |
+
+Consequence for consumers: a request built by this package is a subset of what a live client may
+send, and the difference is confined to the rows above. A consumer that needs one of these betas
+must push it explicitly through the existing `additionalBetas` seam; the package will not derive it.
+
+Upstream applies three separate adjustments to a model's output-token limits, and the rows above
+cover only two of them. The third is **modelled**, because it is derived from the request rather
+than from host or remote state: from 2.1.222 onward, a caller's own `max_tokens` of 4096 or more
+raises the model's `upperLimit` to that number and lowers its `default` to fit under it. The
+2.1.233 profile reproduces this; the 2.1.195 profile does not, because 2.1.195 predates the
+behaviour. Its one wire-visible effect is the default thinking budget, which on 2.1.233 is seeded
+from the caller's `max_tokens` minus one when that exceeds the catalogue's upper limit.
+
+The rows below are a second kind of divergence: the datum exists in the upstream static catalogue
+and is knowable without I/O, but it does not participate in constructing a `/v1/messages` request.
+Carrying it would widen the package's surface with values no request ever reads.
+
+| Upstream datum                                                    | Origin           | Disposition                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `effort_cost_index` (2.1.233)                                     | static catalogue | Not ported. Present on `claude-sonnet-5`, `claude-opus-4-8`, `claude-opus-5` and `claude-fable-5` as a `{low, medium, high, xhigh, max}` record of costs relative to `high = 1`. It is advisory cost data consumed by the client's UI and mode selector; no request field is derived from it. Same precedent as `pricing`, `image_limits`, `advisor_rank` and `provider_ids`, omitted from the 2.1.195 catalogue for the same reason. |
+| Capabilities `refusal_fallback`, `opus_5_prompt_bundle` (2.1.233) | static catalogue | Transcribed verbatim as catalogue strings, but **no** field was added to `ClaudeCodeCapabilities`, because neither one changes the request the package builds. `refusal_fallback` arms the server-side fallback lane, which is runtime state and out of scope by the table above. `opus_5_prompt_bundle` selects an internal client prompt bundle and never reaches the wire.                                                         |
 
 ## Build configuration decision
 
@@ -163,11 +246,13 @@ supersedes, if any.
 
 ### Fixture integrity
 
-| Fixture                                                      | Model                 | SHA-256                                                            |
-| ------------------------------------------------------------ | --------------------- | ------------------------------------------------------------------ |
-| `test/fixtures/golden/outgoing-foreground.json`              | `claude-sonnet-4-5`   | `62748f01fcc20ae48f40dc4b628a094db5e06cd809d64d0c9163c0e69b0a98ea` |
-| `test/fixtures/golden/outgoing-canary-context-hint-off.json` | `claude-opus-4-8`     | `af9fa1a299ba9b3cf493e1e5b2e0bb8b935e1089c2679ead615fe87c459bf3db` |
-| `test/fixtures/golden/decision-context-hint-rejected.json`   | n/a (decision record) | `6957d363e1e9512eb1a8d2c7170fa208b92e28460e7fb3b8576aa3814cdf4582` |
+| Fixture                                                              | Model                 | SHA-256                                                            |
+| -------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------ |
+| `test/fixtures/golden/decision-context-hint-rejected.json`           | n/a (decision record) | `6957d363e1e9512eb1a8d2c7170fa208b92e28460e7fb3b8576aa3814cdf4582` |
+| `test/fixtures/golden/outgoing-canary-context-hint-off-2.1.233.json` | `claude-opus-4-8`     | `03d89e63545585041ebfba41ddcdb878efc24d3033e55130d96eab3b3c1fd6f6` |
+| `test/fixtures/golden/outgoing-canary-context-hint-off.json`         | `claude-opus-4-8`     | `af9fa1a299ba9b3cf493e1e5b2e0bb8b935e1089c2679ead615fe87c459bf3db` |
+| `test/fixtures/golden/outgoing-foreground-2.1.233.json`              | `claude-sonnet-4-5`   | `5926a3403f87e3b1c023c76075e0844266b5cb910f038bad5802deba45e14feb` |
+| `test/fixtures/golden/outgoing-foreground.json`                      | `claude-sonnet-4-5`   | `62748f01fcc20ae48f40dc4b628a094db5e06cd809d64d0c9163c0e69b0a98ea` |
 
 `test/fixtures/golden/manifest.json` is the machine-readable copy of these hashes and is the
 **source of truth**. This table and the manifest **MUST** both be updated when any fixture is
@@ -194,6 +279,55 @@ Verified known-answer vector: first user text `offline cch probe` with CLI versi
 `x-anthropic-billing-header: cc_version=2.1.195.7fe; cc_entrypoint=cli; cch=00000;`
 
 This vector is locked by `test/fingerprint.test.ts`; complete line composition is locked by `test/system-prompt.test.ts`.
+
+### 2.1.233 amendment: `cc_prev_req` and `cc_prompt_id`
+
+**The fingerprint algorithm is UNCHANGED.** Salt, sampled indices, concatenation order, SHA-256, hex encoding and three-character truncation are byte-for-byte the same in 2.1.233 as in 2.1.195; only the CLI version fed into the hash differs, which is why the same first user text yields a different suffix under each profile. The xxHash exclusion recorded under "cch is static" below stands unamended: nothing in 2.1.233 revives it.
+
+What 2.1.233 changes is the COMPOSITION of the line. Its builder takes five parameters where 2.1.195 takes three, and appends up to five optional segments after the fixed `cc_version`/`cc_entrypoint` head, each one space-prefixed and semicolon-terminated, in this order:
+
+| Position | Segment                | Emitted by this package                                     |
+| -------- | ---------------------- | ----------------------------------------------------------- |
+| 1        | `cch=00000;`           | Always. First-party gate holds for the Anthropic provider.  |
+| 2        | `cc_workload=<w>;`     | Never. Not modelled — see below.                            |
+| 3        | `cc_is_subagent=true;` | Never. Not modelled — see below.                            |
+| 4        | `cc_prev_req=<r>;`     | When the caller supplies a well-formed `previousRequestId`. |
+| 5        | `cc_prompt_id=<p>;`    | When the caller supplies a well-formed `promptId`.          |
+
+Both new segments are guarded upstream by the conjunction of three conditions: the value is defined, it matches a pattern, and the request is first-party. The patterns, transcribed rather than inferred:
+
+- `cc_prev_req`: `/^req_[A-Za-z0-9_-]{1,36}$/`
+- `cc_prompt_id`: `/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i`
+
+The `i` flag on the second is upstream's own, not a relaxation: an upper-case UUID **is** emitted.
+
+A value failing its pattern is **silently omitted** from the line. It is never an error, and it is never interpolated in any form. That second half is a security property, not a nicety: these two segments carry the only caller-controlled bytes in the block, so a value containing `;` or a newline must be absent rather than merely unrecognised, or it would forge segments the genuine client never emits. `test/validation/billing-prev-req.test.ts` asserts on the whole line and additionally that the offending substring appears nowhere in it.
+
+The version gate is **structural**, not a capability flag: the 2.1.195 builder has no parameter for these values, so the 2.1.195 profile emits neither segment even when both ids are supplied, and drops them silently, exactly as a client without the feature would. This mirrors the request-derived output-token bound in `src/thinking.ts`. Centralising per-version dispatch, so that both read as profile traits rather than identity comparisons, is a later task.
+
+Verified known-answer vector: first user text `offline cch probe` with CLI version `2.1.233` yields fingerprint `365`. Therefore the exact first-turn billing line is:
+
+`x-anthropic-billing-header: cc_version=2.1.233.365; cc_entrypoint=cli; cch=00000;`
+
+and the same request on a second turn, carrying both ids, is:
+
+`x-anthropic-billing-header: cc_version=2.1.233.365; cc_entrypoint=cli; cch=00000; cc_prev_req=req_abc123; cc_prompt_id=0f6e2a71-9d4c-4b8a-8f3d-1c2b3a4d5e6f;`
+
+This vector is locked by `test/fingerprint-2.1.233.test.ts`, alongside the 2.1.195 answers for the same three phrases; the two sets must differ.
+
+#### Divergence: the caller supplies the previous request id
+
+Upstream derives `cc_prev_req` by scanning the conversation for the last assistant message and reading a `requestId` stored beside it. This package **requires the id from the caller** instead, as `ClaudeCodeRequestInput.previousRequestId`.
+
+That field is the client's own transcript bookkeeping — the value of the `request-id` RESPONSE header of the previous turn — and is not part of the Messages API wire format. Modelling the scan would mean adding a non-wire property to `Message` and having this package infer conversation state it does not own. A divergence of convenience, not of output: the emitted bytes are identical for any consumer that plumbs the value through.
+
+**The consequence is the consumer's, and it is observable.** On the 2.1.233 profile a second or later turn built without `previousRequestId` emits a billing line the genuine client would not emit, and is therefore distinguishable from real CLI traffic from the second turn onward. A first turn has no previous request, so omitting it there is correct.
+
+Format is NOT validated at the builder boundary — only the type is. Rejecting a malformed id there would make this package fail where the genuine client succeeds, since upstream drops an unvouchable value silently at the point of emission. `src/fingerprint.ts` owns the patterns and is the only place they appear.
+
+#### Not modelled: `cc_workload` and `cc_is_subagent`
+
+Neither segment is ever emitted. `cc_workload` describes a background workload and `cc_is_subagent` marks a sub-agent session; this package models the CLI's main session, which has neither. That leaves the emitted line in the same shape as 2.1.195, which has no such segments at all. Should a consumer ever need to present as a sub-agent, both would become explicit inputs on the same footing as the two ids above.
 
 ## cch is static
 

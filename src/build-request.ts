@@ -29,6 +29,7 @@ import {
 } from "./metadata.js";
 import { resolveModel } from "./models.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
+import { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
 import type { NormalizedRequestInput } from "./redaction.js";
 import { buildRedactedEvidence, toSafeErrorDetails } from "./redaction.js";
 import {
@@ -87,6 +88,8 @@ const INPUT_KEYS = new Set([
   "metadataOverrides",
   "extraHeaders",
   "extraHeaderPolicy",
+  "previousRequestId",
+  "promptId",
   "crypto",
 ]);
 const BETA_OVERRIDE_KEYS = new Set(["use1MContext"]);
@@ -172,6 +175,7 @@ const MODEL_KEYS = new Set([
   "family",
   "context",
   "capabilities",
+  "maxOutputTokens",
   "defaultEffort",
 ]);
 const BETA_POLICY_KEYS = new Set([
@@ -313,10 +317,46 @@ function containsString(value: unknown, target: string): boolean {
   );
 }
 
+/**
+ * The profiles this package will assemble a request for. Two entries: the
+ * 2.1.195 default and the 2.1.233 profile, which callers must pass
+ * explicitly. Admitting a profile is exactly this list -- `validateProfile`
+ * did not change to accept the second one.
+ *
+ * Membership is by REFERENCE, deliberately. A structural check would accept a
+ * caller-built object that merely looks like a pinned profile, and every wire
+ * guarantee this package makes -- the sealed golden fixtures, the packed
+ * consumer digests -- is a statement about the exact frozen singletons, not
+ * about anything shaped like them. `Set.prototype.has` uses SameValueZero, so
+ * `{ ...CLAUDE_CODE_2_1_195_PROFILE }` is rejected exactly as it was by the
+ * `!==` this replaced.
+ *
+ * Not exported and not frozen-with-teeth: `Object.freeze` on a `Set` blocks
+ * property assignment but NOT `add`, so freezing it would advertise a
+ * guarantee it cannot keep. Module scope is the real protection.
+ */
+const ACCEPTED_PROFILES: ReadonlySet<ClaudeCodeProtocolProfile> = new Set([
+  CLAUDE_CODE_2_1_195_PROFILE,
+  CLAUDE_CODE_2_1_233_PROFILE,
+]);
+
+/**
+ * The profile every public entry point resolves to when the caller supplies
+ * none. Declared once so that the default is a single, greppable seam: a test
+ * that means "whatever the default is" reads THIS instead of naming a
+ * version, which keeps a default switch to a one-line diff and keeps tests
+ * that genuinely mean 2.1.195 honest about saying so.
+ *
+ * Exported for tests, which deep-import it. It is deliberately NOT re-exported
+ * from `src/index.ts`: the public runtime surface stays closed.
+ */
+export const DEFAULT_PROFILE: ClaudeCodeProtocolProfile =
+  CLAUDE_CODE_2_1_233_PROFILE;
+
 function validateProfile(
   profile: ClaudeCodeProtocolProfile,
 ): ClaudeCodeProtocolProfile {
-  if (profile !== CLAUDE_CODE_2_1_195_PROFILE) fail();
+  if (!ACCEPTED_PROFILES.has(profile)) fail();
   return profile;
 }
 
@@ -360,6 +400,43 @@ function parseCatalogueCapabilities(value: unknown): readonly string[] {
     throw new ClaudeCodeWireError("INVALID_INPUT");
   }
   return Object.freeze([...value]);
+}
+
+/**
+ * Validates a catalogue entry's `maxOutputTokens`. Both fields are required
+ * when the object is present: a half-populated entry would silently fall back
+ * to the legacy limit table for the missing half, which is exactly the drift
+ * `modelOutputTokenLimits` is structured to prevent.
+ */
+function parseCatalogueMaxOutputTokens(value: unknown): Readonly<{
+  readonly default: number;
+  readonly upper: number;
+}> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.some(
+      (key) =>
+        typeof key !== "string" || (key !== "default" && key !== "upper"),
+    )
+  ) {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  const defaultLimit: unknown = Reflect.get(value, "default");
+  const upper: unknown = Reflect.get(value, "upper");
+  if (
+    typeof defaultLimit !== "number" ||
+    !Number.isSafeInteger(defaultLimit) ||
+    defaultLimit <= 0 ||
+    typeof upper !== "number" ||
+    !Number.isSafeInteger(upper) ||
+    upper <= 0
+  ) {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  return Object.freeze({ default: defaultLimit, upper });
 }
 
 function parseCatalogueContext(value: unknown): Readonly<{
@@ -487,6 +564,13 @@ function parseSupportedModels(
         ? { context: parseCatalogueContext(ownValue(model, "context")) }
         : {}),
       capabilities: parseCatalogueCapabilities(ownValue(model, "capabilities")),
+      ...(Object.hasOwn(model, "maxOutputTokens")
+        ? {
+            maxOutputTokens: parseCatalogueMaxOutputTokens(
+              ownValue(model, "maxOutputTokens"),
+            ),
+          }
+        : {}),
       ...(Object.hasOwn(model, "defaultEffort")
         ? {
             defaultEffort: parseDefaultEffort(ownValue(model, "defaultEffort")),
@@ -681,6 +765,8 @@ function validateInput(input: ClaudeCodeRequestInput): {
   readonly suppressBillingBlock: boolean;
   readonly suppressIdentityBlock: boolean;
   readonly preserveThinkingBlockCacheControl: boolean;
+  readonly previousRequestId: string | undefined;
+  readonly promptId: string | undefined;
 } {
   if (!isRecord(input)) fail();
   assertExactKeys(input, INPUT_KEYS);
@@ -741,6 +827,12 @@ function validateInput(input: ClaudeCodeRequestInput): {
         ownValue(input, "preserveThinkingBlockCacheControl"),
       )
     : false;
+  const previousRequestId = Object.hasOwn(input, "previousRequestId")
+    ? validateBillingChainId(ownValue(input, "previousRequestId"))
+    : undefined;
+  const promptId = Object.hasOwn(input, "promptId")
+    ? validateBillingChainId(ownValue(input, "promptId"))
+    : undefined;
   return {
     source: input,
     clientRequestId,
@@ -751,7 +843,29 @@ function validateInput(input: ClaudeCodeRequestInput): {
     suppressBillingBlock,
     suppressIdentityBlock,
     preserveThinkingBlockCacheControl,
+    previousRequestId,
+    promptId,
   };
+}
+
+/**
+ * Type check only. The FORMAT of these two ids is deliberately not checked
+ * here: upstream guards them at the point of emission and drops a value it
+ * cannot vouch for, silently, so rejecting one here would make this package
+ * fail where the genuine client succeeds. `createBillingBlock` owns the
+ * patterns. A non-string is still a caller bug and fails like every other
+ * mistyped field.
+ *
+ * There is deliberately no `undefined` arm: `inspectGraph` has already rejected
+ * an explicitly-undefined value for every key but `crypto` by the time this
+ * runs, so such an arm would be unreachable. An explicitly-undefined id is
+ * therefore `INVALID_INPUT` here, as it is for every other field, and is NOT
+ * equivalent to omitting the key — unlike at the `createBillingBlock` seam,
+ * which does treat the two alike. `billing-prev-req.test.ts` pins both halves.
+ */
+function validateBillingChainId(value: unknown): string {
+  if (typeof value !== "string") fail();
+  return value;
 }
 
 function validateCountTokensInput(input: ClaudeCodeCountTokensInput): {
@@ -947,7 +1061,19 @@ function parseCapabilityDecisions(
   };
 }
 
-function parseEvidence(value: unknown): RedactedRequestEvidence {
+/**
+ * Validates evidence against the profile the request was parsed under, not
+ * against a hardcoded singleton. `parseBuiltClaudeCodeRequest` already
+ * validates `url` against `pinnedProfile.endpoint`; the profile id is the one
+ * remaining field where the two pinned profiles differ, so it has to follow
+ * the same source or a request built with a non-default profile could never
+ * be re-parsed. Still fail-closed: the profile reaching here has already
+ * passed `validateProfile`.
+ */
+function parseEvidence(
+  value: unknown,
+  pinnedProfile: ClaudeCodeProtocolProfile,
+): RedactedRequestEvidence {
   if (!isRecord(value)) fail();
   assertExactKeys(value, EVIDENCE_KEYS);
   const modelFamily = ownValue(value, "modelFamily");
@@ -966,8 +1092,8 @@ function parseEvidence(value: unknown): RedactedRequestEvidence {
   const messageCount = ownValue(value, "messageCount");
   const systemBlockCount = ownValue(value, "systemBlockCount");
   if (
-    ownValue(value, "profileId") !== CLAUDE_CODE_2_1_195_PROFILE.id ||
-    ownValue(value, "url") !== CLAUDE_CODE_2_1_195_PROFILE.endpoint ||
+    ownValue(value, "profileId") !== pinnedProfile.id ||
+    ownValue(value, "url") !== pinnedProfile.endpoint ||
     ownValue(value, "method") !== METHOD ||
     typeof bodySha256 !== "string" ||
     !/^[0-9a-f]{64}$/u.test(bodySha256) ||
@@ -981,8 +1107,8 @@ function parseEvidence(value: unknown): RedactedRequestEvidence {
     fail();
   }
   return {
-    profileId: CLAUDE_CODE_2_1_195_PROFILE.id,
-    url: CLAUDE_CODE_2_1_195_PROFILE.endpoint,
+    profileId: pinnedProfile.id,
+    url: pinnedProfile.endpoint,
     method: METHOD,
     modelFamily,
     logicalHeaderNames: parseStringArray(ownValue(value, "logicalHeaderNames")),
@@ -1289,7 +1415,7 @@ function countTokensEvidenceRequest(
 /** Builds a canonical Claude Code count-tokens request. */
 export async function buildClaudeCodeCountTokensRequest(
   input: ClaudeCodeCountTokensInput,
-  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+  profile: ClaudeCodeProtocolProfile = DEFAULT_PROFILE,
 ): Promise<BuiltClaudeCodeCountTokensRequest> {
   try {
     const pinnedProfile = validateProfile(profile);
@@ -1384,7 +1510,7 @@ export async function buildClaudeCodeCountTokensRequest(
  */
 export async function buildClaudeCodeRequest(
   input: ClaudeCodeRequestInput,
-  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+  profile: ClaudeCodeProtocolProfile = DEFAULT_PROFILE,
 ): Promise<BuiltClaudeCodeRequest> {
   try {
     const pinnedProfile = validateProfile(profile);
@@ -1406,10 +1532,28 @@ export async function buildClaudeCodeRequest(
       ...resolvedModel,
       capabilities,
     });
+    /*
+     * The previous turn's request id is the CALLER's to supply. Upstream
+     * derives it by scanning the conversation for the last assistant message
+     * and reading a `requestId` it stored alongside it — a field of the
+     * client's own transcript, not of the Messages API wire format. Modelling
+     * that would mean adding a non-wire property to `Message` and having this
+     * package infer conversation state it does not own. A documented
+     * divergence of convenience: the value is the same, the plumbing is the
+     * consumer's.
+     */
     const billing = await createBillingBlock(
       fingerprintText(validated.source),
-      effectiveProfile.cliVersion,
+      effectiveProfile,
       validated.crypto,
+      {
+        ...(validated.previousRequestId !== undefined && {
+          previousRequestId: validated.previousRequestId,
+        }),
+        ...(validated.promptId !== undefined && {
+          promptId: validated.promptId,
+        }),
+      },
     );
     const metadata = buildCorrelatedMetadata(
       identity,
@@ -1556,7 +1700,7 @@ export async function buildClaudeCodeRequest(
  */
 export function parseBuiltClaudeCodeRequest(
   value: unknown,
-  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+  profile: ClaudeCodeProtocolProfile = DEFAULT_PROFILE,
 ): BuiltClaudeCodeRequest {
   try {
     const pinnedProfile = validateProfile(profile);
@@ -1573,7 +1717,7 @@ export function parseBuiltClaudeCodeRequest(
     if (typeof body !== "string") fail();
     const parsedBody = parseBody(body);
     const headers = parseHeaders(ownValue(value, "headers"));
-    const evidence = parseEvidence(ownValue(value, "evidence"));
+    const evidence = parseEvidence(ownValue(value, "evidence"), pinnedProfile);
     // Reading evidence is not trusting evidence. A claim that the seam
     // preserved a marker is confirmed against the body, and it is confirmed
     // HERE — before the byte-length and digest checks — so that a forgery which

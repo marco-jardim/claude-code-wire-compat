@@ -37,10 +37,14 @@ export function resolveModel(
   return Object.freeze({
     id,
     wireId,
-    // The catalogue supplies the family. It does NOT supply capabilities:
-    // on first party every capability is a pure function of the normalized
-    // id. See the header of `model-capabilities.ts` for why.
+    // The catalogue supplies the family here, and -- since T1.1.2 -- also
+    // supplies the six catalogue-backed capabilities. Both now honour THIS
+    // profile: `deriveCapabilities` takes the active profile, so a request
+    // built against a non-pinned profile derives from that profile's
+    // catalogue rather than from 2.1.195's. Ids with no catalogue entry fall
+    // back to the ported predicates, which are pure functions of the
+    // normalized id. See the header of `model-capabilities.ts`.
     family: entry?.family ?? modelFamilyOf(id),
-    capabilities: deriveCapabilities(id),
+    capabilities: deriveCapabilities(id, profile),
   });
 }

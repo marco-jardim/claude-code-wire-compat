@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
-import type { HeaderPair } from "../../src/contracts.js";
+import type {
+  ClaudeCodeProtocolProfile,
+  HeaderPair,
+} from "../../src/contracts.js";
 import { buildOrderedHeaders } from "../../src/headers.js";
-import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
+import { describeEachProfile } from "../support/profile-matrix.js";
 
 const TOKEN = "sentinel-token-headers-validation-9c31de";
 
-function validInput(extraHeaders: readonly HeaderPair[] = []): unknown {
+function validInput(
+  profile: ClaudeCodeProtocolProfile,
+  extraHeaders: readonly HeaderPair[] = [],
+): unknown {
   return {
     accessToken: TOKEN,
     runtime: {
@@ -21,12 +27,8 @@ function validInput(extraHeaders: readonly HeaderPair[] = []): unknown {
     clientRequestId: "00000000-0000-4000-8000-000000000002",
     betaFeatures: ["synthetic-beta"],
     extraHeaders,
-    profile: CLAUDE_CODE_2_1_195_PROFILE,
+    profile,
   };
-}
-
-function withField(key: string, value: unknown): unknown {
-  return { ...(validInput() as Record<string, unknown>), [key]: value };
 }
 
 function expectInvalidInput(input: unknown): void {
@@ -35,7 +37,14 @@ function expectInvalidInput(input: unknown): void {
   );
 }
 
-describe("buildOrderedHeaders input validation", () => {
+describeEachProfile("buildOrderedHeaders input validation", (entry) => {
+  function withField(key: string, value: unknown): unknown {
+    return {
+      ...(validInput(entry.profile) as Record<string, unknown>),
+      [key]: value,
+    };
+  }
+
   // Wrap each case so Vitest passes array values as one callback argument.
   it.each([[null], [[]], ["headers"]])(
     "rejects a non-record input",
@@ -78,9 +87,7 @@ describe("buildOrderedHeaders input validation", () => {
   });
 
   it("rejects a structurally equal but unpinned profile", () => {
-    expectInvalidInput(
-      withField("profile", { ...CLAUDE_CODE_2_1_195_PROFILE }),
-    );
+    expectInvalidInput(withField("profile", { ...entry.profile }));
   });
 
   it.each(["\u0001", "\u001f", "\u007f", "\u0085", "\u009f"])(

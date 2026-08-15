@@ -1,0 +1,3 @@
+This file is prose, not a bundle. It mentions no feature keys, no beta headers,
+no model identifiers, and no build scalars. Extraction over it must report that
+nothing was anchored rather than inventing a report from an empty result set.

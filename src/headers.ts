@@ -7,6 +7,7 @@ import type {
 } from "./contracts.js";
 import { ClaudeCodeWireError } from "./contracts.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
+import { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
 
 const HEADER_NAMES = Object.freeze({
   anthropicBeta: "anthropic-beta",
@@ -160,11 +161,16 @@ function parseExtraHeaderPolicy(value: unknown): ClaudeCodeExtraHeaderPolicy {
   return value;
 }
 
+/**
+ * Accepts a pinned profile by REFERENCE, never by shape, and returns the
+ * singleton itself so nothing downstream can be handed a look-alike. Adding
+ * the second pinned profile widens the accepted set by exactly one object;
+ * anything else, including a structural clone, still fails closed.
+ */
 function parseProfile(value: unknown): ClaudeCodeProtocolProfile {
-  if (value !== CLAUDE_CODE_2_1_195_PROFILE) {
-    throw new ClaudeCodeWireError("INVALID_INPUT");
-  }
-  return CLAUDE_CODE_2_1_195_PROFILE;
+  if (value === CLAUDE_CODE_2_1_195_PROFILE) return CLAUDE_CODE_2_1_195_PROFILE;
+  if (value === CLAUDE_CODE_2_1_233_PROFILE) return CLAUDE_CODE_2_1_233_PROFILE;
+  throw new ClaudeCodeWireError("INVALID_INPUT");
 }
 
 function parseApp(value: unknown): "cli" | "cli-bg" {

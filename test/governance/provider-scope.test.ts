@@ -55,6 +55,15 @@ const REFERENCE_IDENTIFIERS: ReadonlyMap<string, string> = new Map([
       "provider can select it. Removing it would delete reverse-engineering " +
       "knowledge; keeping it costs no runtime surface.",
   ],
+  [
+    "BEDROCK_UNSUPPORTED_BETAS_2_1_233",
+    "Static reference data, not a selectable branch. The 2.1.233 transcription " +
+      "of the set above, taken from upstream `pts` and exported for documentary " +
+      "value; it is consumed by NOTHING in `src/`, so no provider can select " +
+      "it. The name keeps the upstream meaning verbatim on purpose: renaming " +
+      "the constant to keep the word out of this scan would be obfuscation, " +
+      "which is a worse outcome than an allowlist entry that says what it is.",
+  ],
 ]);
 
 /**
@@ -152,6 +161,32 @@ function read(relativePath: string): SourceFile {
   return file;
 }
 
+/**
+ * Every protocol profile, discovered rather than named. A second profile
+ * (2.1.222+, Wave 2) must inherit these rules the moment its file lands, not
+ * whenever someone remembers to add it here -- naming profiles by path was how
+ * this file would have gone quietly blind to the new one.
+ *
+ * The prefix is `profiles/claude-code-`, not `profiles/`, because the directory
+ * holds two KINDS of file. A protocol profile (`claude-code-<version>.ts`) is a
+ * `ClaudeCodeProtocolProfile`: it declares a provider and an endpoint, and the
+ * per-profile assertions below are exactly the invariants it must satisfy. A
+ * versioned registry artifact (`beta-registry-<version>.ts`) is transcribed
+ * upstream data with no provider and no endpoint, so `provider: "anthropic"` and
+ * the pinned endpoint are not properties it can have -- demanding them would
+ * force a field into ported data purely to satisfy a scan. Registry artifacts
+ * stay fully covered by the src-wide scans further down (foreign literals,
+ * provider comparisons, URLs, foreign identifiers), which is where their actual
+ * provider-scope risk lives.
+ *
+ * `has profiles to enforce` below is the anti-vacuity guard: a rename of the
+ * directory or a change of extension empties this list, and an empty list would
+ * make every per-profile assertion below pass by iterating nothing.
+ */
+const PROFILES: readonly SourceFile[] = SOURCES.filter((file) =>
+  file.path.startsWith("profiles/claude-code-"),
+);
+
 /** A string literal whose entire content is a foreign provider discriminant. */
 const FOREIGN_PROVIDER_LITERAL = new RegExp(
   `(["'\`])(?:${FOREIGN_PROVIDERS.join("|")})\\1`,
@@ -176,6 +211,10 @@ function foreignIdentifiers(code: string): readonly string[] {
 describe("provider scope: anthropic first-party only", () => {
   it("has sources to enforce", () => {
     expect(SOURCES.length).toBeGreaterThan(0);
+  });
+
+  it("has profiles to enforce", () => {
+    expect(PROFILES.length).toBeGreaterThan(0);
   });
 
   it("keeps the comment stripper strict enough to matter", () => {
@@ -233,12 +272,16 @@ describe("provider scope: anthropic first-party only", () => {
     }
   });
 
-  it("pins the profile to the anthropic first-party literal", () => {
-    const profile = read("profiles/claude-code-2.1.195.ts");
-    // Capture the assigned value rather than asserting a negative lookahead:
-    // `\s*(?!...)` backtracks to zero width and passes on anything.
-    const assignments = profile.code.match(/\bprovider\s*:\s*[^,\n]+/gu);
-    expect(assignments).toEqual(['provider: "anthropic"']);
+  it("pins every profile to the anthropic first-party literal", () => {
+    for (const profile of PROFILES) {
+      // Capture the assigned value rather than asserting a negative lookahead:
+      // `\s*(?!...)` backtracks to zero width and passes on anything.
+      const assignments = profile.code.match(/\bprovider\s*:\s*[^,\n]+/gu);
+      expect({ file: profile.path, assignments }).toEqual({
+        file: profile.path,
+        assignments: ['provider: "anthropic"'],
+      });
+    }
   });
 
   it("pins both endpoints to api.anthropic.com literally", () => {
@@ -257,9 +300,12 @@ describe("provider scope: anthropic first-party only", () => {
     expect(read("count-tokens.ts").code).toContain(
       `"${COUNT_TOKENS_ENDPOINT}" as const`,
     );
-    expect(read("profiles/claude-code-2.1.195.ts").code).toContain(
-      `endpoint: "${MESSAGES_ENDPOINT}"`,
-    );
+    for (const profile of PROFILES) {
+      expect({
+        file: profile.path,
+        pinned: profile.code.includes(`endpoint: "${MESSAGES_ENDPOINT}"`),
+      }).toEqual({ file: profile.path, pinned: true });
+    }
     expect(read("redaction.ts").code).toContain(`"${MESSAGES_ENDPOINT}"`);
   });
 

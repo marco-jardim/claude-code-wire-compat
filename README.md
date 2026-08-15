@@ -16,7 +16,19 @@ The package targets Node.js 20 or newer and is designed to remain portable to Bu
 
 ## Protocol profile
 
-The only accepted `profile` value is the exported `CLAUDE_CODE_2_1_195_PROFILE` singleton. Any other object, even a structurally identical clone, is rejected with `ClaudeCodeWireError` code `INVALID_INPUT`. This deliberate fail-closed behaviour prevents callers from substituting an unpinned protocol profile.
+Two pinned profiles are exported:
+
+- `CLAUDE_CODE_2_1_233_PROFILE` — Claude Code 2.1.233 with SDK 0.112.1. This is the profile used when `profile` is omitted.
+- `CLAUDE_CODE_2_1_195_PROFILE` — the previous pin, Claude Code 2.1.195 with SDK 0.94.0.
+
+Either can be selected explicitly by passing the singleton as the `profile` argument, from the package root or from its own subpath export:
+
+```ts
+import { CLAUDE_CODE_2_1_195_PROFILE } from "@tormentalabs/claude-code-wire-compat/profiles/claude-code-2.1.195";
+import { CLAUDE_CODE_2_1_233_PROFILE } from "@tormentalabs/claude-code-wire-compat/profiles/claude-code-2.1.233";
+```
+
+The fail-closed rule is unchanged: only these exported singletons are accepted. Any other object, even a structurally identical clone, is rejected with `ClaudeCodeWireError` code `INVALID_INPUT`. This prevents callers from substituting an unpinned protocol profile.
 
 ## Protocol documentation
 
@@ -68,6 +80,7 @@ required](./docs/protocol/versions/README.md):
 - [Claude Code 2.1.150](./docs/protocol/versions/claude-code-2.1.150-analysis.md)
 - [Claude Code 2.1.159](./docs/protocol/versions/claude-code-2.1.159-analysis.md)
 - [Claude Code 2.1.195](./docs/protocol/versions/claude-code-2.1.195-analysis.md)
+- [Claude Code 2.1.233](./docs/protocol/versions/claude-code-2.1.233-analysis.md)
   — the release this package's profile pins.
 
 ## Development

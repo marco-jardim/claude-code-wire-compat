@@ -56,7 +56,7 @@ function policyErrors(value: PackageManifest): readonly string[] {
   const errors: string[] = [];
   if (value.name !== "@tormentalabs/claude-code-wire-compat")
     errors.push("package name");
-  if (value.version !== "0.1.0") errors.push("release version");
+  if (value.version !== "0.2.0") errors.push("release version");
   if (value.license !== "GPL-3.0-or-later") errors.push("GPL license");
   if (value.type !== "module") errors.push("ESM type");
   if (value.private === true) errors.push("public package");
@@ -82,6 +82,10 @@ function policyErrors(value: PackageManifest): readonly string[] {
       "./profiles/claude-code-2.1.195": {
         types: "./dist/profiles/claude-code-2.1.195.d.ts",
         import: "./dist/profiles/claude-code-2.1.195.js",
+      },
+      "./profiles/claude-code-2.1.233": {
+        types: "./dist/profiles/claude-code-2.1.233.d.ts",
+        import: "./dist/profiles/claude-code-2.1.233.js",
       },
     })
   )
