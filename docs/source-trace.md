@@ -225,11 +225,13 @@ supersedes, if any.
 
 ### Fixture integrity
 
-| Fixture                                                      | Model                 | SHA-256                                                            |
-| ------------------------------------------------------------ | --------------------- | ------------------------------------------------------------------ |
-| `test/fixtures/golden/decision-context-hint-rejected.json`   | n/a (decision record) | `6957d363e1e9512eb1a8d2c7170fa208b92e28460e7fb3b8576aa3814cdf4582` |
-| `test/fixtures/golden/outgoing-canary-context-hint-off.json` | `claude-opus-4-8`     | `af9fa1a299ba9b3cf493e1e5b2e0bb8b935e1089c2679ead615fe87c459bf3db` |
-| `test/fixtures/golden/outgoing-foreground.json`              | `claude-sonnet-4-5`   | `62748f01fcc20ae48f40dc4b628a094db5e06cd809d64d0c9163c0e69b0a98ea` |
+| Fixture                                                              | Model                 | SHA-256                                                            |
+| -------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------ |
+| `test/fixtures/golden/decision-context-hint-rejected.json`           | n/a (decision record) | `6957d363e1e9512eb1a8d2c7170fa208b92e28460e7fb3b8576aa3814cdf4582` |
+| `test/fixtures/golden/outgoing-canary-context-hint-off-2.1.233.json` | `claude-opus-4-8`     | `03d89e63545585041ebfba41ddcdb878efc24d3033e55130d96eab3b3c1fd6f6` |
+| `test/fixtures/golden/outgoing-canary-context-hint-off.json`         | `claude-opus-4-8`     | `af9fa1a299ba9b3cf493e1e5b2e0bb8b935e1089c2679ead615fe87c459bf3db` |
+| `test/fixtures/golden/outgoing-foreground-2.1.233.json`              | `claude-sonnet-4-5`   | `5926a3403f87e3b1c023c76075e0844266b5cb910f038bad5802deba45e14feb` |
+| `test/fixtures/golden/outgoing-foreground.json`                      | `claude-sonnet-4-5`   | `62748f01fcc20ae48f40dc4b628a094db5e06cd809d64d0c9163c0e69b0a98ea` |
 
 `test/fixtures/golden/manifest.json` is the machine-readable copy of these hashes and is the
 **source of truth**. This table and the manifest **MUST** both be updated when any fixture is
