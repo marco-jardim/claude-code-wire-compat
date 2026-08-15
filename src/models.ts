@@ -38,14 +38,13 @@ export function resolveModel(
     id,
     wireId,
     // The catalogue supplies the family here, and -- since T1.1.2 -- also
-    // supplies the six catalogue-backed capabilities, read from the pinned
-    // 2.1.195 profile by `deriveCapabilities`. Note the asymmetry: `family`
-    // honours THIS profile's entry, while capabilities are derived from the
-    // pinned profile because `deriveCapabilities` takes only an id. Ids with
-    // no catalogue entry fall back to the ported predicates, which are pure
-    // functions of the normalized id. See the header of
-    // `model-capabilities.ts`.
+    // supplies the six catalogue-backed capabilities. Both now honour THIS
+    // profile: `deriveCapabilities` takes the active profile, so a request
+    // built against a non-pinned profile derives from that profile's
+    // catalogue rather than from 2.1.195's. Ids with no catalogue entry fall
+    // back to the ported predicates, which are pure functions of the
+    // normalized id. See the header of `model-capabilities.ts`.
     family: entry?.family ?? modelFamilyOf(id),
-    capabilities: deriveCapabilities(id),
+    capabilities: deriveCapabilities(id, profile),
   });
 }

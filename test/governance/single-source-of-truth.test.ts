@@ -122,6 +122,12 @@ const CATALOGUE_CAPABILITY_STRINGS = [
   "adaptive_thinking",
   "context_management",
   "rejects_disabled_thinking",
+  // Beta-only gate, read by `supportsMidConversationSystem` rather than by
+  // `deriveCapabilitiesFromCatalogue`. It joined this list the moment it
+  // became a code-level catalogue read: the uniqueness rule is what actually
+  // forbids a second mapping table, and it must cover every catalogue string
+  // the module reads, not just the six that reach `ClaudeCodeCapabilities`.
+  "mid_conv_system",
 ] as const;
 
 /**
@@ -320,13 +326,28 @@ describe("model capabilities: one source of truth per capability", () => {
     }
   });
 
-  it("reads the catalogue in exactly one place", () => {
+  it("reads the catalogue in exactly two demarcated places", () => {
     const readers = [...functions]
       // The lookbehind rejects the object spread `...capabilities`, which is
       // not a catalogue read.
       .filter(([, body]) => /(?<!\.)\.capabilities\b/u.test(body))
       .map(([name]) => name);
 
-    expect(readers).toEqual(["deriveCapabilitiesFromCatalogue"]);
+    /*
+     * Exact equality, never a subset: a third reader must fail this.
+     *
+     * `deriveCapabilitiesFromCatalogue` is the sole reader for the six
+     * capabilities that reach `ClaudeCodeCapabilities`.
+     * `supportsMidConversationSystem` is the second and last: `mid_conv_system`
+     * is a beta-only gate consumed by `src/betas.ts` by id, deliberately
+     * absent from `ClaudeCodeCapabilities`, so it cannot travel through the
+     * first reader. Admitting it here does not loosen the rule that has the
+     * teeth -- every catalogue capability string, `mid_conv_system` included,
+     * must still map exactly once in code, which is asserted above.
+     */
+    expect(readers).toEqual([
+      "supportsMidConversationSystem",
+      "deriveCapabilitiesFromCatalogue",
+    ]);
   });
 });

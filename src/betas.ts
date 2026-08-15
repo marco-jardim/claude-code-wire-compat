@@ -239,7 +239,7 @@ export function composeBetasWithAudit(
 
   // No web-search beta: upstream pushes it only for vertex and foundry.
   if (experimental) out.push(registry.PROMPT_CACHING_SCOPE.header);
-  if (supportsMidConversationSystem(input.normalizedId))
+  if (supportsMidConversationSystem(input.normalizedId, profile))
     out.push(registry.MID_CONVERSATION_SYSTEM.header);
   if (input.capabilities.effort) out.push(registry.EFFORT.header);
 
