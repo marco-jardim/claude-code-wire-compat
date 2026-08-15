@@ -76,6 +76,15 @@ Consequence for consumers: a request built by this package is a subset of what a
 send, and the difference is confined to the rows above. A consumer that needs one of these betas
 must push it explicitly through the existing `additionalBetas` seam; the package will not derive it.
 
+The rows below are a second kind of divergence: the datum exists in the upstream static catalogue
+and is knowable without I/O, but it does not participate in constructing a `/v1/messages` request.
+Carrying it would widen the package's surface with values no request ever reads.
+
+| Upstream datum                                                    | Origin           | Disposition                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `effort_cost_index` (2.1.233)                                     | static catalogue | Not ported. Present on `claude-sonnet-5`, `claude-opus-4-8`, `claude-opus-5` and `claude-fable-5` as a `{low, medium, high, xhigh, max}` record of costs relative to `high = 1`. It is advisory cost data consumed by the client's UI and mode selector; no request field is derived from it. Same precedent as `pricing`, `image_limits`, `advisor_rank` and `provider_ids`, omitted from the 2.1.195 catalogue for the same reason. |
+| Capabilities `refusal_fallback`, `opus_5_prompt_bundle` (2.1.233) | static catalogue | Transcribed verbatim as catalogue strings, but **no** field was added to `ClaudeCodeCapabilities`, because neither one changes the request the package builds. `refusal_fallback` arms the server-side fallback lane, which is runtime state and out of scope by the table above. `opus_5_prompt_bundle` selects an internal client prompt bundle and never reaches the wire.                                                         |
+
 ## Build configuration decision
 
 The implementation plan names `tsconfig.build.json` in two staging lists, but that file was

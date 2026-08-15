@@ -234,6 +234,13 @@ present on exactly four models:
 | `claude-opus-5`   | 0.67 | 0.76   | 1    | 1.60  | 1.70 |
 | `claude-fable-5`  | 0.60 | 0.77   | 1    | 1.74  | 1.91 |
 
+**Verification outcome.** The field was traced through every read site and it
+feeds no wire-visible decision: nothing in request construction — effort
+selection, beta gating, token limits — reads it. It is cost data for the client's
+UI and mode advisor, in the same class as `pricing` and `advisor_rank`. It is
+therefore omitted from this package's catalogue; the decision is recorded in
+`docs/source-trace.md`.
+
 **Correction to an earlier record:** `fallback_chain` is **not** a field of the
 static catalogue. The static entries carry a single `fallback_3p` string. A
 `fallback_chain` array exists only in the zod schema for remote-configuration
