@@ -314,10 +314,30 @@ function containsString(value: unknown, target: string): boolean {
   );
 }
 
+/**
+ * The profiles this package will assemble a request for. One entry today; a
+ * 2.1.222+ profile joins it in Wave 2 without touching `validateProfile`.
+ *
+ * Membership is by REFERENCE, deliberately. A structural check would accept a
+ * caller-built object that merely looks like a pinned profile, and every wire
+ * guarantee this package makes -- the sealed golden fixtures, the packed
+ * consumer digests -- is a statement about the exact frozen singletons, not
+ * about anything shaped like them. `Set.prototype.has` uses SameValueZero, so
+ * `{ ...CLAUDE_CODE_2_1_195_PROFILE }` is rejected exactly as it was by the
+ * `!==` this replaced.
+ *
+ * Not exported and not frozen-with-teeth: `Object.freeze` on a `Set` blocks
+ * property assignment but NOT `add`, so freezing it would advertise a
+ * guarantee it cannot keep. Module scope is the real protection.
+ */
+const ACCEPTED_PROFILES: ReadonlySet<ClaudeCodeProtocolProfile> = new Set([
+  CLAUDE_CODE_2_1_195_PROFILE,
+]);
+
 function validateProfile(
   profile: ClaudeCodeProtocolProfile,
 ): ClaudeCodeProtocolProfile {
-  if (profile !== CLAUDE_CODE_2_1_195_PROFILE) fail();
+  if (!ACCEPTED_PROFILES.has(profile)) fail();
   return profile;
 }
 
