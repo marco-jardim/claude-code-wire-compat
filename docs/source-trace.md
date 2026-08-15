@@ -268,6 +268,55 @@ Verified known-answer vector: first user text `offline cch probe` with CLI versi
 
 This vector is locked by `test/fingerprint.test.ts`; complete line composition is locked by `test/system-prompt.test.ts`.
 
+### 2.1.233 amendment: `cc_prev_req` and `cc_prompt_id`
+
+**The fingerprint algorithm is UNCHANGED.** Salt, sampled indices, concatenation order, SHA-256, hex encoding and three-character truncation are byte-for-byte the same in 2.1.233 as in 2.1.195; only the CLI version fed into the hash differs, which is why the same first user text yields a different suffix under each profile. The xxHash exclusion recorded under "cch is static" below stands unamended: nothing in 2.1.233 revives it.
+
+What 2.1.233 changes is the COMPOSITION of the line. Its builder takes five parameters where 2.1.195 takes three, and appends up to five optional segments after the fixed `cc_version`/`cc_entrypoint` head, each one space-prefixed and semicolon-terminated, in this order:
+
+| Position | Segment                | Emitted by this package                                     |
+| -------- | ---------------------- | ----------------------------------------------------------- |
+| 1        | `cch=00000;`           | Always. First-party gate holds for the Anthropic provider.  |
+| 2        | `cc_workload=<w>;`     | Never. Not modelled — see below.                            |
+| 3        | `cc_is_subagent=true;` | Never. Not modelled — see below.                            |
+| 4        | `cc_prev_req=<r>;`     | When the caller supplies a well-formed `previousRequestId`. |
+| 5        | `cc_prompt_id=<p>;`    | When the caller supplies a well-formed `promptId`.          |
+
+Both new segments are guarded upstream by the conjunction of three conditions: the value is defined, it matches a pattern, and the request is first-party. The patterns, transcribed rather than inferred:
+
+- `cc_prev_req`: `/^req_[A-Za-z0-9_-]{1,36}$/`
+- `cc_prompt_id`: `/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i`
+
+The `i` flag on the second is upstream's own, not a relaxation: an upper-case UUID **is** emitted.
+
+A value failing its pattern is **silently omitted** from the line. It is never an error, and it is never interpolated in any form. That second half is a security property, not a nicety: these two segments carry the only caller-controlled bytes in the block, so a value containing `;` or a newline must be absent rather than merely unrecognised, or it would forge segments the genuine client never emits. `test/validation/billing-prev-req.test.ts` asserts on the whole line and additionally that the offending substring appears nowhere in it.
+
+The version gate is **structural**, not a capability flag: the 2.1.195 builder has no parameter for these values, so the 2.1.195 profile emits neither segment even when both ids are supplied, and drops them silently, exactly as a client without the feature would. This mirrors the request-derived output-token bound in `src/thinking.ts`. Centralising per-version dispatch, so that both read as profile traits rather than identity comparisons, is a later task.
+
+Verified known-answer vector: first user text `offline cch probe` with CLI version `2.1.233` yields fingerprint `365`. Therefore the exact first-turn billing line is:
+
+`x-anthropic-billing-header: cc_version=2.1.233.365; cc_entrypoint=cli; cch=00000;`
+
+and the same request on a second turn, carrying both ids, is:
+
+`x-anthropic-billing-header: cc_version=2.1.233.365; cc_entrypoint=cli; cch=00000; cc_prev_req=req_abc123; cc_prompt_id=0f6e2a71-9d4c-4b8a-8f3d-1c2b3a4d5e6f;`
+
+This vector is locked by `test/fingerprint-2.1.233.test.ts`, alongside the 2.1.195 answers for the same three phrases; the two sets must differ.
+
+#### Divergence: the caller supplies the previous request id
+
+Upstream derives `cc_prev_req` by scanning the conversation for the last assistant message and reading a `requestId` stored beside it. This package **requires the id from the caller** instead, as `ClaudeCodeRequestInput.previousRequestId`.
+
+That field is the client's own transcript bookkeeping — the value of the `request-id` RESPONSE header of the previous turn — and is not part of the Messages API wire format. Modelling the scan would mean adding a non-wire property to `Message` and having this package infer conversation state it does not own. A divergence of convenience, not of output: the emitted bytes are identical for any consumer that plumbs the value through.
+
+**The consequence is the consumer's, and it is observable.** On the 2.1.233 profile a second or later turn built without `previousRequestId` emits a billing line the genuine client would not emit, and is therefore distinguishable from real CLI traffic from the second turn onward. A first turn has no previous request, so omitting it there is correct.
+
+Format is NOT validated at the builder boundary — only the type is. Rejecting a malformed id there would make this package fail where the genuine client succeeds, since upstream drops an unvouchable value silently at the point of emission. `src/fingerprint.ts` owns the patterns and is the only place they appear.
+
+#### Not modelled: `cc_workload` and `cc_is_subagent`
+
+Neither segment is ever emitted. `cc_workload` describes a background workload and `cc_is_subagent` marks a sub-agent session; this package models the CLI's main session, which has neither. That leaves the emitted line in the same shape as 2.1.195, which has no such segments at all. Should a consumer ever need to present as a sub-agent, both would become explicit inputs on the same footing as the two ids above.
+
 ## cch is static
 
 `lib/mimicry/system-prompt.mjs:145-148` emits the static body-field marker `cch=00000;` for supported first-party providers, and `index.mjs:3141-3146` explicitly preserves that marker because mutating the first system block would invalidate prompt caching.
