@@ -23,6 +23,7 @@ describe("CI policy", () => {
     "npm run lint",
     "npm run typecheck",
     "npm test",
+    "npm run fixtures:check",
     "npm run test:coverage",
     "npm run build",
     "npm run pack:check",

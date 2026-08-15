@@ -94,6 +94,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
+      - run: npm run fixtures:check
       - run: npm run test:coverage
       - run: npm run pack:check
       - name: Production dependency licenses

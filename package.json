@@ -49,7 +49,9 @@
     "test:coverage": "vitest run --coverage",
     "test:pack": "node scripts/verify-packed-consumers.mjs",
     "pack:check": "npm pack --dry-run && publint && attw --pack . --profile esm-only",
-    "drift:check": "node scripts/verify-drift.mjs"
+    "drift:check": "node scripts/verify-drift.mjs",
+    "fixtures:check": "node scripts/seal-golden-fixtures.mjs --check",
+    "fixtures:seal": "node scripts/seal-golden-fixtures.mjs --write"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",

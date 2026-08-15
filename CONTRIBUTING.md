@@ -14,4 +14,12 @@ Test quality is enforced statically rather than through mutation testing. `npm r
 
 `npm run drift:check` compares the pinned profile against a local checkout of the upstream source, so it is a local quality gate. When that checkout is absent, it deliberately exits nonzero with `SOURCE_UNAVAILABLE`; do not suppress or work around that result. CI instead runs the fixture-driven `test/drift` suite.
 
+## Golden fixtures
+
+`npm run fixtures:seal` is the only approved way to update golden fixture hashes. It recomputes the SHA-256 of every file in `test/fixtures/golden/` and rewrites both `test/fixtures/golden/manifest.json` and the `### Fixture integrity` table in `docs/source-trace.md` from those bytes. Never hand-edit either the manifest or the table: a hand-written hash asserts an integrity claim nothing verified, which is precisely the failure that left two of the three documented hashes stale before the check existed.
+
+Regenerate a fixture, run `npm run fixtures:seal`, and commit the fixture together with the manifest and the trace. The command refuses to run when the working tree carries modified tracked files outside those two targets, or an untracked file inside `test/fixtures/golden/` — an uncommitted fixture would otherwise be sealed into a hash no commit carries.
+
+CI runs `npm run fixtures:check` only. It verifies the recorded hashes against the files on disk in both directions and never writes; `fixtures:seal` must not be added to any workflow.
+
 Keep public commit messages neutral and use Conventional Commits. Changes to the public API must include tests and documentation.
