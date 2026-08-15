@@ -3,10 +3,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { ClaudeCodeRequestInput } from "../../src/index.js";
-import {
-  buildClaudeCodeRequest,
-  CLAUDE_CODE_2_1_195_PROFILE,
-} from "../../src/index.js";
+import { buildClaudeCodeRequest } from "../../src/index.js";
+import { describeEachProfile } from "../support/profile-matrix.js";
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000001";
 const CLIENT_REQUEST_ID = "00000000-0000-4000-8000-000000000002";
@@ -35,10 +33,10 @@ function inputFor(model: string): RuntimeBuildInput {
   };
 }
 
-describe("public model wire identity", () => {
+describeEachProfile("public model wire identity", (entry) => {
   it("builds every catalogue model without rewriting its wire id", async () => {
     for (const [canonicalModelId, definition] of Object.entries(
-      CLAUDE_CODE_2_1_195_PROFILE.supportedModels,
+      entry.profile.supportedModels,
     )) {
       const built = await buildClaudeCodeRequest(inputFor(canonicalModelId));
       const body: unknown = JSON.parse(built.body);
@@ -49,7 +47,9 @@ describe("public model wire identity", () => {
       expect(built.evidence.modelFamily).toBe(definition.family);
     }
   });
+});
 
+describe("public model wire identity", () => {
   it.each(["claude-opus-4-9", "gpt-4o"])(
     "passes an unrecognised model %s through",
     async (model) => {

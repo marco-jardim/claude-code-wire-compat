@@ -13,10 +13,10 @@ import type {
 } from "../../src/index.js";
 import {
   buildClaudeCodeRequest,
-  CLAUDE_CODE_2_1_195_PROFILE,
   ClaudeCodeWireError,
   parseBuiltClaudeCodeRequest,
 } from "../../src/index.js";
+import { describeEachProfile } from "../support/profile-matrix.js";
 
 /**
  * `Reflect.get` is declared to return `any`. Narrowing it to `unknown` at the
@@ -747,16 +747,18 @@ describe("build-request surviving input-validation mutants", () => {
     expect(built.method).toBe("POST");
   });
 
-  it("rejects an unpinned profile and accepts the exported singleton", async () => {
-    const clone = protocolProfile({ ...CLAUDE_CODE_2_1_195_PROFILE });
-    await expect(
-      buildClaudeCodeRequest(validInput(), clone),
-    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
-    await expect(
-      buildClaudeCodeRequest(validInput(), CLAUDE_CODE_2_1_195_PROFILE),
-    ).resolves.toMatchObject({
-      url: "https://api.anthropic.com/v1/messages?beta=true",
-      method: "POST",
+  describeEachProfile("pinned profile identity", (entry) => {
+    it("rejects an unpinned profile and accepts the exported singleton", async () => {
+      const clone = protocolProfile({ ...entry.profile });
+      await expect(
+        buildClaudeCodeRequest(validInput(), clone),
+      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+      await expect(
+        buildClaudeCodeRequest(validInput(), entry.profile),
+      ).resolves.toMatchObject({
+        url: entry.endpoint,
+        method: "POST",
+      });
     });
   });
 
@@ -895,12 +897,14 @@ describe("build-request surviving parser mutants", () => {
     expect(Object.isFrozen(parsed.evidence.capabilityDecisions)).toBe(true);
   });
 
-  it("rejects an unpinned parser profile", async () => {
-    const built = await buildClaudeCodeRequest(validInput());
-    const clone = protocolProfile({ ...CLAUDE_CODE_2_1_195_PROFILE });
-    expect(() => parseBuiltClaudeCodeRequest(built, clone)).toThrow(
-      expect.objectContaining({ code: "INVALID_INPUT" }),
-    );
+  describeEachProfile("pinned parser profile identity", (entry) => {
+    it("rejects an unpinned parser profile", async () => {
+      const built = await buildClaudeCodeRequest(validInput());
+      const clone = protocolProfile({ ...entry.profile });
+      expect(() => parseBuiltClaudeCodeRequest(built, clone)).toThrow(
+        expect.objectContaining({ code: "INVALID_INPUT" }),
+      );
+    });
   });
 
   it.each([[null], [[]], ["built"], [1], [true]])(

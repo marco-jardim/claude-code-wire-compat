@@ -17,9 +17,11 @@ import {
   type BuildRedactedEvidenceInput,
 } from "../../src/redaction.js";
 import { sha256Hex } from "../../src/sha256.js";
+import {
+  describeEachProfile,
+  type ProfileUnderTest,
+} from "../support/profile-matrix.js";
 
-const PROFILE_ID = "claude-code-2.1.195-sdk-0.94.0";
-const ENDPOINT = "https://api.anthropic.com/v1/messages?beta=true";
 const MAX_INPUT_SIZE = 1_000_000;
 const TOKEN = "sentinel-secret-token";
 let freshImportSequence = 0;
@@ -87,14 +89,14 @@ async function freshSha256(): Promise<Sha256Module> {
   return { sha256Hex: loaded["sha256Hex"] };
 }
 
-function profile(): ClaudeCodeProtocolProfile {
+function profile(entry: ProfileUnderTest): ClaudeCodeProtocolProfile {
   return {
-    id: PROFILE_ID,
-    cliVersion: "2.1.195",
-    sdkVersion: "0.94.0",
-    endpoint: ENDPOINT,
+    id: entry.id,
+    cliVersion: entry.cliVersion,
+    sdkVersion: entry.sdkVersion,
+    endpoint: entry.endpoint,
     entrypoint: "cli",
-    userAgent: "claude-cli/2.1.195 (external, sdk-cli)",
+    userAgent: entry.userAgent,
     buildTime: "2026-01-01T00:00:00.000Z",
     gitSha: "validation",
     attributionHeaderEnabled: false,
@@ -110,9 +112,12 @@ function profile(): ClaudeCodeProtocolProfile {
   };
 }
 
-function redactionInput(token = TOKEN): BuildRedactedEvidenceInput {
+function redactionInput(
+  entry: ProfileUnderTest,
+  token = TOKEN,
+): BuildRedactedEvidenceInput {
   return {
-    profile: profile(),
+    profile: profile(entry),
     request: {
       accessToken: token,
       model: "claude-sonnet-4-5",
@@ -242,8 +247,11 @@ function measureGraph(value: unknown, completed = new Set<object>()): number {
   return size;
 }
 
-function sizedInput(extraBytes: number): BuildRedactedEvidenceInput {
-  const input = redactionInput();
+function sizedInput(
+  entry: ProfileUnderTest,
+  extraBytes: number,
+): BuildRedactedEvidenceInput {
+  const input = redactionInput(entry);
   const shared = { marker: "shared-completed-node" };
   addOwnValue(input, "sharedOne", shared);
   addOwnValue(input, "sharedTwo", shared);
@@ -255,15 +263,18 @@ function sizedInput(extraBytes: number): BuildRedactedEvidenceInput {
   return input;
 }
 
-function depthInput(depth: number): BuildRedactedEvidenceInput {
-  const input = redactionInput();
+function depthInput(
+  entry: ProfileUnderTest,
+  depth: number,
+): BuildRedactedEvidenceInput {
+  const input = redactionInput(entry);
   let branch: object = {};
   for (let index = 1; index < depth; index += 1) branch = { next: branch };
   addOwnValue(input, "depthBoundary", branch);
   return input;
 }
 
-describe("redaction mutation boundaries", () => {
+describeEachProfile("redaction mutation boundaries", (entry) => {
   it.each([null, "input", 7, true])(
     "rejects a primitive top-level evidence source %#",
     async (value) => {
@@ -276,9 +287,9 @@ describe("redaction mutation boundaries", () => {
   );
 
   it("accepts a fully valid effective profile and reports its exact id", async () => {
-    const input = redactionInput();
+    const input = redactionInput(entry);
     addOwnValue(input, "effectiveProfile", {
-      ...profile(),
+      ...profile(entry),
       id: "effective-profile-id",
     });
     const evidence = await buildRedactedEvidence(input);
@@ -292,8 +303,8 @@ describe("redaction mutation boundaries", () => {
     ["provider", "bedrock"],
     ["anthropicVersion", "2024-01-01"],
   ] as const)("rejects invalid effective-profile %s=%j", async (key, value) => {
-    const input = redactionInput();
-    addOwnValue(input, "effectiveProfile", { ...profile(), [key]: value });
+    const input = redactionInput(entry);
+    addOwnValue(input, "effectiveProfile", { ...profile(entry), [key]: value });
     await expectWireRejection(
       () => buildRedactedEvidence(input),
       "INVALID_INPUT",
@@ -301,7 +312,7 @@ describe("redaction mutation boundaries", () => {
   });
 
   it("reports byte-conversion failures with exact safe details", async () => {
-    const input = redactionInput();
+    const input = redactionInput(entry);
     await expectWireRejection(
       () => buildRedactedEvidence(input, cryptoWithDigest(incompatibleDigest)),
       "REDACTION_FAILURE",
@@ -310,7 +321,7 @@ describe("redaction mutation boundaries", () => {
   });
 
   it("reports an invalid digest length with exact safe details", async () => {
-    const input = redactionInput();
+    const input = redactionInput(entry);
     const bodyByteLength = new TextEncoder().encode(input.body).byteLength;
 
     await expectWireRejection(
@@ -326,7 +337,9 @@ describe("redaction mutation boundaries", () => {
 
   it("emits exact ordered evidence while omitting credentials from every source", async () => {
     const redaction = await freshRedaction();
-    const evidence = await redaction.buildRedactedEvidence(redactionInput());
+    const evidence = await redaction.buildRedactedEvidence(
+      redactionInput(entry),
+    );
 
     expect(Object.keys(evidence)).toEqual([
       "profileId",
@@ -342,8 +355,8 @@ describe("redaction mutation boundaries", () => {
       "capabilityDecisions",
     ]);
     expect(evidence).toMatchObject({
-      profileId: PROFILE_ID,
-      url: ENDPOINT,
+      profileId: entry.id,
+      url: entry.endpoint,
       method: "POST",
       modelFamily: "sonnet",
       logicalHeaderNames: [
@@ -373,7 +386,7 @@ describe("redaction mutation boundaries", () => {
     "rejects the forbidden own key %s",
     async (key) => {
       const redaction = await freshRedaction();
-      const input = redactionInput();
+      const input = redactionInput(entry);
       addOwnValue(input, key, "value");
       await expectWireRejection(
         () => redaction.buildRedactedEvidence(input),
@@ -389,7 +402,7 @@ describe("redaction mutation boundaries", () => {
     ["\udfff", false],
     ["\udbff", false],
   ] as const)("enforces UTF-16 boundary %j", async (body, accepted) => {
-    const input = redactionInput();
+    const input = redactionInput(entry);
     addOwnValue(input, "body", body);
     if (accepted) {
       const evidence = await buildRedactedEvidence(input);
@@ -403,59 +416,61 @@ describe("redaction mutation boundaries", () => {
   });
 
   it("accepts depth 100 and rejects depth 101 with exact safe details", async () => {
-    await expect(buildRedactedEvidence(depthInput(100))).resolves.toMatchObject(
-      {
-        modelFamily: "sonnet",
-      },
-    );
+    await expect(
+      buildRedactedEvidence(depthInput(entry, 100)),
+    ).resolves.toMatchObject({
+      modelFamily: "sonnet",
+    });
     await expectWireRejection(
-      () => buildRedactedEvidence(depthInput(101)),
+      () => buildRedactedEvidence(depthInput(entry, 101)),
       "INPUT_TOO_DEEP",
       { maximumDepth: 100 },
     );
   });
 
   it("accepts exactly 1,000,000 measured bytes and rejects one more", async () => {
-    await expect(buildRedactedEvidence(sizedInput(0))).resolves.toMatchObject({
+    await expect(
+      buildRedactedEvidence(sizedInput(entry, 0)),
+    ).resolves.toMatchObject({
       modelFamily: "sonnet",
     });
     await expectWireRejection(
-      () => buildRedactedEvidence(sizedInput(1)),
+      () => buildRedactedEvidence(sizedInput(entry, 1)),
       "INPUT_TOO_LARGE",
       { maximumSize: MAX_INPUT_SIZE },
     );
   });
 
   it("rejects cycles, symbols, custom prototypes, accessors, and missing descriptors", async () => {
-    const cyclic = redactionInput();
+    const cyclic = redactionInput(entry);
     addOwnValue(cyclic, "cycle", cyclic);
     await expectWireRejection(
       () => buildRedactedEvidence(cyclic),
       "CYCLIC_INPUT",
     );
 
-    const symbolValue = redactionInput();
+    const symbolValue = redactionInput(entry);
     addOwnValue(symbolValue, "symbolValue", Symbol("invalid"));
     await expectWireRejection(
       () => buildRedactedEvidence(symbolValue),
       "INVALID_INPUT",
     );
 
-    const symbolKey = redactionInput();
+    const symbolKey = redactionInput(entry);
     addOwnValue(symbolKey, Symbol("invalid"), "value");
     await expectWireRejection(
       () => buildRedactedEvidence(symbolKey),
       "INVALID_INPUT",
     );
 
-    const customPrototype = redactionInput();
+    const customPrototype = redactionInput(entry);
     addOwnValue(customPrototype, "date", new Date(0));
     await expectWireRejection(
       () => buildRedactedEvidence(customPrototype),
       "INVALID_INPUT",
     );
 
-    const accessor = redactionInput();
+    const accessor = redactionInput(entry);
     Object.defineProperty(accessor, "getter", {
       configurable: true,
       enumerable: true,
@@ -473,7 +488,7 @@ describe("redaction mutation boundaries", () => {
         getOwnPropertyDescriptor: () => undefined,
       },
     );
-    const missing = redactionInput();
+    const missing = redactionInput(entry);
     addOwnValue(missing, "absentDescriptor", absentDescriptor);
     await expectWireRejection(
       () => buildRedactedEvidence(missing),
@@ -482,7 +497,7 @@ describe("redaction mutation boundaries", () => {
   });
 
   it("accepts null-prototype and ignores non-enumerable property values", async () => {
-    const input = redactionInput();
+    const input = redactionInput(entry);
     const nullPrototype = nullPrototypeRecord();
     addOwnValue(input, "nullPrototype", nullPrototype);
     addOwnValue(input, "hiddenInvalidValue", Symbol("ignored"), false);
@@ -491,13 +506,13 @@ describe("redaction mutation boundaries", () => {
   });
 
   it("accepts a normal BMP boundary and rejects a low-surrogate pair", async () => {
-    const bmp = redactionInput();
+    const bmp = redactionInput(entry);
     addOwnValue(bmp, "body", "\ue000");
     await expect(buildRedactedEvidence(bmp)).resolves.toMatchObject({
       bodyByteLength: 3,
     });
 
-    const lowPair = redactionInput();
+    const lowPair = redactionInput(entry);
     addOwnValue(lowPair, "body", "\udc00\udc00");
     await expectWireRejection(
       () => buildRedactedEvidence(lowPair),
@@ -511,7 +526,7 @@ describe("redaction mutation boundaries", () => {
         throw new Error("prototype must not be observed");
       },
     });
-    const input = redactionInput();
+    const input = redactionInput(entry);
     addOwnValue(input, "callable", callable);
     await expectWireRejection(
       () => buildRedactedEvidence(input),
@@ -520,7 +535,7 @@ describe("redaction mutation boundaries", () => {
   });
 
   it("rejects missing required own source properties as INVALID_INPUT", async () => {
-    const input = redactionInput();
+    const input = redactionInput(entry);
     expect(Reflect.deleteProperty(input, "profile")).toBe(true);
     await expectWireRejection(
       () => buildRedactedEvidence(input),
@@ -534,7 +549,7 @@ describe("redaction mutation boundaries", () => {
       [[7, "value"]],
       [["name", 7]],
     ]) {
-      const input = redactionInput();
+      const input = redactionInput(entry);
       addOwnValue(input, "logicalHeaders", logicalHeaders);
       await expectWireRejection(
         () => buildRedactedEvidence(input),
@@ -544,7 +559,7 @@ describe("redaction mutation boundaries", () => {
   });
 
   it("rejects a credential appearing in a header name or beta feature", async () => {
-    const headerName = redactionInput();
+    const headerName = redactionInput(entry);
     addOwnValue(headerName, "logicalHeaders", [
       ["authorization", `Bearer ${TOKEN}`],
       [`x-${TOKEN}`, "safe"],
@@ -554,14 +569,14 @@ describe("redaction mutation boundaries", () => {
       "INVALID_INPUT",
     );
 
-    const beta = redactionInput();
+    const beta = redactionInput(entry);
     addOwnValue(beta, "betaFeatures", [`feature-${TOKEN}`]);
     await expectWireRejection(
       () => buildRedactedEvidence(beta),
       "INVALID_INPUT",
     );
 
-    const separatorBoundary = redactionInput("unused-access-token");
+    const separatorBoundary = redactionInput(entry, "unused-access-token");
     addOwnValue(separatorBoundary, "logicalHeaders", [
       ["authorization", "X token-after-one-character"],
     ]);
@@ -575,7 +590,7 @@ describe("redaction mutation boundaries", () => {
   });
 
   it("does not treat non-authorization header values as credentials", async () => {
-    const input = redactionInput("access-token");
+    const input = redactionInput(entry, "access-token");
     addOwnValue(input, "logicalHeaders", [
       ["authorization", "Bearer access-token"],
       ["x-not-authorization", "X accidental-credential"],
@@ -592,20 +607,20 @@ describe("redaction mutation boundaries", () => {
     };
     addOwnValue(malformed, "subtle", null);
     await expectWireRejection(
-      () => buildRedactedEvidence(redactionInput(), malformed),
+      () => buildRedactedEvidence(redactionInput(entry), malformed),
       "CRYPTO_UNAVAILABLE",
     );
 
     const rejecting = cryptoWithDigest(rejectingDigest);
     await expectWireRejection(
-      () => buildRedactedEvidence(redactionInput(), rejecting),
+      () => buildRedactedEvidence(redactionInput(entry), rejecting),
       "REDACTION_FAILURE",
       { bodyByteLength: 34, messageCount: 1, systemBlockCount: 1 },
     );
 
     const shortDigestProvider = cryptoWithDigest(shortDigest);
     await expectWireRejection(
-      () => buildRedactedEvidence(redactionInput(), shortDigestProvider),
+      () => buildRedactedEvidence(redactionInput(entry), shortDigestProvider),
       "REDACTION_FAILURE",
       { bodyByteLength: 34, messageCount: 1, systemBlockCount: 1 },
     );
