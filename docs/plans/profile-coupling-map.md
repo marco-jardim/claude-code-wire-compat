@@ -178,6 +178,13 @@ marked `PARAMETRIZÁVEL` or `MISTA` above. Files marked `ESPECÍFICA` stay pinne
 to the 195 profile by design; new profiles receive their own equivalents
 (fixtures, known vectors, analysis docs).
 
+### Implicit coupling (no literal match — invisible to grep)
+
+| File                                  | Coupling mechanism                                                                                                                                                                                                                                                                             |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/verify-packed-consumers.mjs` | Exercises the package's **default** profile implicitly: the three runtime digests it compares are a function of whichever profile the package exports as default. Changing the default silently changes the expected digests. Must exercise each profile explicitly before any default switch. |
+| `test/pack/`                          | Packed-consumer tests exercise the default export surface; same implicit dependency on the single-default assumption.                                                                                                                                                                          |
+
 ## Appendix — raw rg listing
 
 Complete output of
