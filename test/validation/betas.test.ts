@@ -2,11 +2,12 @@
 
 import { readFileSync } from "node:fs";
 
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 
 import { composeBetas } from "../../src/betas.js";
 import type { ClaudeCodeCapabilities } from "../../src/contracts.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
+import { describeEachProfile } from "../support/profile-matrix.js";
 
 const CAPABILITIES: ClaudeCodeCapabilities = {
   thinking: true,
@@ -27,13 +28,15 @@ const INPUT = {
   thinkingDisplayActive: false,
 } as const;
 
-describe("composeBetas policy combinations", () => {
+describeEachProfile("composeBetas policy combinations", (entry) => {
   it("emits context hint when the profile enables it", () => {
     const profile = {
-      ...CLAUDE_CODE_2_1_195_PROFILE,
+      ...entry.profile,
       contextHintEnabled: true,
     };
     expect(composeBetas(INPUT, profile)).toContain("context-hint-2026-04-09");
+    // The negative half is a concrete 195 design value (`contextHintEnabled:
+    // false`), not a profile-invariant, so it stays pinned to that profile.
     expect(composeBetas(INPUT, CLAUDE_CODE_2_1_195_PROFILE)).not.toContain(
       "context-hint-2026-04-09",
     );
@@ -49,9 +52,9 @@ describe("composeBetas policy combinations", () => {
 
   it("keeps experimental base pushes disabled as one policy unit", () => {
     const profile = {
-      ...CLAUDE_CODE_2_1_195_PROFILE,
+      ...entry.profile,
       betaPolicy: {
-        ...CLAUDE_CODE_2_1_195_PROFILE.betaPolicy,
+        ...entry.profile.betaPolicy,
         experimentalBetasEnabled: false,
       },
     };
