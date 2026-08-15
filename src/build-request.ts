@@ -1502,7 +1502,7 @@ export async function buildClaudeCodeRequest(
     });
     const billing = await createBillingBlock(
       fingerprintText(validated.source),
-      effectiveProfile.cliVersion,
+      effectiveProfile,
       validated.crypto,
     );
     const metadata = buildCorrelatedMetadata(

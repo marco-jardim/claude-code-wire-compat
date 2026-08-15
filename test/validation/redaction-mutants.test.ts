@@ -7,6 +7,7 @@ import type {
   ClaudeCodeWireErrorCode,
 } from "../../src/contracts.js";
 import { ClaudeCodeWireError } from "../../src/contracts.js";
+import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
 import {
   createBillingBlock,
   createBillingFingerprint,
@@ -752,7 +753,7 @@ describe("billing fingerprint mutation vectors", () => {
     const fingerprint = await freshFingerprint();
     const block = await fingerprint.createBillingBlock(
       "hello wire compat",
-      "2.1.195",
+      CLAUDE_CODE_2_1_195_PROFILE,
     );
     expect(block).toEqual({
       type: "text",

@@ -5,14 +5,19 @@
  *
  * Wave 2 exports expected:
  * - `createBillingFingerprint(firstUserText: string, cliVersion: string, crypto?: Pick<Crypto, "subtle">): Promise<string>`
- * - `createBillingBlock(firstUserText: string, cliVersion: string, crypto?: Pick<Crypto, "subtle">): Promise<TextBlock>`
+ * - `createBillingBlock(firstUserText: string, profile: ClaudeCodeProtocolProfile, crypto?: Pick<Crypto, "subtle">, chain?: BillingChain): Promise<TextBlock>`
  */
 
 import { createHash, webcrypto } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { ClaudeCodeWireError, type TextBlock } from "../src/contracts.js";
+import {
+  ClaudeCodeWireError,
+  type ClaudeCodeProtocolProfile,
+  type TextBlock,
+} from "../src/contracts.js";
+import { CLAUDE_CODE_2_1_195_PROFILE } from "../src/profiles/claude-code-2.1.195.js";
 import {
   expectModuleUnimplemented,
   loadWave2Function,
@@ -25,8 +30,9 @@ type CreateBillingFingerprint = (
 ) => Promise<string>;
 type CreateBillingBlock = (
   firstUserText: string,
-  cliVersion: string,
+  profile: ClaudeCodeProtocolProfile,
   crypto?: Pick<Crypto, "subtle">,
+  chain?: { previousRequestId?: string; promptId?: string },
 ) => Promise<TextBlock>;
 
 const CLI_VERSION = "2.1.195";
@@ -112,7 +118,10 @@ describe("fingerprint (Wave 1 RED specification)", () => {
     );
     const fingerprint = formulaFingerprint("hello wire compat", CLI_VERSION);
 
-    const block = await createBillingBlock("hello wire compat", CLI_VERSION);
+    const block = await createBillingBlock(
+      "hello wire compat",
+      CLAUDE_CODE_2_1_195_PROFILE,
+    );
     expect(block).toEqual({
       type: "text",
       text: `x-anthropic-billing-header: cc_version=${CLI_VERSION}.${fingerprint}; cc_entrypoint=cli; cch=00000;`,
