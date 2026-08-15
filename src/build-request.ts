@@ -88,6 +88,8 @@ const INPUT_KEYS = new Set([
   "metadataOverrides",
   "extraHeaders",
   "extraHeaderPolicy",
+  "previousRequestId",
+  "promptId",
   "crypto",
 ]);
 const BETA_OVERRIDE_KEYS = new Set(["use1MContext"]);
@@ -763,6 +765,8 @@ function validateInput(input: ClaudeCodeRequestInput): {
   readonly suppressBillingBlock: boolean;
   readonly suppressIdentityBlock: boolean;
   readonly preserveThinkingBlockCacheControl: boolean;
+  readonly previousRequestId: string | undefined;
+  readonly promptId: string | undefined;
 } {
   if (!isRecord(input)) fail();
   assertExactKeys(input, INPUT_KEYS);
@@ -823,6 +827,12 @@ function validateInput(input: ClaudeCodeRequestInput): {
         ownValue(input, "preserveThinkingBlockCacheControl"),
       )
     : false;
+  const previousRequestId = Object.hasOwn(input, "previousRequestId")
+    ? validateBillingChainId(ownValue(input, "previousRequestId"))
+    : undefined;
+  const promptId = Object.hasOwn(input, "promptId")
+    ? validateBillingChainId(ownValue(input, "promptId"))
+    : undefined;
   return {
     source: input,
     clientRequestId,
@@ -833,7 +843,29 @@ function validateInput(input: ClaudeCodeRequestInput): {
     suppressBillingBlock,
     suppressIdentityBlock,
     preserveThinkingBlockCacheControl,
+    previousRequestId,
+    promptId,
   };
+}
+
+/**
+ * Type check only. The FORMAT of these two ids is deliberately not checked
+ * here: upstream guards them at the point of emission and drops a value it
+ * cannot vouch for, silently, so rejecting one here would make this package
+ * fail where the genuine client succeeds. `createBillingBlock` owns the
+ * patterns. A non-string is still a caller bug and fails like every other
+ * mistyped field.
+ *
+ * There is deliberately no `undefined` arm: `inspectGraph` has already rejected
+ * an explicitly-undefined value for every key but `crypto` by the time this
+ * runs, so such an arm would be unreachable. An explicitly-undefined id is
+ * therefore `INVALID_INPUT` here, as it is for every other field, and is NOT
+ * equivalent to omitting the key — unlike at the `createBillingBlock` seam,
+ * which does treat the two alike. `billing-prev-req.test.ts` pins both halves.
+ */
+function validateBillingChainId(value: unknown): string {
+  if (typeof value !== "string") fail();
+  return value;
 }
 
 function validateCountTokensInput(input: ClaudeCodeCountTokensInput): {
@@ -1500,10 +1532,28 @@ export async function buildClaudeCodeRequest(
       ...resolvedModel,
       capabilities,
     });
+    /*
+     * The previous turn's request id is the CALLER's to supply. Upstream
+     * derives it by scanning the conversation for the last assistant message
+     * and reading a `requestId` it stored alongside it — a field of the
+     * client's own transcript, not of the Messages API wire format. Modelling
+     * that would mean adding a non-wire property to `Message` and having this
+     * package infer conversation state it does not own. A documented
+     * divergence of convenience: the value is the same, the plumbing is the
+     * consumer's.
+     */
     const billing = await createBillingBlock(
       fingerprintText(validated.source),
-      effectiveProfile.cliVersion,
+      effectiveProfile,
       validated.crypto,
+      {
+        ...(validated.previousRequestId !== undefined && {
+          previousRequestId: validated.previousRequestId,
+        }),
+        ...(validated.promptId !== undefined && {
+          promptId: validated.promptId,
+        }),
+      },
     );
     const metadata = buildCorrelatedMetadata(
       identity,

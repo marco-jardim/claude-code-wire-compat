@@ -22,8 +22,13 @@ const repositoryRoot = path.resolve(
 
 /*
  * The profiles this script can verify, keyed by the profile `id` a caller
- * passes to `--profile`. One entry today; a 2.1.222+ profile joins as a second
- * entry with its own source file and its own pinned upstream expectations.
+ * passes to `--profile`. One entry today, and that is a scope decision rather
+ * than a gap: drift is measured against an external consumer project, and that
+ * project publishes protocol data for 2.1.195 alone. A 2.1.233 entry would have
+ * nothing to compare against and would report a permanent absence instead of a
+ * real divergence. A later profile joins as a second entry, with its own source
+ * file and its own pinned upstream expectations, once an external source for it
+ * exists.
  *
  * `--profile` is omitted by every current caller (`npm run drift:check`), so
  * the default MUST keep producing byte-identical output -- `test/drift`

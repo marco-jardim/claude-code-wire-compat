@@ -1022,6 +1022,43 @@ export interface ClaudeCodeRequestInput {
    * `"dropConflicting"`.
    */
   readonly extraHeaderPolicy?: ClaudeCodeExtraHeaderPolicy;
+  /**
+   * Supplies the `cc_prev_req` segment of the canonical billing block.
+   *
+   * This is the value of the `request-id` RESPONSE header the API returned for
+   * the PREVIOUS turn of this conversation — not this request's
+   * `clientRequestId`, and not anything derivable from `messages`. The genuine
+   * 2.1.233 client carries it forward so that a multi-turn conversation is
+   * linked request to request on the billing header.
+   *
+   * OMITTING IT IS OBSERVABLE. On the 2.1.233 profile, a second or later turn
+   * built without this field emits a billing block that the genuine client
+   * would not emit, and the request is therefore distinguishable from real CLI
+   * traffic from the second turn onward. The first turn has no previous
+   * request, so omitting it there is correct.
+   *
+   * Ignored entirely by the 2.1.195 profile, which has no such segment.
+   *
+   * A value that does not match `/^req_[A-Za-z0-9_-]{1,36}$/` is SILENTLY
+   * omitted from the block rather than rejected, mirroring upstream: the
+   * genuine client guards the segment and drops a value it cannot vouch for.
+   * A non-string value is still `INVALID_INPUT`, like every other field here.
+   */
+  readonly previousRequestId?: string;
+  /**
+   * Supplies the `cc_prompt_id` segment of the canonical billing block.
+   *
+   * A host-supplied prompt UUID. This package cannot derive one — upstream
+   * reads it from host state — so it is the caller's to provide, and omitting
+   * it is the modelled default for a session that has none.
+   *
+   * Ignored entirely by the 2.1.195 profile, which has no such segment.
+   *
+   * A value that does not match the canonical 8-4-4-4-12 hexadecimal UUID shape
+   * (case-insensitive) is SILENTLY omitted from the block rather than rejected,
+   * mirroring upstream. A non-string value is still `INVALID_INPUT`.
+   */
+  readonly promptId?: string;
   /** Injects the Web Crypto provider used to hash the request body. */
   readonly crypto?: Pick<Crypto, "subtle">;
 }
