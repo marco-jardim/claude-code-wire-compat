@@ -55,7 +55,8 @@
     "pack:check": "npm pack --dry-run && publint && attw --pack . --profile esm-only",
     "drift:check": "node scripts/verify-drift.mjs",
     "fixtures:check": "node scripts/seal-golden-fixtures.mjs --check",
-    "fixtures:seal": "node scripts/seal-golden-fixtures.mjs --write"
+    "fixtures:seal": "node scripts/seal-golden-fixtures.mjs --write",
+    "extract:profile": "node scripts/extract-upstream-profile.mjs"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
