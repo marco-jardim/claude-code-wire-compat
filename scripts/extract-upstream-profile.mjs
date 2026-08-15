@@ -18,10 +18,10 @@
  *      (`claude-code-20250219`), header names (`anthropic-version`), model id
  *      prefixes (`claude-`). Minifiers do not rewrite string contents, so these
  *      survive across builds.
- *   2. LOCAL SYNTACTIC STRUCTURE. A two-argument call whose arguments are both
- *      string literals of the registry's shape; an `Object.freeze([...])`
- *      whose array is immediately `.filter`ed against `null`; a balanced object
- *      literal enclosing an `id:` key.
+ *   2. LOCAL SYNTACTIC STRUCTURE. A two-argument call whose first argument is a
+ *      string literal of feature-key shape; an `Object.freeze([...])` whose
+ *      array is immediately `.filter`ed against `null`; a balanced object
+ *      literal enclosing an `id:` key AND at least one catalogue-shaped key.
  *
  * Identifiers ARE read -- an array of factory results is a list of identifiers
  * and nothing else -- but only ones this run discovered structurally in the
@@ -36,6 +36,17 @@
  * answer. A wrong answer here becomes a wrong header on the wire.
  *
  * KNOWN LIMITS, stated rather than hidden:
+ *   - `stainlessPackageVersion` is unresolved on observed builds. The SDK
+ *     version is a hoisted const nowhere near the `X-Stainless-Package-Version`
+ *     literal that names its header, and no local structure ties the two
+ *     together. Widening the window until something dotted turns up would
+ *     report whichever unrelated version happened to be nearest, so this stays
+ *     unresolved until an anchor exists.
+ *   - `userAgent` is unresolved as `anchor-ambiguous` when the `claude-cli/`
+ *     literal only appears inside unrelated template text. Observed builds
+ *     embed it in prose carrying `${{...}}` substitutions, which is why the
+ *     capture is validated as a single-line literal free of `{{` rather than
+ *     accepted on the anchor alone.
  *   - Backward scanning (finding the `{` that opens a model object) does not
  *     skip string literals, so a preceding string containing an unbalanced
  *     brace within `MODEL_BACKWARD_WINDOW` characters can hide an object. Such
@@ -76,6 +87,16 @@ const BETA_HEADER =
 
 const ASSIGNED_FACTORY =
   /([A-Za-z_$][\w$]*)\s*=\s*[A-Za-z_$][\w$]*\s*\(\s*["']([a-z][a-z0-9_]*)["']\s*,\s*["']([a-z][a-z0-9-]*)["']\s*\)/gu;
+/*
+ * The same call with an identifier where the header literal should be. Upstream
+ * hoists one entry's header into a const and passes it by name, so a rule that
+ * demands two literals drops that entry and silently renumbers everything after
+ * it. This form is far weaker as a discriminator -- `x=f("some_key",y)` is
+ * common -- so its matches are kept in a separate pool that only counts for an
+ * element the chosen registry array actually references.
+ */
+const ASSIGNED_INDIRECT_FACTORY =
+  /([A-Za-z_$][\w$]*)\s*=\s*[A-Za-z_$][\w$]*\s*\(\s*["']([a-z][a-z0-9_]*)["']\s*,\s*([A-Za-z_$][\w$]*)\s*\)/gu;
 const ASSIGNED_NULL = /([A-Za-z_$][\w$]*)\s*=\s*null\b/gu;
 const FROZEN_ARRAY = /Object\s*\.\s*freeze\s*\(\s*\[/gu;
 const NULL_FILTER =
@@ -83,6 +104,19 @@ const NULL_FILTER =
 const ANY_FILTER = /^\s*\.\s*filter\s*\(/u;
 const NEW_SET = /new\s+Set\s*\(\s*\[/gu;
 const MODEL_ID_ANCHOR = /(?:"id"|'id'|\bid)\s*:\s*["']claude-/gu;
+
+/*
+ * A model object must carry one of these beside its `id` to be a catalogue
+ * entry. Without it the `id:"claude-` anchor also matches unrelated records --
+ * token descriptors, design-system entries -- that share the id namespace but
+ * carry none of the catalogue's shape. They are skipped, not errors.
+ */
+const CATALOGUE_KEYS = [
+  "family",
+  "max_output_tokens",
+  "capabilities",
+  "pricing",
+];
 
 const LEGACY_MODELS = ["claude-3-haiku", "claude-3-opus", "claude-3-sonnet"];
 const LEGACY_LIMIT = /\b(?:4096|8192|32000|128000)\b/gu;
@@ -476,15 +510,39 @@ function modelRecord(entries) {
 }
 
 function factoryTable(dump) {
-  const byIdentifier = new Map();
+  const literal = new Map();
   for (const match of dump.matchAll(ASSIGNED_FACTORY)) {
     const [, identifier, featureKey, header] = match;
     if (!FEATURE_KEY.test(featureKey) || !BETA_HEADER.test(header)) continue;
-    if (!byIdentifier.has(identifier)) {
-      byIdentifier.set(identifier, { featureKey, header });
-    }
+    if (!literal.has(identifier))
+      literal.set(identifier, { featureKey, header });
   }
-  return byIdentifier;
+
+  const indirect = new Map();
+  for (const match of dump.matchAll(ASSIGNED_INDIRECT_FACTORY)) {
+    const [, identifier, featureKey, headerIdentifier] = match;
+    if (!FEATURE_KEY.test(featureKey)) continue;
+    if (literal.has(identifier) || indirect.has(identifier)) continue;
+    indirect.set(identifier, { featureKey, headerIdentifier });
+  }
+  return { literal, indirect };
+}
+
+/*
+ * Reads the literal behind a header identifier the array itself handed us. The
+ * name is discovered in this run and interpolated into the search, never
+ * written into this file -- the same discipline as reading an array element.
+ * Only a value of beta-header shape is accepted, so an identifier that happens
+ * to hold some other string resolves to nothing rather than to a wrong header.
+ */
+function resolveHeaderIdentifier(dump, identifier) {
+  const escaped = identifier.replaceAll("$", "\\$");
+  const assignment = new RegExp(
+    `(?:^|[^\\w$.])${escaped}\\s*=\\s*["']([a-z][a-z0-9-]*)["']`,
+    "u",
+  );
+  const header = assignment.exec(dump)?.[1];
+  return header !== undefined && BETA_HEADER.test(header) ? header : undefined;
 }
 
 function nullIdentifiers(dump) {
@@ -499,7 +557,7 @@ function nullIdentifiers(dump) {
  * wins: that keeps an unrelated `Object.freeze([...]).filter(...)` elsewhere in
  * the bundle from being mistaken for the registry, without knowing its name.
  */
-function frozenRegistryArray(dump, byIdentifier) {
+function frozenRegistryArray(dump, factories) {
   let best;
   for (const match of dump.matchAll(FROZEN_ARRAY)) {
     const openIndex = match.index + match[0].length - 1;
@@ -510,28 +568,36 @@ function frozenRegistryArray(dump, byIdentifier) {
 
     const elements = splitTopLevel(dump.slice(openIndex + 1, closeIndex));
     const score = elements.filter((element) =>
-      byIdentifier.has(element),
+      factories.literal.has(element),
     ).length;
     if (score === 0) continue;
 
+    /*
+     * Indirect matches count towards the total but never towards the primary
+     * score: they are weak enough that letting them decide which array is the
+     * registry would hand the choice to any `f("k",x)` call in the bundle.
+     */
+    const total =
+      score +
+      elements.filter((element) => factories.indirect.has(element)).length;
     const candidate = {
       elements,
       score,
+      total,
       nullFiltered,
       start: openIndex,
       end: closeIndex,
     };
-    if (
-      best === undefined ||
-      candidate.score > best.score ||
-      (candidate.score === best.score &&
-        candidate.nullFiltered &&
-        !best.nullFiltered)
-    ) {
+    if (best === undefined || betterCandidate(candidate, best))
       best = candidate;
-    }
   }
   return best;
+}
+
+function betterCandidate(candidate, best) {
+  if (candidate.score !== best.score) return candidate.score > best.score;
+  if (candidate.total !== best.total) return candidate.total > best.total;
+  return candidate.nullFiltered && !best.nullFiltered;
 }
 
 const SET_LITERAL = /^["']([^"']*)["']$/u;
@@ -553,7 +619,7 @@ function resolveSetMembers(elements, byIdentifier) {
       );
     }
     const entry = byIdentifier.get(member[1]);
-    if (entry === undefined) {
+    if (entry === undefined || typeof entry.header !== "string") {
       return unresolved(
         "a member reads a property of an identifier with no anchored factory call",
       );
@@ -591,21 +657,21 @@ function auxiliarySets(dump, bounds, byIdentifier) {
 }
 
 function extractBetaRegistry(dump) {
-  const byIdentifier = factoryTable(dump);
-  if (byIdentifier.size === 0) {
+  const factories = factoryTable(dump);
+  if (factories.literal.size === 0) {
     return unresolved(
       "no two-string factory call of the registry's shape is present",
     );
   }
 
   const nulls = nullIdentifiers(dump);
-  const array = frozenRegistryArray(dump, byIdentifier);
-  const sets = auxiliarySets(dump, array, byIdentifier);
+  const array = frozenRegistryArray(dump, factories);
+  const sets = auxiliarySets(dump, array, factories.literal);
 
   if (array === undefined) {
     return {
       auxiliarySets: sets,
-      entries: [...byIdentifier.values()],
+      entries: [...factories.literal.values()],
       order: "call-order",
       slotOrder: unresolved(
         "no Object.freeze([...]).filter(...) array references the anchored factory calls",
@@ -617,9 +683,19 @@ function extractBetaRegistry(dump) {
   const nullSlots = [];
   const unresolvedSlots = [];
   array.elements.forEach((element, slot) => {
-    const entry = byIdentifier.get(element);
+    const entry = factories.literal.get(element);
     if (entry !== undefined) {
       entries.push(entry);
+      return;
+    }
+
+    const indirect = factories.indirect.get(element);
+    if (indirect !== undefined) {
+      const header = resolveHeaderIdentifier(dump, indirect.headerIdentifier);
+      entries.push({
+        featureKey: indirect.featureKey,
+        header: header ?? unresolved("identifier-valued"),
+      });
       return;
     }
     if (element === "null" || nulls.has(element)) {
@@ -654,6 +730,8 @@ function extractModels(dump) {
     if (openIndex < 0) continue;
 
     const parsed = parseObject(dump, openIndex);
+    if (!CATALOGUE_KEYS.some((key) => parsed.value.has(key))) continue;
+
     const record = modelRecord(parsed.value);
     if (typeof record.id !== "string") continue;
 
@@ -685,6 +763,67 @@ function literalNear(dump, anchor, pattern, radius = SCALAR_WINDOW) {
 
 function literalAnywhere(dump, pattern) {
   return pattern.exec(dump)?.[1];
+}
+
+const USER_AGENT_ANCHOR = "claude-cli/";
+
+/**
+ * Contents of the string or template literal containing `index`, or undefined
+ * when the surrounding text is not one line of a single literal. Both scans
+ * stop at a newline, and the forward scan stops at a backtick that would open
+ * a nested template, so an anchor sitting in free-running prose yields nothing
+ * instead of a run of unrelated source.
+ */
+function enclosingLiteral(dump, index) {
+  let open = -1;
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const character = dump[cursor];
+    if (character === "\n" || character === "\r") return undefined;
+    if (character === '"' || character === "'" || character === "`") {
+      if (dump[cursor - 1] === "\\") continue;
+      open = cursor;
+      break;
+    }
+  }
+  if (open < 0) return undefined;
+
+  const quote = dump[open];
+  for (let cursor = index; cursor < dump.length; cursor += 1) {
+    const character = dump[cursor];
+    if (character === "\\") {
+      cursor += 1;
+      continue;
+    }
+    if (character === "\n" || character === "\r") return undefined;
+    if (character === quote) return dump.slice(open + 1, cursor);
+    if (character === "`") return undefined;
+  }
+  return undefined;
+}
+
+/*
+ * The `claude-cli/` literal is not unique in the bundle: it also appears inside
+ * long prose templates that merely mention the user agent. Those carry `{{`
+ * from a nested substitution, which no real user-agent template does, and they
+ * run past their own line. An anchor that survives both checks is the template;
+ * one that does not is reported ambiguous rather than emitted as garbage.
+ */
+function userAgentTemplate(dump) {
+  let index = dump.indexOf(USER_AGENT_ANCHOR);
+  if (index < 0) return undefined;
+
+  while (index >= 0) {
+    const literal = enclosingLiteral(dump, index);
+    if (
+      literal !== undefined &&
+      literal.includes(USER_AGENT_ANCHOR) &&
+      !literal.includes("{{")
+    ) {
+      return literal;
+    }
+    index = dump.indexOf(USER_AGENT_ANCHOR, index + 1);
+  }
+  return unresolved("anchor-ambiguous");
 }
 
 const SCALAR_SOURCES = [
@@ -732,11 +871,7 @@ const SCALAR_SOURCES = [
       ),
     "no dotted version beside the X-Stainless-Package-Version header name",
   ],
-  [
-    "userAgent",
-    (dump) => literalAnywhere(dump, /["']([^"'\n]*claude-cli\/[^"'\n]*)["']/u),
-    "no literal containing claude-cli/",
-  ],
+  ["userAgent", userAgentTemplate, "no literal containing claude-cli/"],
   [
     "endpoint",
     (dump) =>

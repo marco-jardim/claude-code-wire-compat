@@ -260,6 +260,68 @@ describe("upstream profile extraction script", () => {
     });
   });
 
+  /*
+   * Upstream hoists one entry's header into a const and passes it by name. A
+   * rule demanding two string literals drops that entry and silently renumbers
+   * every entry after it, which is a corrupted registry reported as a clean
+   * one -- the worst failure mode this tool has.
+   */
+  it("keeps an entry whose header argument is an identifier", () => {
+    expect(section("identifier-header", "betaRegistry")).toEqual({
+      auxiliarySets: [],
+      entries: [
+        { featureKey: "claude_code", header: "claude-code-20250219" },
+        {
+          featureKey: "oauth_auth",
+          header: { unresolved: "identifier-valued" },
+        },
+        { featureKey: "effort", header: "effort-2025-11-24" },
+      ],
+      nullFiltered: true,
+      nullSlots: [],
+      order: "frozen-array",
+      slotCount: 3,
+      unresolvedSlots: [],
+    });
+  });
+
+  /*
+   * The `id:"claude-` anchor also matches records that share the id namespace
+   * without being catalogue entries. Counting those inflates the catalogue,
+   * and a catalogue that claims models upstream does not serve is worse than
+   * one that is short.
+   */
+  it("skips objects that carry a claude- id but no catalogue shape", () => {
+    const models = report("catalogue-false-positive").models;
+
+    expect(models).toEqual([
+      {
+        family: "sonnet",
+        id: "claude-sonnet-5",
+        max_output_tokens: { default: 64_000, upper: 128_000 },
+      },
+    ]);
+  });
+
+  it("captures a backtick user-agent template", () => {
+    expect(section("user-agent-template", "scalars").userAgent).toBe(
+      "claude-cli/${VERSION} (external, cli)",
+    );
+  });
+
+  /*
+   * `claude-cli/` also occurs inside prose templates. Emitting the surrounding
+   * source as the user agent would put that source on the wire, so an anchor
+   * that cannot be bounded to one clean literal is reported ambiguous.
+   */
+  it("reports an unboundable user-agent anchor rather than emitting source", () => {
+    const scalars = section("garbage-user-agent", "scalars");
+
+    expect(scalars.userAgent).toEqual({ unresolved: "anchor-ambiguous" });
+    expect(JSON.stringify(scalars)).not.toContain("ISSUES_EXPLAINER");
+    expect(scalars.version).toBe("2.1.233");
+  });
+
   it.each([
     ["truncated", "error=truncated-dump\n"],
     ["empty", "error=empty-dump\n"],
@@ -308,7 +370,17 @@ describe("upstream profile extraction script", () => {
    */
   it("recovers the committed 2.1.233 registry order from an upstream-shaped array", () => {
     const registry = section("registry-2.1.233", "betaRegistry");
+    const entries = registry.entries;
+    if (!Array.isArray(entries) || !isRecord(entries[1])) {
+      throw new Error("2.1.233 registry report has no entries");
+    }
 
+    // Mirrors the real build: this one entry is passed by identifier, and its
+    // header is only present because the identifier was resolved.
+    expect(entries[1]).toEqual({
+      featureKey: "oauth_auth",
+      header: "oauth-2025-04-20",
+    });
     expect(registry.entries).toEqual(
       Object.values(BETA_REGISTRY_2_1_233).map((entry) => ({
         featureKey: entry.featureKey,

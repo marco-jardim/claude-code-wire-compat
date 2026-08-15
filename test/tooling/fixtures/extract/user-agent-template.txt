@@ -1,0 +1,2 @@
+var VERSION="2.1.233";
+var U0=`claude-cli/${VERSION} (external, cli)`;
