@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CLAUDE_CODE_2_1_195_PROFILE,
+  CLAUDE_CODE_2_1_233_PROFILE,
   buildClaudeCodeRequest,
   parseBuiltClaudeCodeRequest,
 } from "../../src/index.js";
@@ -14,9 +15,31 @@ import {
   type ReferenceFixtureName,
 } from "./reference-adapter.js";
 
-const FIXTURES: readonly ReferenceFixtureName[] = [
-  "outgoing-foreground.json",
-  "outgoing-canary-context-hint-off.json",
+type ConformanceProfile = NonNullable<
+  Parameters<typeof buildClaudeCodeRequest>[1]
+>;
+
+interface FixtureCase {
+  /** Committed reference capture. */
+  readonly name: ReferenceFixtureName;
+  /** Profile the capture was taken under, always named rather than defaulted. */
+  readonly profile: ConformanceProfile;
+}
+
+const FIXTURES: readonly FixtureCase[] = [
+  { name: "outgoing-foreground.json", profile: CLAUDE_CODE_2_1_195_PROFILE },
+  {
+    name: "outgoing-canary-context-hint-off.json",
+    profile: CLAUDE_CODE_2_1_195_PROFILE,
+  },
+  {
+    name: "outgoing-foreground-2.1.233.json",
+    profile: CLAUDE_CODE_2_1_233_PROFILE,
+  },
+  {
+    name: "outgoing-canary-context-hint-off-2.1.233.json",
+    profile: CLAUDE_CODE_2_1_233_PROFILE,
+  },
 ];
 
 function logicalHeaders(headers: readonly (readonly [string, string])[]) {
@@ -35,20 +58,18 @@ function parseRequestBody(body: string): Record<string, unknown> {
   return parsed;
 }
 
-async function expectEvidenceSafe(input: ClaudeCodeRequestInput) {
-  // The reference fixtures are 2.1.195 captures, so the profile is named
-  // rather than defaulted: this suite is a statement about 2.1.195 and must
-  // keep making it whichever profile the builder defaults to.
-  const built = await buildClaudeCodeRequest(
-    input,
-    CLAUDE_CODE_2_1_195_PROFILE,
-  );
-  const parsed = parseBuiltClaudeCodeRequest(
-    built,
-    CLAUDE_CODE_2_1_195_PROFILE,
-  );
+async function expectEvidenceSafe(
+  input: ClaudeCodeRequestInput,
+  profile: ConformanceProfile,
+) {
+  // Every reference fixture is a capture of one specific release, so the
+  // profile is named rather than defaulted: this suite is a statement about
+  // each pinned release and must keep making it whichever profile the builder
+  // defaults to.
+  const built = await buildClaudeCodeRequest(input, profile);
+  const parsed = parseBuiltClaudeCodeRequest(built, profile);
   expect(parsed).toEqual(built);
-  expect(built.evidence.profileId).toBe(CLAUDE_CODE_2_1_195_PROFILE.id);
+  expect(built.evidence.profileId).toBe(profile.id);
   expect(built.evidence.modelFamily).toMatch(/^(?:haiku|sonnet|opus|fable)$/u);
   expect(built.evidence.betaFeatures).toBeInstanceOf(Array);
   expect(built.evidence.bodyByteLength).toBe(
@@ -61,9 +82,9 @@ async function expectEvidenceSafe(input: ClaudeCodeRequestInput) {
 }
 
 describe("fixture-backed differential conformance", () => {
-  it.each(FIXTURES)("matches %s", async (name) => {
+  it.each(FIXTURES)("matches $name", async ({ name, profile }) => {
     const reference = referenceAdapter(name);
-    const built = await expectEvidenceSafe(syntheticInput(reference));
+    const built = await expectEvidenceSafe(syntheticInput(reference), profile);
     expect(built.url).toBe(reference.url);
     expect(built.method).toBe(reference.method);
     expect(logicalHeaders(built.headers)).toEqual(
@@ -94,7 +115,10 @@ describe("fixture-backed differential conformance", () => {
       })),
     ];
     for (const input of variants) {
-      const built = await expectEvidenceSafe(input);
+      const built = await expectEvidenceSafe(
+        input,
+        CLAUDE_CODE_2_1_195_PROFILE,
+      );
       expect(built.url).toBe(reference.url);
       expect(built.method).toBe(reference.method);
       expect(logicalHeaders(built.headers).get("authorization")).toBe(
@@ -111,7 +135,8 @@ describe("fixture-backed differential conformance", () => {
       { ...base, system: ["non-interactive system"] },
       { ...base, messages: [{ role: "user", content: "short" }] },
     ];
-    for (const input of variants) await expectEvidenceSafe(input);
+    for (const input of variants)
+      await expectEvidenceSafe(input, CLAUDE_CODE_2_1_195_PROFILE);
   });
 
   it("conforms for every pinned supported model", async () => {
@@ -119,7 +144,10 @@ describe("fixture-backed differential conformance", () => {
     for (const model of Object.keys(
       CLAUDE_CODE_2_1_195_PROFILE.supportedModels,
     )) {
-      const built = await expectEvidenceSafe({ ...base, model });
+      const built = await expectEvidenceSafe(
+        { ...base, model },
+        CLAUDE_CODE_2_1_195_PROFILE,
+      );
       expect(parseRequestBody(built.body)).toMatchObject({ model });
     }
   });
