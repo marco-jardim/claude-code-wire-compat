@@ -6,6 +6,35 @@ Append-only log of non-obvious maintenance decisions and their reasoning, so
 future work does not re-litigate or accidentally reverse them. Newest entries
 first. Keep entries dated, factual, and in consumer-neutral language.
 
+## 2026-08-15 — TypeScript 7.0.2 bump deferred (typescript-eslint hard-blocks)
+
+Context: Dependabot proposed four dev-tooling bumps. Three landed (globals
+17.11.0, @types/node 26.2.0, typescript-eslint 8.67.0). The fourth —
+typescript 6.0.3 → 7.0.2 — was attempted and reverted.
+
+Decision: **defer the TypeScript 7 major until typescript-eslint supports
+it.** typescript-eslint 8.67.0 does not merely warn on TS 7.0: it throws at
+module load ("typescript-eslint does not support TS 7.0"), so `eslint .`
+exits 2 before linting anything. Its declared peer range is
+`>=4.8.4 <6.1.0`, and upstream tracks TS support for **>= 7.1**, not 7.0
+(typescript-eslint/typescript-eslint#10940).
+
+Evidence gathered before reverting, so the next attempt starts informed:
+under TS 7.0.2 both `typecheck` configs pass with zero code changes, `build`
+passes, and the packed-consumer digests stay byte-identical across all three
+runtimes — the compiler itself is a non-event for this codebase; the only
+blocker is the linter's version guard.
+
+Rejected alternatives: a side-by-side TS 6 install for the eslint API (adds
+a permanent extra dependency for a temporary gap) and an override to silence
+the peer range (useless — the block is a runtime check, not a peer-range
+assertion).
+
+Unblock condition: a typescript-eslint release that supports TS >= 7.1, then
+bump typescript and typescript-eslint together. The Dependabot PR for
+typescript 7.0.2 was closed with this rationale; Dependabot will re-propose
+on the next TS release.
+
 ## 2026-08-15 — Dependabot triage: zeroed via overrides, not upgrades
 
 Context: 8 open Dependabot alerts (2 high, 6 moderate), all
