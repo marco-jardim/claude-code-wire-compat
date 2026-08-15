@@ -10,6 +10,7 @@ import {
   supportsMidConversationSystem,
   supportsStructuredOutputs,
 } from "./model-capabilities.js";
+import { BETA_REGISTRY_2_1_233 } from "./profiles/beta-registry-2.1.233.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
 /*
@@ -22,7 +23,73 @@ import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
  * keeps a canonical list, so the sequence below is load-bearing and must not be
  * reordered for tidiness. `docs/source-trace.md` records the same fact under
  * "Beta registry and push order".
+ *
+ * The push SITES are shared across profiles; the identifiers they push are not.
+ * A profile therefore selects its registry (see `resolveBetaRegistry`) and the
+ * sequence of sites stays fixed, which is what keeps a registry change from
+ * silently becoming an ordering change.
  */
+
+/** Structural shape of a registry entry, shared by every registry version. */
+interface BetaRegistryEntry {
+  readonly featureKey: string;
+  readonly header: string;
+}
+
+/**
+ * The entries the push sites below require, as a structural contract rather
+ * than a reference to one concrete registry.
+ *
+ * Registry versions have different key sets. Every key here except
+ * `NARRATION_SUMMARIES` is present in all of them, so those push sites index
+ * directly. `NARRATION_SUMMARIES` is optional because upstream removed it after
+ * 2.1.195 (see `src/profiles/beta-registry-2.1.233.ts`): its push site survives
+ * and becomes inert when the resolved registry has no entry to push. Making the
+ * optionality part of the TYPE is what forces every future registry to be
+ * checked against the push sites at compile time instead of at runtime.
+ */
+export interface ComposableBetaRegistry {
+  readonly CLAUDE_CODE: BetaRegistryEntry;
+  readonly OAUTH_AUTH: BetaRegistryEntry;
+  readonly LONG_CONTEXT: BetaRegistryEntry;
+  readonly INTERLEAVED_THINKING: BetaRegistryEntry;
+  readonly REDACT_THINKING: BetaRegistryEntry;
+  readonly THINKING_TOKEN_COUNT: BetaRegistryEntry;
+  readonly CONTEXT_MANAGEMENT: BetaRegistryEntry;
+  readonly STRUCTURED_OUTPUTS: BetaRegistryEntry;
+  readonly PROMPT_CACHING_SCOPE: BetaRegistryEntry;
+  readonly MID_CONVERSATION_SYSTEM: BetaRegistryEntry;
+  readonly EFFORT: BetaRegistryEntry;
+  readonly SPEED: BetaRegistryEntry;
+  readonly AFK_MODE: BetaRegistryEntry;
+  readonly EXTENDED_CACHE_TTL: BetaRegistryEntry;
+  readonly CONTEXT_HINT: BetaRegistryEntry;
+  readonly CACHE_DIAGNOSIS: BetaRegistryEntry;
+  readonly NARRATION_SUMMARIES?: BetaRegistryEntry;
+}
+
+const PROFILE_BETA_REGISTRIES: ReadonlyMap<string, ComposableBetaRegistry> =
+  new Map<string, ComposableBetaRegistry>([
+    [CLAUDE_CODE_2_1_195_PROFILE.id, BETA_REGISTRY],
+    ["claude-code-2.1.233-sdk-0.112.1", BETA_REGISTRY_2_1_233],
+  ]);
+
+/**
+ * Selects the registry a profile composes against.
+ *
+ * An unrecognised id falls back to the 2.1.195 registry rather than throwing.
+ * Rejecting unknown profiles is the request builder's job -- it validates the
+ * profile before any of this runs -- and duplicating that rejection here would
+ * give `composeBetas` a second, differently-worded opinion about profile
+ * validity. Standalone callers keep the 2.1.195 behaviour they had before
+ * profiles were a parameter.
+ */
+function resolveBetaRegistry(
+  profile: ClaudeCodeProtocolProfile,
+): ComposableBetaRegistry {
+  return PROFILE_BETA_REGISTRIES.get(profile.id) ?? BETA_REGISTRY;
+}
+
 export interface ComposeBetasInput {
   readonly rawModel: string;
   readonly normalizedId: string;
@@ -109,23 +176,24 @@ export function composeBetasWithAudit(
   const out: string[] = [];
   const policy = profile.betaPolicy;
   const experimental = policy.experimentalBetasEnabled;
+  const registry = resolveBetaRegistry(profile);
 
   if (!input.normalizedId.includes("haiku"))
-    out.push(BETA_REGISTRY.CLAUDE_CODE.header);
-  if (policy.oauthAuthenticated) out.push(BETA_REGISTRY.OAUTH_AUTH.header);
+    out.push(registry.CLAUDE_CODE.header);
+  if (policy.oauthAuthenticated) out.push(registry.OAUTH_AUTH.header);
   // Package extension: `use1MContextOverride` replaces the model-marker gate
   // for this request. The profile gate still applies, so an override cannot
   // enable a beta the pinned profile declares unavailable.
   const oneMillionRequested =
     input.use1MContextOverride ?? /\[1m\]/iu.test(input.rawModel);
   if (policy.oneMillionContextEnabled && oneMillionRequested) {
-    out.push(BETA_REGISTRY.LONG_CONTEXT.header);
+    out.push(registry.LONG_CONTEXT.header);
   }
   if (
     policy.interleavedThinkingEnabled &&
     input.capabilities.interleavedThinking
   ) {
-    out.push(BETA_REGISTRY.INTERLEAVED_THINKING.header);
+    out.push(registry.INTERLEAVED_THINKING.header);
   }
   if (
     experimental &&
@@ -134,52 +202,66 @@ export function composeBetasWithAudit(
     !policy.thinkingSummariesShown &&
     !input.thinkingDisplayActive
   ) {
-    out.push(BETA_REGISTRY.REDACT_THINKING.header);
+    out.push(registry.REDACT_THINKING.header);
   }
   if (
     policy.thinkingTokenCountEnabled &&
     experimental &&
     input.capabilities.interleavedThinking
   ) {
-    out.push(BETA_REGISTRY.THINKING_TOKEN_COUNT.header);
+    out.push(registry.THINKING_TOKEN_COUNT.header);
   }
-  if (experimental && policy.narrationSummariesEnabled)
-    out.push(BETA_REGISTRY.NARRATION_SUMMARIES.header);
+  /*
+   * The narration push site keeps its position in the sequence even when the
+   * resolved registry dropped the entry. Upstream removed the beta after
+   * 2.1.195, so a registry without it emits nothing here and the surrounding
+   * order closes up with no gap; the gates are still evaluated first so a
+   * profile that enables narration against a registry that has it behaves
+   * exactly as it did before.
+   */
+  const narrationSummaries = registry.NARRATION_SUMMARIES;
+  if (
+    experimental &&
+    policy.narrationSummariesEnabled &&
+    narrationSummaries !== undefined
+  ) {
+    out.push(narrationSummaries.header);
+  }
   if (experimental && input.capabilities.contextManagement)
-    out.push(BETA_REGISTRY.CONTEXT_MANAGEMENT.header);
+    out.push(registry.CONTEXT_MANAGEMENT.header);
   if (
     experimental &&
     supportsStructuredOutputs(input.normalizedId) &&
     policy.structuredOutputsEnabled
   ) {
-    out.push(BETA_REGISTRY.STRUCTURED_OUTPUTS.header);
+    out.push(registry.STRUCTURED_OUTPUTS.header);
   }
 
   // No web-search beta: upstream pushes it only for vertex and foundry.
-  if (experimental) out.push(BETA_REGISTRY.PROMPT_CACHING_SCOPE.header);
+  if (experimental) out.push(registry.PROMPT_CACHING_SCOPE.header);
   if (supportsMidConversationSystem(input.normalizedId))
-    out.push(BETA_REGISTRY.MID_CONVERSATION_SYSTEM.header);
-  if (input.capabilities.effort) out.push(BETA_REGISTRY.EFFORT.header);
+    out.push(registry.MID_CONVERSATION_SYSTEM.header);
+  if (input.capabilities.effort) out.push(registry.EFFORT.header);
 
-  if (input.speed === "fast" && !out.includes(BETA_REGISTRY.SPEED.header)) {
-    out.push(BETA_REGISTRY.SPEED.header);
+  if (input.speed === "fast" && !out.includes(registry.SPEED.header)) {
+    out.push(registry.SPEED.header);
   }
-  if (policy.afkModeEnabled && !out.includes(BETA_REGISTRY.AFK_MODE.header)) {
-    out.push(BETA_REGISTRY.AFK_MODE.header);
+  if (policy.afkModeEnabled && !out.includes(registry.AFK_MODE.header)) {
+    out.push(registry.AFK_MODE.header);
   }
   if (
     input.cacheTtl === "1h" &&
     experimental &&
-    !out.includes(BETA_REGISTRY.EXTENDED_CACHE_TTL.header)
+    !out.includes(registry.EXTENDED_CACHE_TTL.header)
   ) {
-    out.push(BETA_REGISTRY.EXTENDED_CACHE_TTL.header);
+    out.push(registry.EXTENDED_CACHE_TTL.header);
   }
-  if (profile.contextHintEnabled) out.push(BETA_REGISTRY.CONTEXT_HINT.header);
+  if (profile.contextHintEnabled) out.push(registry.CONTEXT_HINT.header);
   if (
     policy.cacheDiagnosisEnabled &&
-    !out.includes(BETA_REGISTRY.CACHE_DIAGNOSIS.header)
+    !out.includes(registry.CACHE_DIAGNOSIS.header)
   ) {
-    out.push(BETA_REGISTRY.CACHE_DIAGNOSIS.header);
+    out.push(registry.CACHE_DIAGNOSIS.header);
   }
 
   // No advisor-tool beta: upstream has no observed unconditional push site.
