@@ -1,17 +1,44 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { ClaudeCodeCapabilities } from "./contracts.js";
+import type {
+  ClaudeCodeCapabilities,
+  ClaudeCodeCatalogueEntry,
+} from "./contracts.js";
+import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
 /*
  * Capability derivation, ported from the genuine client's nine capability
  * predicates.
  *
- * THE LOAD-BEARING FACT, stated up front because it is surprising:
+ * READ THIS FIRST -- there are two derivation paths and they are not
+ * interchangeable:
+ *
+ *   1. Catalogue path (`deriveCapabilitiesFromCatalogue`), taken for every id
+ *      present in the 2.1.195 catalogue. Six of the nine capabilities have a
+ *      verbatim upstream string in `ClaudeCodeCatalogueEntry.capabilities`
+ *      (`effort`, `max_effort`, `xhigh_effort`, `adaptive_thinking`,
+ *      `context_management`, `rejects_disabled_thinking`) and are read from
+ *      there. The other three (`thinking`, `interleavedThinking`,
+ *      `temperature`) have NO catalogue string in any client version and stay
+ *      predicate-derived.
+ *   2. Predicate fallback (`deriveCapabilitiesFromPredicates`), taken for ids
+ *      with no catalogue entry -- `claude-mythos-5` (absent by product
+ *      decision D-1), ids from a newer client, and anything that escaped
+ *      normalization. Those fall through every exclusion list and resolve
+ *      maximally permissive, `temperature` excepted because its predicate is
+ *      an allowlist.
+ *
+ * The two paths agree on every catalogue cell but one; see the demarcated
+ * C1 block in `deriveCapabilities`. `test/validation/capability-equivalence
+ * .test.ts` pins the agreement cell by cell and pins that one divergence from
+ * both sides, so neither path can drift silently.
+ *
+ * THE LOAD-BEARING FACT about the predicates, stated up front because it is
+ * surprising:
  *
  *   On the first-party provider -- the only provider this package targets --
  *   every one of these nine predicates reduces to a pure function of the
- *   normalized model id. The catalogue's `capabilities` string array does not
- *   participate in capability derivation at all.
+ *   normalized model id.
  *
  * Why. Upstream, each predicate has the shape
  *
@@ -42,13 +69,18 @@ import type { ClaudeCodeCapabilities } from "./contracts.js";
  *
  * WARNING TO FUTURE READERS. Two things follow that look like bugs and are not:
  *
- *   1. No membership test was lost. Do NOT "restore" a `JB`-equivalent check
- *      here. Adding one back cannot change any result, but it reintroduces
- *      dead branches that cannot be covered or mutation-killed.
- *   2. The catalogue `capabilities` arrays are retained in the profile as
- *      faithful transcribed evidence AND are consumed elsewhere --
- *      `mid_conv_system`, `lean_prompt` and `fast_mode` are read by later
- *      work packages. Do NOT delete them because this module ignores them.
+ *   1. The individual predicates below still carry no `JB`-equivalent
+ *      membership test, and must not grow one. Catalogue membership is
+ *      consulted in exactly one place -- `deriveCapabilitiesFromCatalogue` --
+ *      so the fallback path stays a pure function of the id and the
+ *      equivalence between the two paths stays testable. A membership check
+ *      inside a predicate would be a dead branch on the catalogue path and an
+ *      unreachable one on the fallback path.
+ *   2. The catalogue `capabilities` arrays carry strings this module does not
+ *      map to a `ClaudeCodeCapabilities` field -- `fast_mode`, `lean_prompt`,
+ *      `fable_5_mitigations` and `mid_conv_system`. They are faithful
+ *      transcribed evidence and are consumed elsewhere. Do NOT delete them
+ *      because this module ignores them.
  *
  * `claude-mythos-5` has no catalogue entry by product decision D-1. Upstream
  * special-cases it by name in `Kw`, `Hke`, `Yte` and `Uot`; this port subsumes
@@ -195,6 +227,10 @@ export function supportsContextManagement(normalizedId: string): boolean {
  *
  * Elided: the unconditionally true `ZO` provider gate.
  * This beta-only gate is intentionally absent from `ClaudeCodeCapabilities`.
+ *
+ * Stays predicate-derived and takes no part in the catalogue path: no
+ * `structured_outputs` string exists in any catalogue entry, so there is
+ * nothing to read.
  */
 export function supportsStructuredOutputs(normalizedId: string): boolean {
   return !(
@@ -212,6 +248,15 @@ export function supportsStructuredOutputs(normalizedId: string): boolean {
  * differs from `rejectsDisabledThinking` by one member: that predicate also
  * excludes `claude-opus-4-8`. Do not merge them.
  * This beta-only gate is intentionally absent from `ClaudeCodeCapabilities`.
+ *
+ * DELIBERATELY LEFT PREDICATE-DERIVED even though `mid_conv_system` does
+ * exist as a catalogue string. Two reasons. `src/betas.ts` consumes this gate
+ * by id, outside `ClaudeCodeCapabilities`, so routing it through the
+ * catalogue would widen the blast radius of this refactor to the beta
+ * assembly with no wire-visible benefit. And the equivalence between the
+ * predicate and the catalogue string is already pinned by
+ * `test/validation/capability-equivalence.test.ts`, so switching it later is
+ * a mechanical, guarded change rather than a leap.
  */
 export function supportsMidConversationSystem(normalizedId: string): boolean {
   return !(
@@ -278,7 +323,66 @@ export function rejectsDisabledThinking(normalizedId: string): boolean {
   return true;
 }
 
-export function deriveCapabilities(
+/**
+ * The six `ClaudeCodeCapabilities` fields the catalogue represents, paired
+ * with their verbatim upstream capability string. The three omitted fields --
+ * `thinking`, `interleavedThinking`, `temperature` -- have no catalogue
+ * string in any client version and are derived from their predicates on both
+ * paths.
+ */
+const CATALOGUE_BACKED_CAPABILITIES = {
+  effort: "effort",
+  maxEffort: "max_effort",
+  xhighEffort: "xhigh_effort",
+  adaptiveThinking: "adaptive_thinking",
+  contextManagement: "context_management",
+  rejectsDisabledThinking: "rejects_disabled_thinking",
+} as const;
+
+/**
+ * Pure catalogue -> capabilities mapping. Reads nothing but `entry` for the
+ * six catalogue-backed fields; `normalizedId` is used only for the three
+ * fields the catalogue does not represent.
+ *
+ * This function applies no exceptions and no id special cases. The one cell
+ * where the 2.1.195 catalogue disagrees with the wire is corrected by the
+ * caller, so that this mapping stays a faithful reading of the data and the
+ * correction stays visible at exactly one site.
+ */
+export function deriveCapabilitiesFromCatalogue(
+  entry: ClaudeCodeCatalogueEntry,
+  normalizedId: string,
+): ClaudeCodeCapabilities {
+  const has = (capability: string): boolean =>
+    entry.capabilities.includes(capability);
+
+  return Object.freeze({
+    thinking: supportsThinking(normalizedId),
+    adaptiveThinking: has(CATALOGUE_BACKED_CAPABILITIES.adaptiveThinking),
+    interleavedThinking: supportsInterleavedThinking(normalizedId),
+    effort: has(CATALOGUE_BACKED_CAPABILITIES.effort),
+    maxEffort: has(CATALOGUE_BACKED_CAPABILITIES.maxEffort),
+    xhighEffort: has(CATALOGUE_BACKED_CAPABILITIES.xhighEffort),
+    contextManagement: has(CATALOGUE_BACKED_CAPABILITIES.contextManagement),
+    temperature: supportsTemperature(normalizedId),
+    rejectsDisabledThinking: has(
+      CATALOGUE_BACKED_CAPABILITIES.rejectsDisabledThinking,
+    ),
+  });
+}
+
+/**
+ * Fallback for ids with no catalogue entry. Every field comes from its
+ * predicate, which is the pre-catalogue behaviour of this module, preserved
+ * byte for byte in result: unknown ids fall through every exclusion list and
+ * resolve maximally permissive, `temperature` excepted (allowlist polarity).
+ *
+ * `claude-mythos-5` reaches this path -- it has no catalogue entry by product
+ * decision D-1 -- and upstream special-cases it by name in `Kw`, `Hke`, `Yte`
+ * and `Uot`. Those clauses are subsumed here by the first-party fallback,
+ * which yields an identical result.
+ */
+function deriveCapabilitiesFromPredicates(
   normalizedId: string,
 ): ClaudeCodeCapabilities {
   return Object.freeze({
@@ -292,4 +396,39 @@ export function deriveCapabilities(
     temperature: supportsTemperature(normalizedId),
     rejectsDisabledThinking: rejectsDisabledThinking(normalizedId),
   });
+}
+
+export function deriveCapabilities(
+  normalizedId: string,
+): ClaudeCodeCapabilities {
+  const entry = CLAUDE_CODE_2_1_195_PROFILE.supportedModels[normalizedId];
+  if (entry === undefined) {
+    return deriveCapabilitiesFromPredicates(normalizedId);
+  }
+
+  const capabilities = deriveCapabilitiesFromCatalogue(entry, normalizedId);
+
+  /*
+   * DEMARCATED EXCEPTION -- docs/plans/BLOCKERS.md, finding C1.
+   *
+   * Exactly one cell of the 2.1.195 catalogue disagrees with the binary that
+   * shipped it: `claude-opus-4-5` omits `effort` from its `capabilities`
+   * array, but 2.1.195 derives capabilities from predicate code and `Kw`
+   * (`supportsEffort`) does not exclude `claude-opus-4-5`. The predicate is
+   * therefore wire-authoritative for this profile, and the golden fixtures
+   * and packed-consumer digests prove `effort: true` is what 2.1.195 sends.
+   *
+   * Scope. This exception belongs to the 2.1.195 profile only. Upstream
+   * 2.1.222+ switches derivation to the catalogue, which makes
+   * `effort: false` genuine there; a profile ported from those versions must
+   * NOT inherit this block.
+   */
+  if (normalizedId === "claude-opus-4-5") {
+    return Object.freeze({
+      ...capabilities,
+      effort: supportsEffort(normalizedId),
+    });
+  }
+
+  return capabilities;
 }
