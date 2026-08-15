@@ -74,5 +74,11 @@
     "typescript": "6.0.3",
     "typescript-eslint": "8.65.0",
     "vitest": "4.1.10"
+  },
+  "overrides": {
+    "miniflare": {
+      "undici": "7.29.0"
+    },
+    "ip-address": "10.3.1"
   }
 }
