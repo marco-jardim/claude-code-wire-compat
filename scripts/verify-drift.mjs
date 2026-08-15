@@ -7,18 +7,42 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SOURCE_UNAVAILABLE_EXIT_CODE = 2;
+/**
+ * Distinct from 2 on purpose: 0 means verified, 1 means drift detected, 2
+ * means the upstream source could not be read. A bad `--profile` is none of
+ * those, and folding it into 2 would let a typo masquerade as "source
+ * missing" -- which CI treats as a soft skip.
+ */
+const USAGE_EXIT_CODE = 3;
 const DEFAULT_SOURCE = String.raw`D:\git\opencode-anthropic-fix`;
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
 
-const profilePath = path.join(
-  repositoryRoot,
-  "src",
-  "profiles",
-  "claude-code-2.1.195.ts",
-);
+/*
+ * The profiles this script can verify, keyed by the profile `id` a caller
+ * passes to `--profile`. One entry today; a 2.1.222+ profile joins as a second
+ * entry with its own source file and its own pinned upstream expectations.
+ *
+ * `--profile` is omitted by every current caller (`npm run drift:check`), so
+ * the default MUST keep producing byte-identical output -- `test/drift`
+ * asserts that stdout verbatim.
+ */
+const MONITORED_PROFILES = new Map([
+  [
+    "claude-code-2.1.195-sdk-0.94.0",
+    {
+      sourceFile: path.join(
+        repositoryRoot,
+        "src",
+        "profiles",
+        "claude-code-2.1.195.ts",
+      ),
+    },
+  ],
+]);
+const DEFAULT_PROFILE_ID = "claude-code-2.1.195-sdk-0.94.0";
 const goldenManifestPath = path.join(
   repositoryRoot,
   "test",
@@ -47,6 +71,21 @@ const canonicalHeaderNames = [
   "x-stainless-timeout",
 ];
 const billingPrefix = "x-anthropic-billing-header:";
+
+/**
+ * Reads `--profile <id>`, defaulting to the profile every existing caller
+ * verifies. Returns `undefined` for an id this script does not monitor; the
+ * caller turns that into a usage error rather than silently verifying the
+ * wrong profile.
+ */
+function profileArgument(argv) {
+  const index = argv.indexOf("--profile");
+  if (index === -1) return DEFAULT_PROFILE_ID;
+
+  const requested = argv[index + 1];
+  if (typeof requested !== "string" || requested.length === 0) return undefined;
+  return MONITORED_PROFILES.has(requested) ? requested : undefined;
+}
 
 function sourceArgument(argv) {
   const sourceIndex = argv.indexOf("--source");
@@ -236,7 +275,7 @@ function reportDrift(drifts) {
   }
 }
 
-async function verify(sourceRoot) {
+async function verify(sourceRoot, monitored) {
   await access(sourceRoot, fsConstants.R_OK);
 
   const [
@@ -249,7 +288,7 @@ async function verify(sourceRoot) {
     systemPrompt,
     indexSource,
   ] = await Promise.all([
-    readFile(profilePath, "utf8"),
+    readFile(monitored.sourceFile, "utf8"),
     readFile(betaRegistryPath, "utf8"),
     readFile(countTokensPath, "utf8"),
     readFile(goldenManifestPath, "utf8"),
@@ -327,13 +366,27 @@ async function verify(sourceRoot) {
   console.log(`profile=${profile.id} drift=none`);
 }
 
-const source = sourceArgument(process.argv.slice(2));
-if (source === undefined) {
+const argv = process.argv.slice(2);
+const profileId = profileArgument(argv);
+const source = sourceArgument(argv);
+
+if (profileId === undefined) {
+  /*
+   * The requested id is NOT echoed back. It is caller-controlled text going
+   * to a log that CI archives, and the known ids are already public -- they
+   * are what a successful run prints. Naming what IS monitored is the useful
+   * half of the message; replaying what was asked for is the risky half.
+   */
+  console.log(
+    `error=unknown-profile known=${[...MONITORED_PROFILES.keys()].join(",")}`,
+  );
+  process.exitCode = USAGE_EXIT_CODE;
+} else if (source === undefined) {
   console.log("SOURCE_UNAVAILABLE");
   process.exitCode = SOURCE_UNAVAILABLE_EXIT_CODE;
 } else {
   try {
-    await verify(path.resolve(source));
+    await verify(path.resolve(source), MONITORED_PROFILES.get(profileId));
   } catch {
     console.log("SOURCE_UNAVAILABLE");
     process.exitCode = SOURCE_UNAVAILABLE_EXIT_CODE;
