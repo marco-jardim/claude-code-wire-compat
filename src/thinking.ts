@@ -103,10 +103,59 @@ export interface ResolvedThinking {
  *     override this package cannot observe.
  *   - `bvi(e)` adjusts BOTH fields, but sits behind `_vi()`, which returns a
  *     hard `false`. Dead code upstream.
+ *
+ * From 2.1.222 onward upstream grew a THIRD adjustment, this one derived from
+ * the request rather than from host state, and therefore observable: see
+ * `requestedMaxTokens` below.
+ *
+ * @param requestedMaxTokens
+ *   The caller's own `max_tokens`, when the call site has it. Modelled for
+ *   profiles from 2.1.222 onward only; see the demarcated block below.
  */
 export function modelOutputTokenLimits(
   normalizedId: string,
   profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+  requestedMaxTokens?: number,
+): ModelOutputTokenLimits {
+  const resolved = resolveDeclaredLimits(normalizedId, profile);
+
+  /*
+   * ---- Demarcated: request-derived upper bound, upstream 2.1.222+. ----
+   *
+   * Upstream raises `upperLimit` to the caller's own `max_tokens` and lowers
+   * `default` to fit under it:
+   *
+   *   upperLimit = requestedMaxTokens;
+   *   default    = Math.min(default, upperLimit);
+   *
+   * Verified byte-identical between upstream 2.1.222 and 2.1.233.
+   *
+   * The gate is STRUCTURAL, not a capability flag: this behaviour exists in
+   * upstream 2.1.222+ and 2.1.195 does not have it, so the 195 profile must
+   * never see it. Centralising per-version dispatch — so that this reads as a
+   * profile trait rather than an identity comparison — is a later task.
+   *
+   * `Number.isSafeInteger` is deliberately stricter than upstream's truthy
+   * check. The upstream runtime only ever produces integers in this field, so
+   * the two agree on every reachable input; here a NaN or Infinity would
+   * propagate straight into `budget_tokens`, which must stay an integer.
+   */
+  if (
+    profile.id !== CLAUDE_CODE_2_1_195_PROFILE.id &&
+    requestedMaxTokens !== undefined &&
+    Number.isSafeInteger(requestedMaxTokens) &&
+    requestedMaxTokens >= 4096
+  ) {
+    const upperLimit = requestedMaxTokens;
+    return { default: Math.min(resolved.default, upperLimit), upperLimit };
+  }
+
+  return resolved;
+}
+
+function resolveDeclaredLimits(
+  normalizedId: string,
+  profile: ClaudeCodeProtocolProfile,
 ): ModelOutputTokenLimits {
   const declared = profile.supportedModels[normalizedId]?.maxOutputTokens;
   if (declared !== undefined) {
@@ -176,6 +225,12 @@ export function modelOutputTokenLimits(
  * Upstream uses `||`, not `??`, so a zero override would fall back to the
  * default. Unreachable here: `max_tokens` is validated as a positive integer
  * before this runs.
+ *
+ * `requested` is forwarded as the request-derived bound so that this call site
+ * reads the same table upstream reads. It cannot change the result: the
+ * override only ever lowers `default` to `requested`, and
+ * `min(requested, min(default, requested)) === min(requested, default)`. It is
+ * passed for coherence of reading, not for effect.
  */
 export function clampMaxTokens(
   requested: number,
@@ -184,7 +239,7 @@ export function clampMaxTokens(
 ): number {
   return Math.min(
     requested,
-    modelOutputTokenLimits(normalizedId, profile).default,
+    modelOutputTokenLimits(normalizedId, profile, requested).default,
   );
 }
 
@@ -255,9 +310,14 @@ export function resolveThinking(
       // Upstream: `let Tr = wvi(u)` — the model's upper limit minus one —
       // overridden by the caller's budget when supplied, then clamped by
       // `Tr = Math.min(Fi - 1, Tr)` where `Fi` is the emitted `max_tokens`.
+      //
+      // This is the one wire-visible consumer of the request-derived bound: on
+      // a 2.1.222+ profile a caller asking for a `max_tokens` above the
+      // catalogue's upper limit seeds the default budget from THEIR number
+      // minus one, not from the catalogue's.
       const requested =
         request.budgetTokens ??
-        modelOutputTokenLimits(normalizedId, profile).upperLimit - 1;
+        modelOutputTokenLimits(normalizedId, profile, maxTokens).upperLimit - 1;
       emitted = { budget_tokens: Math.min(maxTokens - 1, requested) };
       emitted["type"] = "enabled";
       if (display !== undefined) emitted["display"] = display;
