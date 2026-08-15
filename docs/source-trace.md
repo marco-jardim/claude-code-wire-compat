@@ -67,6 +67,7 @@ output.
 | Upstream behaviour                                                         | Origin                          | Disposition                                                                                                                                               |
 | -------------------------------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `heather_vale`                                                             | remote-config override          | Out of scope. It overrides `max_output_tokens` from a remote gate; the package has no remote-config channel and clamps against the model default instead. |
+| `Vkd` / `bvi` output-limit adjustments                                     | host config, dead code          | Out of scope. `Vkd` reads the `heather_vale` object above; `bvi` sits behind a predicate that returns a hard `false` upstream.                            |
 | `ignoreEnvOptOut` on the billing block (2.1.233)                           | process environment             | Out of scope. Its entire purpose is to decide whether an environment opt-out is honoured, and the package reads no environment.                           |
 | `tengu_*` gates                                                            | remote-config                   | Out of scope. Remote gates are resolved at runtime by the client; a pure builder has no value to resolve them to.                                         |
 | `server_side_fallback`, `server_side_fallback-category`, `fallback_credit` | lane runtime, via remote-config | Not emitted by this package. These betas are pushed by the client's fallback lane, which is process state the package does not model.                     |
@@ -75,6 +76,14 @@ output.
 Consequence for consumers: a request built by this package is a subset of what a live client may
 send, and the difference is confined to the rows above. A consumer that needs one of these betas
 must push it explicitly through the existing `additionalBetas` seam; the package will not derive it.
+
+Upstream applies three separate adjustments to a model's output-token limits, and the rows above
+cover only two of them. The third is **modelled**, because it is derived from the request rather
+than from host or remote state: from 2.1.222 onward, a caller's own `max_tokens` of 4096 or more
+raises the model's `upperLimit` to that number and lowers its `default` to fit under it. The
+2.1.233 profile reproduces this; the 2.1.195 profile does not, because 2.1.195 predates the
+behaviour. Its one wire-visible effect is the default thinking budget, which on 2.1.233 is seeded
+from the caller's `max_tokens` minus one when that exceeds the catalogue's upper limit.
 
 The rows below are a second kind of divergence: the datum exists in the upstream static catalogue
 and is knowable without I/O, but it does not participate in constructing a `/v1/messages` request.
