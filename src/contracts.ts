@@ -33,6 +33,22 @@ export interface ClaudeCodeCatalogueEntry {
   }>;
   /** Verbatim upstream capability keys; compared by the ported predicates. */
   readonly capabilities: readonly string[];
+  /**
+   * Per-model output token limits. `default` caps the emitted `max_tokens`;
+   * `upper` seeds the thinking budget when the caller supplies none. The
+   * field names mirror the upstream 2.1.222 catalogue, where these limits
+   * became catalogue data; `modelOutputTokenLimits` keeps returning
+   * `{ default, upperLimit }`, so the `upper` -> `upperLimit` rename happens
+   * at that one call site in `thinking.ts`.
+   *
+   * Optional on the type because profiles ported from clients that predate
+   * the catalogue limits cannot supply it. Every entry of the 2.1.195
+   * catalogue does supply it, and a test enforces that.
+   */
+  readonly maxOutputTokens?: Readonly<{
+    readonly default: number;
+    readonly upper: number;
+  }>;
   readonly defaultEffort?: ClaudeCodeEffort;
 }
 
