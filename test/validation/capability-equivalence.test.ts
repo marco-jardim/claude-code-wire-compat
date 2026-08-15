@@ -9,6 +9,7 @@ import {
   supportsMidConversationSystem,
   supportsStructuredOutputs,
 } from "../../src/model-capabilities.js";
+import { modelOutputTokenLimits } from "../../src/thinking.js";
 
 /*
  * Executable specification of capability derivation for the 2.1.195 profile.
@@ -346,6 +347,40 @@ describe("capability derivation: ids outside the catalogue", () => {
       expect(deriveCapabilities(id)).toEqual(MAXIMALLY_PERMISSIVE);
       expect(supportsStructuredOutputs(id)).toBe(true);
       expect(supportsMidConversationSystem(id)).toBe(true);
+    });
+  }
+});
+
+/*
+ * Output token limits are catalogue data too, since Fase 1.2. Same shape of
+ * pin as the capability cells above: the catalogue and the resolver must
+ * agree for every id, and the catalogue must be complete.
+ *
+ * `maxOutputTokens` is OPTIONAL on `ClaudeCodeCatalogueEntry` -- profiles
+ * ported from clients that predate catalogue limits cannot supply it -- but
+ * mandatory for 2.1.195. Without the completeness test an entry could lose
+ * the field and silently resolve through the legacy fallback table, which
+ * agrees today and would not after any profile bump.
+ */
+describe("catalogue equivalence: output token limits", () => {
+  it("every catalogue entry declares maxOutputTokens", () => {
+    const missing = catalogueIds.filter(
+      (id) =>
+        CLAUDE_CODE_2_1_195_PROFILE.supportedModels[id]?.maxOutputTokens ===
+        undefined,
+    );
+    expect(missing).toEqual([]);
+  });
+
+  for (const id of catalogueIds) {
+    it(`${id}: resolver === catalogue`, () => {
+      const declared =
+        CLAUDE_CODE_2_1_195_PROFILE.supportedModels[id]?.maxOutputTokens;
+      expect(declared).toBeDefined();
+      expect(modelOutputTokenLimits(id)).toEqual({
+        default: declared?.default,
+        upperLimit: declared?.upper,
+      });
     });
   }
 });
