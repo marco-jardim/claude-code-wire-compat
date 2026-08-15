@@ -7,6 +7,11 @@ the operational knowledge needed to work on this repository without
 rediscovering it: the canonical procedures, the traps, and where everything
 lives.
 
+Non-obvious maintenance decisions and their reasoning live in
+[`MEMORY.md`](./MEMORY.md), an append-only dated log. Read it before
+revisiting a dependency, tooling, or policy question — the answer may already
+have been decided, and reversals should be deliberate, not accidental.
+
 ## What this package is
 
 A pure, I/O-free TypeScript library that builds byte-faithful Claude Code
