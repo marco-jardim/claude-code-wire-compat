@@ -5,7 +5,10 @@ import { describe, expect, it } from "vitest";
 import { composeBetas, composeBetasWithAudit } from "../../src/betas.js";
 import type { ClaudeCodeCapabilities } from "../../src/contracts.js";
 import { ClaudeCodeWireError } from "../../src/contracts.js";
-import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/index.js";
+import {
+  CLAUDE_CODE_2_1_195_PROFILE,
+  CLAUDE_CODE_2_1_233_PROFILE,
+} from "../../src/index.js";
 import {
   BEDROCK_UNSUPPORTED_BETAS_2_1_233,
   BETA_REGISTRY_2_1_233,
@@ -14,11 +17,15 @@ import {
 } from "../../src/profiles/beta-registry-2.1.233.js";
 
 /*
- * The registry itself is not public surface yet -- the 2.1.233 profile that
- * will export it lands in the next phase -- so it is imported from its module.
- * `CLAUDE_CODE_2_1_195_PROFILE` comes from the public entry point, which is
- * also what `test/governance/public-path-coverage.test.ts` requires of every
- * file in this directory.
+ * The registry itself is not public surface, so it is imported from its
+ * module. The two profiles come from the public entry point, which is also
+ * what `test/governance/public-path-coverage.test.ts` requires of every file
+ * in this directory.
+ *
+ * Most of the composition cases below run against a synthetic profile -- the
+ * 2.1.195 profile with the 2.1.233 id -- to isolate the registry from every
+ * other field. The last block runs the exported 2.1.233 profile itself, so
+ * the wiring from a real profile to its registry is covered too.
  */
 
 /** Transcribed key order, upstream `Fb_` at byte offset 287505865. */
@@ -291,6 +298,50 @@ describe("2.1.233 beta composition", () => {
     ]);
     expect(composeBetas(INPUT)).toEqual(
       composeBetas(INPUT, CLAUDE_CODE_2_1_195_PROFILE),
+    );
+  });
+});
+
+describe("2.1.233 beta composition through the exported profile", () => {
+  it("emits no narration header for the profile as shipped", () => {
+    expect(() =>
+      composeBetas(INPUT, CLAUDE_CODE_2_1_233_PROFILE),
+    ).not.toThrow();
+    expect(composeBetas(INPUT, CLAUDE_CODE_2_1_233_PROFILE)).not.toContain(
+      NARRATION_HEADER,
+    );
+  });
+
+  it("still emits no narration header when the policy demands one", () => {
+    /*
+     * As shipped the flag is already false, so an absent header proves
+     * nothing on its own. Forcing the flag on removes that explanation: the
+     * header stays away because the registry the profile id resolves has no
+     * entry to push, and the same forced policy on 2.1.195 does emit it.
+     *
+     * The profile is deep-frozen; a shallow spread yields a fresh object and
+     * mutates nothing.
+     */
+    const forced = {
+      ...CLAUDE_CODE_2_1_233_PROFILE,
+      betaPolicy: {
+        ...CLAUDE_CODE_2_1_233_PROFILE.betaPolicy,
+        experimentalBetasEnabled: true,
+        narrationSummariesEnabled: true,
+      },
+    };
+
+    expect(composeBetas(INPUT, forced)).not.toContain(NARRATION_HEADER);
+    expect(composeBetas(INPUT, PROFILE_195_NARRATION)).toContain(
+      NARRATION_HEADER,
+    );
+  });
+
+  it("composes exactly as the synthetic profile does", () => {
+    // The synthetic profile carries the 2.1.233 id and nothing else from it.
+    // Agreeing with the real one confirms the id is what selects the registry.
+    expect(composeBetas(INPUT, CLAUDE_CODE_2_1_233_PROFILE)).toEqual(
+      composeBetas(INPUT, PROFILE_233),
     );
   });
 });
