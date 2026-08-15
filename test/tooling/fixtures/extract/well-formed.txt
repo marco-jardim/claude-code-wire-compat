@@ -1,0 +1,12 @@
+var Q0=zx("claude_code","claude-code-20250219"),Q1=zx("oauth_auth","oauth-2025-04-20"),Q2=zx("long_context","context-1m-2025-08-07"),Q3=null,Q4=zx("effort","effort-2025-11-24");
+var Q9=Object.freeze([Q0,Q1,Q2,Q3,Q4].filter((e)=>e!==null));
+var Qa=Object.freeze(new Set([Q0.header,Q2.header]));
+var Qb=Object.freeze(new Set([Q0.qz,Q2.qz]));
+var Qc=[{id:"claude-sonnet-5",family:"sonnet",context:{window:1e6,native_1m:!0,supports_1m_beta:!0,supports_1m_suffix:!1},max_output_tokens:{default:64000,upper:128000},capabilities:["effort","thinking"],default_effort:"high",effort_cost_index:{low:.47,medium:1,high:1.6},pricing:"sonnet_tier",advisor_rank:2},{id:"claude-haiku-4-5",family:"haiku",context:{window:2e5,native_1m:!1,supports_1m_beta:!1},max_output_tokens:{default:8192,upper:32000},capabilities:["speed"],default_effort:"low",advisor_rank:5}];
+var VERSION="2.1.233",BUILD_TIME="2026-07-20T11:02:41.000Z",GIT_SHA="0123456789abcdef0123456789abcdef01234567";
+Qd.set("anthropic-version","2023-06-01"),Qd.set("X-Stainless-Package-Version","0.94.0"),Qd.set("user-agent","claude-cli/2.1.233 (external, cli)");
+var Qe="/v1/messages?beta=true",Qf="59cf53e54c78"+Qg;
+/* legacy fallbacks below; each limit follows its model literal, padded so the windows do not overlap */
+var Qh={modelPrefix:"claude-3-opus",maxOutputTokens:4096,legacyFallback:!0,note:"legacy fallback retained for compatibility"};
+var Qi={modelPrefix:"claude-3-sonnet",maxOutputTokens:8192,legacyFallback:!0,note:"legacy fallback retained for compatibility"};
+var Qj={modelPrefix:"claude-3-haiku",maxOutputTokens:4096,legacyFallback:!0,note:"legacy fallback retained for compatibility"};

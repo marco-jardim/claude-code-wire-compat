@@ -1,0 +1,4 @@
+var VERSION="2.1.233";
+var G0=q?'':`claude-cli/${{ISSUES_EXPLAINER:"see the docs"}.ISSUES_EXPLAINER} is the agent`;
+var G1="prose that mentions claude-cli/ and then runs
+across a line break before its quote ever closes";

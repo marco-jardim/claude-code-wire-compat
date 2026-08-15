@@ -1,0 +1,3 @@
+var M0=[{id:"claude-sonnet-5",family:"sonnet",max_output_tokens:{default:64000,upper:128000}}];
+var M1={id:"claude-ai-external-token",scope:"external",ttl:3600};
+var M2={id:"claude-design-contextual",surface:"web",variant:"contextual"};
