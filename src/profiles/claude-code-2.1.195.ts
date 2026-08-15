@@ -50,32 +50,39 @@ export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
       "claude-3-5-haiku": {
         family: "haiku",
         capabilities: [],
+        maxOutputTokens: { default: 8192, upper: 8192 },
       },
       "claude-haiku-4-5": {
         family: "haiku",
         capabilities: ["context_management"],
+        maxOutputTokens: { default: 32000, upper: 64000 },
       },
       "claude-3-5-sonnet": {
         family: "sonnet",
         capabilities: [],
+        maxOutputTokens: { default: 8192, upper: 8192 },
       },
       "claude-3-7-sonnet": {
         family: "sonnet",
         capabilities: [],
+        maxOutputTokens: { default: 32000, upper: 64000 },
       },
       "claude-sonnet-4-0": {
         family: "sonnet",
         context: { window: 200000, supports1mBeta: true },
         capabilities: ["context_management"],
+        maxOutputTokens: { default: 32000, upper: 64000 },
       },
       "claude-sonnet-4-5": {
         family: "sonnet",
         context: { window: 200000, supports1mBeta: true },
         capabilities: ["context_management"],
+        maxOutputTokens: { default: 32000, upper: 64000 },
       },
       "claude-sonnet-4-6": {
         family: "sonnet",
         context: { window: 200000, supports1mBeta: true },
+        maxOutputTokens: { default: 32000, upper: 128000 },
         capabilities: [
           "effort",
           "max_effort",
@@ -86,18 +93,22 @@ export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
       "claude-opus-4-0": {
         family: "opus",
         capabilities: ["context_management"],
+        maxOutputTokens: { default: 32000, upper: 32000 },
       },
       "claude-opus-4-1": {
         family: "opus",
         capabilities: ["context_management"],
+        maxOutputTokens: { default: 32000, upper: 32000 },
       },
       "claude-opus-4-5": {
         family: "opus",
         capabilities: ["context_management"],
+        maxOutputTokens: { default: 32000, upper: 64000 },
       },
       "claude-opus-4-6": {
         family: "opus",
         context: { window: 200000, supports1mBeta: true },
+        maxOutputTokens: { default: 64000, upper: 128000 },
         capabilities: [
           "effort",
           "max_effort",
@@ -109,6 +120,7 @@ export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
       "claude-opus-4-7": {
         family: "opus",
         context: { window: 1e6, native1m: true, supports1mBeta: true },
+        maxOutputTokens: { default: 64000, upper: 128000 },
         capabilities: [
           "effort",
           "max_effort",
@@ -122,6 +134,7 @@ export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
       "claude-opus-4-8": {
         family: "opus",
         context: { window: 1e6, native1m: true, supports1mBeta: true },
+        maxOutputTokens: { default: 64000, upper: 128000 },
         capabilities: [
           "effort",
           "max_effort",
@@ -137,6 +150,7 @@ export const CLAUDE_CODE_2_1_195_PROFILE: ClaudeCodeProtocolProfile =
       "claude-fable-5": {
         family: "fable",
         context: { window: 1e6, native1m: true, supports1mBeta: true },
+        maxOutputTokens: { default: 64000, upper: 128000 },
         capabilities: [
           "effort",
           "max_effort",

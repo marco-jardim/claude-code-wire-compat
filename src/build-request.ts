@@ -172,6 +172,7 @@ const MODEL_KEYS = new Set([
   "family",
   "context",
   "capabilities",
+  "maxOutputTokens",
   "defaultEffort",
 ]);
 const BETA_POLICY_KEYS = new Set([
@@ -362,6 +363,43 @@ function parseCatalogueCapabilities(value: unknown): readonly string[] {
   return Object.freeze([...value]);
 }
 
+/**
+ * Validates a catalogue entry's `maxOutputTokens`. Both fields are required
+ * when the object is present: a half-populated entry would silently fall back
+ * to the legacy limit table for the missing half, which is exactly the drift
+ * `modelOutputTokenLimits` is structured to prevent.
+ */
+function parseCatalogueMaxOutputTokens(value: unknown): Readonly<{
+  readonly default: number;
+  readonly upper: number;
+}> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.some(
+      (key) =>
+        typeof key !== "string" || (key !== "default" && key !== "upper"),
+    )
+  ) {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  const defaultLimit: unknown = Reflect.get(value, "default");
+  const upper: unknown = Reflect.get(value, "upper");
+  if (
+    typeof defaultLimit !== "number" ||
+    !Number.isSafeInteger(defaultLimit) ||
+    defaultLimit <= 0 ||
+    typeof upper !== "number" ||
+    !Number.isSafeInteger(upper) ||
+    upper <= 0
+  ) {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  return Object.freeze({ default: defaultLimit, upper });
+}
+
 function parseCatalogueContext(value: unknown): Readonly<{
   readonly window: number;
   readonly native1m?: boolean;
@@ -487,6 +525,13 @@ function parseSupportedModels(
         ? { context: parseCatalogueContext(ownValue(model, "context")) }
         : {}),
       capabilities: parseCatalogueCapabilities(ownValue(model, "capabilities")),
+      ...(Object.hasOwn(model, "maxOutputTokens")
+        ? {
+            maxOutputTokens: parseCatalogueMaxOutputTokens(
+              ownValue(model, "maxOutputTokens"),
+            ),
+          }
+        : {}),
       ...(Object.hasOwn(model, "defaultEffort")
         ? {
             defaultEffort: parseDefaultEffort(ownValue(model, "defaultEffort")),
