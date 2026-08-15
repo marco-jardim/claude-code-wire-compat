@@ -16,12 +16,65 @@ This document is the normative trace from the pinned upstream implementation to 
 
 ## Pinned profile
 
-| Field           | Pinned value                                      |
-| --------------- | ------------------------------------------------- |
-| Claude Code CLI | `2.1.195`                                         |
-| Anthropic SDK   | `0.94.0`                                          |
-| Endpoint        | `https://api.anthropic.com/v1/messages?beta=true` |
-| Profile id      | `claude-code-2.1.195-sdk-0.94.0`                  |
+Every wire profile this package recognizes is registered here. A profile is registered against its
+analysis document, which is the evidence of record; the `src/profiles/` module is code that follows
+the evidence, not the other way round. A trace entry may therefore precede its TypeScript module by
+one phase, and one currently does.
+
+### Profile `claude-code-2.1.195-sdk-0.94.0`
+
+| Field           | Pinned value                                             |
+| --------------- | -------------------------------------------------------- |
+| Profile id      | `claude-code-2.1.195-sdk-0.94.0`                         |
+| Claude Code CLI | `2.1.195`                                                |
+| Anthropic SDK   | `0.94.0`                                                 |
+| Endpoint        | `https://api.anthropic.com/v1/messages?beta=true`        |
+| Build time      | `2026-06-26T01:00:56Z`                                   |
+| Git SHA         | `4603aa3f2ea164bd0974f82eb413ae7acc99a7ee`               |
+| Analysis        | `docs/protocol/versions/claude-code-2.1.195-analysis.md` |
+| Profile module  | `src/profiles/claude-code-2.1.195.ts`                    |
+
+### Profile `claude-code-2.1.233-sdk-0.112.1`
+
+| Field           | Pinned value                                             |
+| --------------- | -------------------------------------------------------- |
+| Profile id      | `claude-code-2.1.233-sdk-0.112.1`                        |
+| Claude Code CLI | `2.1.233`                                                |
+| Anthropic SDK   | `0.112.1`                                                |
+| Build time      | `2026-08-14T17:21:48Z`                                   |
+| Git SHA         | `f8d57569aaf350fe25dc4dfa10cad59db8ea4d45`               |
+| Analysis        | `docs/protocol/versions/claude-code-2.1.233-analysis.md` |
+| Profile module  | not yet present — added in the catalogue phase           |
+
+`src/profiles/claude-code-2.1.233.ts` does not exist yet, and its absence is deliberate rather than
+an oversight. This entry is anchored in the analysis document above, which is committed and is the
+sole source for the values in the table. Registering the trace entry first keeps the order of
+operations honest: the evidence is recorded, reviewable, and testable before any code claims to
+implement it. The profile module is added in the catalogue phase, and the governance test in
+`test/governance/source-trace-profiles.test.ts` enforces the invariant that survives both states —
+every profile module must be registered here, and every entry registered here must cite an analysis
+document that exists.
+
+## Conscious and permanent divergences
+
+The behaviours below exist upstream and are **not** ported. They are not gaps to be closed later;
+each one is out of scope permanently, for the same structural reason. This package is pure: it
+performs no I/O, reads no environment, fetches no remote configuration, and holds no process state.
+Anything whose value is only knowable by doing one of those things cannot be a fact this package
+emits, so reproducing it would require inventing the input — which is worse than omitting the
+output.
+
+| Upstream behaviour                                                         | Origin                          | Disposition                                                                                                                                               |
+| -------------------------------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `heather_vale`                                                             | remote-config override          | Out of scope. It overrides `max_output_tokens` from a remote gate; the package has no remote-config channel and clamps against the model default instead. |
+| `ignoreEnvOptOut` on the billing block (2.1.233)                           | process environment             | Out of scope. Its entire purpose is to decide whether an environment opt-out is honoured, and the package reads no environment.                           |
+| `tengu_*` gates                                                            | remote-config                   | Out of scope. Remote gates are resolved at runtime by the client; a pure builder has no value to resolve them to.                                         |
+| `server_side_fallback`, `server_side_fallback-category`, `fallback_credit` | lane runtime, via remote-config | Not emitted by this package. These betas are pushed by the client's fallback lane, which is process state the package does not model.                     |
+| `per_message_effort`                                                       | lane runtime, via remote-config | Not emitted by this package. Same reason: the flag is gated on remote configuration read at runtime.                                                      |
+
+Consequence for consumers: a request built by this package is a subset of what a live client may
+send, and the difference is confined to the rows above. A consumer that needs one of these betas
+must push it explicitly through the existing `additionalBetas` seam; the package will not derive it.
 
 ## Build configuration decision
 
