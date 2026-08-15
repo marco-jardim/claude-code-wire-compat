@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-08-15
+
+### Added
+
+- `MEMORY.md`, an append-only dated log of non-obvious maintenance decisions
+  and their reasoning, referenced from the contributor operating guide
+  (`AGENTS.md`) so future maintenance starts from recorded decisions instead
+  of re-deriving them.
+
 ## [0.2.0] - 2026-08-15
 
 ### Breaking
