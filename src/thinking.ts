@@ -4,6 +4,7 @@ import type {
   ClaudeCodeBetaPolicy,
   ClaudeCodeCapabilities,
 } from "./contracts.js";
+import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
 /**
  * Extended-thinking resolution, ported from the genuine client's request
@@ -73,9 +74,21 @@ export interface ResolvedThinking {
 
 /**
  * Per-model output token limits, ported from upstream `Xxe` at byte offset
- * 227378240. Keyed on the NORMALISED model id, and deliberately independent of
- * the catalogue: `claude-3-opus`, `claude-3-sonnet` and `claude-3-haiku` are
- * reachable through the normaliser but have no catalogue entry.
+ * 227378240. Keyed on the NORMALISED model id.
+ *
+ * Resolution order, since Fase 1.2:
+ *
+ *   1. The pinned 2.1.195 catalogue, when the id has an entry carrying
+ *      `maxOutputTokens`. That is the single source of truth for every model
+ *      the profile knows, and `token-limits-equivalence.test.ts` pins the two
+ *      sources cell by cell.
+ *   2. Otherwise the transcribed `Xxe` table below, preserved intact as the
+ *      demarcated fallback. It is NOT dead code and must not be trimmed to
+ *      "only the ids the catalogue lacks": `claude-3-opus`, `claude-3-sonnet`
+ *      and `claude-3-haiku` are reachable through the normaliser with no
+ *      catalogue entry, `claude-mythos-5` is absent from the catalogue by
+ *      product decision D-1, and any id from a newer client lands on the
+ *      final fallback row.
  *
  * Both fields are load-bearing. `upperLimit` seeds the thinking budget when the
  * caller supplies none (upstream `wvi = Xxe(e).upperLimit - 1`); `default` caps
@@ -93,6 +106,15 @@ export interface ResolvedThinking {
 export function modelOutputTokenLimits(
   normalizedId: string,
 ): ModelOutputTokenLimits {
+  const declared =
+    CLAUDE_CODE_2_1_195_PROFILE.supportedModels[normalizedId]?.maxOutputTokens;
+  if (declared !== undefined) {
+    // `upper` is the catalogue's name for what this module calls `upperLimit`;
+    // the rename happens here and nowhere else.
+    return { default: declared.default, upperLimit: declared.upper };
+  }
+
+  /* ---- Demarcated fallback: the transcribed `Xxe` table. ---- */
   if (normalizedId === "claude-fable-5" || normalizedId === "claude-mythos-5") {
     return { default: 64000, upperLimit: 128000 };
   }
