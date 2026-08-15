@@ -5,6 +5,7 @@ import type {
   ClaudeCodeCatalogueEntry,
   ClaudeCodeProtocolProfile,
 } from "./contracts.js";
+import { profileBehaviors } from "./profile-behaviors.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
 /*
@@ -432,13 +433,14 @@ export function deriveCapabilities(
    * and packed-consumer digests prove `effort: true` is what 2.1.195 sends.
    *
    * Scope. This exception belongs to the 2.1.195 profile only, and the
-   * profile-id guard below enforces that mechanically. Upstream 2.1.222+
+   * behaviour guard below enforces that mechanically. Upstream 2.1.222+
    * switches derivation to the catalogue, which makes `effort: false`
    * genuine there: for those profiles the catalogue IS the truth, so a
-   * profile ported from them does NOT inherit this block.
+   * profile ported from them does NOT inherit this block. Which profiles are
+   * on which side is `profile-behaviors.ts`'s question, not this module's.
    */
   if (
-    profile.id === CLAUDE_CODE_2_1_195_PROFILE.id &&
+    profileBehaviors(profile).opus45EffortException &&
     normalizedId === "claude-opus-4-5"
   ) {
     return Object.freeze({

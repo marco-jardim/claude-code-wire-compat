@@ -5,6 +5,7 @@ import type {
   ClaudeCodeCapabilities,
   ClaudeCodeProtocolProfile,
 } from "./contracts.js";
+import { profileBehaviors } from "./profile-behaviors.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
 /**
@@ -132,8 +133,8 @@ export function modelOutputTokenLimits(
    *
    * The gate is STRUCTURAL, not a capability flag: this behaviour exists in
    * upstream 2.1.222+ and 2.1.195 does not have it, so the 195 profile must
-   * never see it. Centralising per-version dispatch — so that this reads as a
-   * profile trait rather than an identity comparison — is a later task.
+   * never see it. Which profiles are on which side is `profile-behaviors.ts`'s
+   * question, not this module's.
    *
    * `Number.isSafeInteger` is deliberately stricter than upstream's truthy
    * check. The upstream runtime only ever produces integers in this field, so
@@ -141,7 +142,7 @@ export function modelOutputTokenLimits(
    * propagate straight into `budget_tokens`, which must stay an integer.
    */
   if (
-    profile.id !== CLAUDE_CODE_2_1_195_PROFILE.id &&
+    profileBehaviors(profile).requestDerivedTokenCeiling &&
     requestedMaxTokens !== undefined &&
     Number.isSafeInteger(requestedMaxTokens) &&
     requestedMaxTokens >= 4096

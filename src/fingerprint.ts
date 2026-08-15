@@ -2,7 +2,7 @@
 
 import type { ClaudeCodeProtocolProfile, TextBlock } from "./contracts.js";
 import { ClaudeCodeWireError } from "./contracts.js";
-import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
+import { profileBehaviors } from "./profile-behaviors.js";
 
 const FINGERPRINT_PREFIX = "59cf53e54c78";
 
@@ -130,15 +130,14 @@ export async function createBillingBlock(
    * these two values, the 2.1.195 builder has no parameter for them, so the
    * 195 profile must never emit either segment even when a caller supplies
    * both. They are dropped silently there, exactly as a client without the
-   * feature would drop them. Centralising per-version dispatch — so that this
-   * reads as a profile trait rather than an identity comparison — is a later
-   * task, as it is in `thinking.ts`.
+   * feature would drop them. Which profiles are on which side is
+   * `profile-behaviors.ts`'s question, not this module's.
    *
    * A malformed value is dropped silently too, and never interpolated: these
    * segments are the only caller-controlled bytes in the block, so a value
    * failing its pattern must not reach the wire in any form.
    */
-  if (profile.id !== CLAUDE_CODE_2_1_195_PROFILE.id) {
+  if (profileBehaviors(profile).billingChainSegments) {
     const previousRequestId = chain?.previousRequestId;
     if (
       previousRequestId !== undefined &&
