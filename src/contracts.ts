@@ -1067,7 +1067,15 @@ export interface ClaudeCodeRequestInput {
  * Narrower than `ClaudeCodeRequestInput` by design. Upstream `P5e` derives the
  * beta set from the model alone, so there is deliberately no `capabilities`
  * field, and the count-tokens body carries no `system`, `metadata`, or
- * `maxTokens`.
+ * `maxTokens`. Those four omissions are fidelity to upstream and stay out.
+ *
+ * `extraHeaderPolicy` is deliberately IN, on the other hand: it is a PACKAGE
+ * EXTENSION over the transport, not a claim about the count-tokens body, and
+ * `buildOrderedHeaders` is the same code path on both surfaces. Leaving it out
+ * forced consumers to re-implement conflict dropping client-side against a
+ * mirrored list of the header names this package owns. Omitting the field, or
+ * passing `"strict"`, leaves the emitted count-tokens request byte-identical,
+ * evidence included.
  */
 export type ClaudeCodeCountTokensInput = Pick<
   ClaudeCodeRequestInput,
@@ -1087,6 +1095,7 @@ export type ClaudeCodeCountTokensInput = Pick<
   | "clientApp"
   | "anthropicAdditionalProtection"
   | "extraHeaders"
+  | "extraHeaderPolicy"
 >;
 
 export interface BuiltClaudeCodeCountTokensRequest extends Omit<

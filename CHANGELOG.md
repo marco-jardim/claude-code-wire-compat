@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-08-16
+
+### Added
+
+- **`ClaudeCodeCountTokensInput.extraHeaderPolicy`**, optional, with exactly the
+  semantics the field already had on `ClaudeCodeRequestInput`:
+  `"strict" | "dropConflicting"`, defaulting to `"strict"`. Under
+  `"dropConflicting"`, an extra header that collides with a header this package
+  owns — or that the hop-by-hop and entity denylist forbids — is discarded
+  instead of failing the build with `DUPLICATE_HEADER` / `FORBIDDEN_HEADER`.
+  `buildOrderedHeaders` was already shared between the two surfaces, so this is
+  the same header plan, not a second implementation.
+- **`droppedExtraHeaderNames` in count-tokens evidence**, lowercased and in
+  caller order, emitted ONLY under `"dropConflicting"` — mirroring the messages
+  path exactly. Under `"strict"`, and for every count-tokens request built
+  before this release, the key is ABSENT rather than present and empty.
+
+  Motivation: consumers that wanted conflict dropping on the count-tokens
+  surface had to reproduce it client-side, which meant maintaining a mirrored
+  list of the header names this package owns and re-deriving it on every
+  release — the `opencode-anthropic-fix` plugin was the concrete case. The seam
+  is transport-level and therefore package-extension territory, unlike
+  `capabilities`, `system`, `metadata` and `maxTokens`, which stay off
+  `ClaudeCodeCountTokensInput` because upstream `P5e` does not carry them.
+
+  Compatibility: omitting the field, or passing `"strict"`, leaves the emitted
+  count-tokens request byte-identical — URL, headers, body and evidence
+  included. No existing input changes behaviour; the golden fixtures are
+  unchanged and re-seal to the same bytes.
+
 ## [0.3.0] - 2026-08-15
 
 ### Added

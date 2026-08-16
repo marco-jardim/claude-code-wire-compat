@@ -111,6 +111,7 @@ const COUNT_TOKENS_INPUT_KEYS = new Set([
   "clientApp",
   "anthropicAdditionalProtection",
   "extraHeaders",
+  "extraHeaderPolicy",
 ]);
 const BUILT_KEYS = new Set(["url", "method", "headers", "body", "evidence"]);
 /**
@@ -873,6 +874,7 @@ function validateCountTokensInput(input: ClaudeCodeCountTokensInput): {
   readonly clientRequestId: string;
   readonly crypto: Pick<Crypto, "subtle"> | undefined;
   readonly profileOverride: ClaudeCodeProfileOverride | undefined;
+  readonly extraHeaderPolicy: ClaudeCodeExtraHeaderPolicy | undefined;
 } {
   if (!isRecord(input)) fail();
   assertExactKeys(input, COUNT_TOKENS_INPUT_KEYS);
@@ -915,11 +917,15 @@ function validateCountTokensInput(input: ClaudeCodeCountTokensInput): {
   const profileOverride = Object.hasOwn(input, "profileOverride")
     ? validateProfileOverride(ownValue(input, "profileOverride"))
     : undefined;
+  const extraHeaderPolicy = Object.hasOwn(input, "extraHeaderPolicy")
+    ? validateExtraHeaderPolicy(ownValue(input, "extraHeaderPolicy"))
+    : undefined;
   return {
     source: input,
     clientRequestId,
     crypto: cryptoValue,
     profileOverride,
+    extraHeaderPolicy,
   };
 }
 
@@ -1441,23 +1447,25 @@ export async function buildClaudeCodeCountTokensRequest(
       ),
     );
     const betas = Object.freeze([...countTokensBetas, TOKEN_COUNTING_BETA]);
+    const headerPlan = buildOrderedHeaderPlan({
+      accessToken: validated.source.accessToken,
+      runtime: identity,
+      clientRequestId: validated.clientRequestId,
+      betaFeatures: betas,
+      app: validated.source.app ?? effectiveProfile.entrypoint,
+      stainlessRetryCount: validated.source.stainlessRetryCount ?? 0,
+      stainlessHelper: validated.source.stainlessHelper,
+      claudeRemoteContainerId: validated.source.claudeRemoteContainerId,
+      claudeRemoteSessionId: validated.source.claudeRemoteSessionId,
+      clientApp: validated.source.clientApp,
+      anthropicAdditionalProtection:
+        validated.source.anthropicAdditionalProtection,
+      extraHeaders: validated.source.extraHeaders ?? [],
+      extraHeaderPolicy: validated.extraHeaderPolicy ?? "strict",
+      profile: pinnedProfile,
+    });
     const headers = applyEffectiveProfileHeaders(
-      buildOrderedHeaders({
-        accessToken: validated.source.accessToken,
-        runtime: identity,
-        clientRequestId: validated.clientRequestId,
-        betaFeatures: betas,
-        app: validated.source.app ?? effectiveProfile.entrypoint,
-        stainlessRetryCount: validated.source.stainlessRetryCount ?? 0,
-        stainlessHelper: validated.source.stainlessHelper,
-        claudeRemoteContainerId: validated.source.claudeRemoteContainerId,
-        claudeRemoteSessionId: validated.source.claudeRemoteSessionId,
-        clientApp: validated.source.clientApp,
-        anthropicAdditionalProtection:
-          validated.source.anthropicAdditionalProtection,
-        extraHeaders: validated.source.extraHeaders ?? [],
-        profile: pinnedProfile,
-      }),
+      headerPlan.headers,
       effectiveProfile,
     );
     const canonical = canonicalCountTokensLists(
@@ -1484,6 +1492,12 @@ export async function buildClaudeCodeCountTokensRequest(
         logicalHeaders: headers,
         betaFeatures: betas,
         body,
+        // Emitted only for the opted-in policy, exactly as the main path does,
+        // so count-tokens evidence for every other request keeps the shape it
+        // had before the seam reached this surface.
+        ...(validated.extraHeaderPolicy === "dropConflicting"
+          ? { droppedExtraHeaderNames: headerPlan.droppedExtraHeaderNames }
+          : {}),
       },
       validated.crypto,
     );
