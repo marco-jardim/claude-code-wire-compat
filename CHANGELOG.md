@@ -2,6 +2,56 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-08-16
+
+### Added
+
+- **Model-query surface**, fourteen exports from the package entry point:
+  the generic `modelCapability(model, capability, profile)`, which reads the
+  verbatim upstream capability string off the active catalogue, plus the named
+  identity predicates `isOpus46Model`, `isOpus47Model`, `isOpus48Model`,
+  `isSonnet46Model`, `isFable5Model`, `isMythos5Model`, `isHaikuModel`,
+  `isClaude3Model`, `isAdaptiveThinkingModel`, `hasOneMillionContext`,
+  `isEligibleFor1MContext`, `supportsStructuredOutputs` and
+  `supportsWebSearch`.
+
+  The predicates are written over the existing `normalizeModelId` /
+  `modelFamilyOf` pair rather than over new family regexes, so a model id
+  classifies the same way here as it does everywhere else in the package. They
+  answer `false` for an empty or non-string id instead of throwing.
+
+  Motivation: consumers were re-deriving model identity from ad hoc substring
+  matches, which drifts from the catalogue the package already carries.
+
+- **`normalizeModelId` accepts dotted model version ids.** A digit-dot-digit
+  run is rewritten to the hyphenated wire form before the upstream branch
+  ladder, so `claude-opus-4.7` classifies identically to `claude-opus-4-7`.
+
+  Compatibility: ids without a dotted version (`gpt-4o`, the empty string,
+  `vendor.example/model-x`) normalise byte-identically to before.
+
+- **Beta registries are public**: `BETA_REGISTRY` (28 entries),
+  `BETA_REGISTRY_2_1_233` (31 entries) and `TOKEN_COUNTING_BETA`. They are
+  protocol constants transcribed from the genuine client, so a consumer that
+  reads a beta header off the registry cannot drift from the package that
+  emits it. Reading a header is not emitting one — composition, gating and
+  push order stay inside the package, and the policy sets
+  (`THIRD_PARTY_ALLOWED_BETAS`, `BEDROCK_UNSUPPORTED_BETAS`,
+  `COUNT_TOKENS_BETAS`) remain private.
+
+### Documentation
+
+- **Endpoint URL contract** (README, "Endpoint URL and custom base URLs"):
+  `built.url` is the profile's pinned, literal-typed endpoint. A host with a
+  custom base substitutes protocol, hostname and port while preserving the
+  package's `pathname` and `search`. The input deliberately gains no `baseUrl`
+  field — widening the literal `url` type is a breaking change for consumers
+  that pin the endpoint, the field would duplicate what `URL` already does,
+  and the only observed consumer case is an origin override.
+
+No breaking changes: every surface above is additive, and the golden fixtures
+re-seal to the same bytes.
+
 ## [0.4.0] - 2026-08-16
 
 ### Added
