@@ -297,3 +297,127 @@ describe("buildClaudeCodeCountTokensRequest", () => {
     );
   });
 });
+
+// Seam S5 on the count-tokens surface. `buildOrderedHeaders` is shared with the
+// messages path, so the policy has to behave identically here; the only thing
+// this surface owns is that omitting the field stays byte-identical, evidence
+// included.
+describe("buildClaudeCodeCountTokensRequest extraHeaderPolicy", () => {
+  it.each([
+    ["an unknown string", "lenient"],
+    ["a boolean", true],
+    ["null", null],
+    ["an object", {}],
+    ["explicit undefined", undefined],
+  ])("rejects %s as the policy", async (_label, value) => {
+    await expect(
+      buildClaudeCodeCountTokensRequest({
+        ...base,
+        extraHeaderPolicy: value,
+      } as unknown as Parameters<typeof buildClaudeCodeCountTokensRequest>[0]),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  });
+
+  it.each([
+    [
+      "a canonical header",
+      [["content-type", "application/json"]],
+      "DUPLICATE_HEADER",
+    ],
+    ["a hop-by-hop header", [["connection", "close"]], "FORBIDDEN_HEADER"],
+  ] as const)(
+    "keeps rejecting %s when the policy is omitted",
+    async (_label, extraHeaders, code) => {
+      await expect(
+        buildClaudeCodeCountTokensRequest({
+          ...base,
+          extraHeaders,
+        }),
+      ).rejects.toMatchObject({ code });
+    },
+  );
+
+  it.each([
+    [
+      "a canonical header",
+      [["content-type", "application/json"]],
+      "DUPLICATE_HEADER",
+    ],
+    ["a hop-by-hop header", [["connection", "close"]], "FORBIDDEN_HEADER"],
+  ] as const)(
+    "keeps rejecting %s under explicit strict",
+    async (_label, extraHeaders, code) => {
+      await expect(
+        buildClaudeCodeCountTokensRequest({
+          ...base,
+          extraHeaders,
+          extraHeaderPolicy: "strict",
+        }),
+      ).rejects.toMatchObject({ code });
+    },
+  );
+
+  it.each([undefined, "strict"] as const)(
+    "omits droppedExtraHeaderNames from evidence entirely (policy %s)",
+    async (policy) => {
+      const built = await buildClaudeCodeCountTokensRequest({
+        ...base,
+        extraHeaders: [["x-tenant", "acme"]],
+        ...(policy === undefined ? {} : { extraHeaderPolicy: policy }),
+      });
+
+      expect(Object.hasOwn(built.evidence, "droppedExtraHeaderNames")).toBe(
+        false,
+      );
+      expect(headerValue(built.headers, "x-tenant")).toBe("acme");
+    },
+  );
+
+  it("drops the conflicting extras and keeps the rest under dropConflicting", async () => {
+    const built = await buildClaudeCodeCountTokensRequest({
+      ...base,
+      extraHeaders: [
+        ["Content-Type", "text/plain"],
+        ["x-tenant", "acme"],
+        ["connection", "close"],
+      ],
+      extraHeaderPolicy: "dropConflicting",
+    });
+    const names = built.headers.map(([name]) => name);
+
+    expect(headerValue(built.headers, "x-tenant")).toBe("acme");
+    expect(names.filter((name) => name === "content-type")).toEqual([
+      "content-type",
+    ]);
+    expect(headerValue(built.headers, "content-type")).toBe("application/json");
+    expect(names).not.toContain("connection");
+    expect(built.evidence.droppedExtraHeaderNames).toEqual([
+      "content-type",
+      "connection",
+    ]);
+  });
+
+  it("emits an empty droppedExtraHeaderNames when nothing collided", async () => {
+    const built = await buildClaudeCodeCountTokensRequest({
+      ...base,
+      extraHeaders: [["x-tenant", "acme"]],
+      extraHeaderPolicy: "dropConflicting",
+    });
+
+    expect(Object.hasOwn(built.evidence, "droppedExtraHeaderNames")).toBe(true);
+    expect(built.evidence.droppedExtraHeaderNames).toEqual([]);
+  });
+
+  it("leaves the body and every non-header field byte-identical", async () => {
+    const omitted = await buildClaudeCodeCountTokensRequest(base);
+    const dropping = await buildClaudeCodeCountTokensRequest({
+      ...base,
+      extraHeaderPolicy: "dropConflicting",
+    });
+
+    expect(dropping.body).toBe(omitted.body);
+    expect(dropping.url).toBe(omitted.url);
+    expect(dropping.headers).toEqual(omitted.headers);
+    expect(dropping.evidence.bodySha256).toBe(omitted.evidence.bodySha256);
+  });
+});
