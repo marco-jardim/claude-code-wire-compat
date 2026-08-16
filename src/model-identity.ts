@@ -7,9 +7,23 @@ export function stripModelMarkers(model: string): string {
   return model.replace(/\[(1|2)m\]/gi, "");
 }
 
+/**
+ * Rewrites dotted version separators to the hyphenated form upstream uses on
+ * the wire (`claude-opus-4.7` -> `claude-opus-4-7`). Only a digit-dot-digit
+ * run is rewritten, so ids with no dotted version (`gpt-4o`, `""`) and
+ * unrelated dots are left byte-identical.
+ *
+ * The plugin performs the same rewrite at its wire seam
+ * (`lib/mimicry/wire-compat.mjs`); the plugin's own family predicates accept
+ * `[._-]` interchangeably, so this keeps package classification in parity.
+ */
+function dottedToDashedVersion(model: string): string {
+  return model.replace(/(\d)\.(\d)/g, "$1-$2");
+}
+
 /** Ports upstream `$_` (binary offset 226639025). */
 export function normalizeModelId(model: string): string {
-  model = model.toLowerCase();
+  model = dottedToDashedVersion(model.toLowerCase());
   if (model.includes("claude-fable-5")) return "claude-fable-5";
   if (model.includes("claude-mythos-5")) return "claude-mythos-5";
   if (model.includes("claude-opus-4-8")) return "claude-opus-4-8";

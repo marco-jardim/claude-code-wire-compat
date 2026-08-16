@@ -189,4 +189,64 @@ describe("model identity", () => {
       resolveModel("claude-sonnet-4-5").capabilities,
     );
   });
+
+  describe("dotted version ids", () => {
+    it.each([
+      ["claude-opus-4.8", "claude-opus-4-8"],
+      ["claude-opus-4.7", "claude-opus-4-7"],
+      ["claude-opus-4.6", "claude-opus-4-6"],
+      ["claude-opus-4.5", "claude-opus-4-5"],
+      ["claude-opus-4.1", "claude-opus-4-1"],
+      ["claude-sonnet-4.6", "claude-sonnet-4-6"],
+      ["claude-sonnet-4.5", "claude-sonnet-4-5"],
+      ["claude-haiku-4.5", "claude-haiku-4-5"],
+      ["claude-3.7-sonnet", "claude-3-7-sonnet"],
+      ["claude-3.5-sonnet", "claude-3-5-sonnet"],
+      ["claude-3.5-haiku", "claude-3-5-haiku"],
+    ])("normalizes %s to the hyphenated id", (input, expected) => {
+      expect(normalizeModelId(input)).toBe(expected);
+    });
+
+    it.each([
+      "claude-opus-4.7",
+      "claude-sonnet-4.5",
+      "claude-haiku-4.5",
+      "CLAUDE-OPUS-4.6",
+      "claude-opus-4.6[1m]",
+      "claude-sonnet-4.5-20250929",
+      "claude-opus-4.7-eap",
+      "claude-opus-4.7-EAP[foo]",
+    ])(
+      "classifies %s byte-identically to its dashed spelling",
+      (dottedModel) => {
+        const dashedModel = dottedModel.replace(/(\d)\.(\d)/gu, "$1-$2");
+
+        expect(normalizeModelId(dottedModel)).toBe(
+          normalizeModelId(dashedModel),
+        );
+        expect(modelFamilyOf(normalizeModelId(dottedModel))).toBe(
+          modelFamilyOf(normalizeModelId(dashedModel)),
+        );
+        expect(resolveModel(dottedModel).capabilities).toEqual(
+          resolveModel(dashedModel).capabilities,
+        );
+      },
+    );
+
+    it("keeps the eight-digit date strip after the dotted rewrite", () => {
+      expect(normalizeModelId("some-model-20250929")).toBe("some-model");
+      expect(normalizeModelId("claude-opus-4.7-20250929")).toBe(
+        "claude-opus-4-7",
+      );
+    });
+
+    it("leaves dots that are not version separators untouched", () => {
+      expect(normalizeModelId("gpt-4o")).toBe("gpt-4o");
+      expect(normalizeModelId("")).toBe("");
+      expect(normalizeModelId("vendor.example/model-x")).toBe(
+        "vendor.example/model-x",
+      );
+      expect(normalizeModelId("model-4.x")).toBe("model-4.x");
+    });
+  });
 });
