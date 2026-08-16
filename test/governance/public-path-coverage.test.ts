@@ -18,6 +18,7 @@ const INTERNAL_UNIT_TEST_ALLOWLIST = new Set([
   "metadata-headers-mutants.test.ts", // Mutation tests target metadata and header internals.
   "metadata.test.ts", // Exercises runtime identity and metadata helpers directly.
   "model-identity.test.ts", // Exercises the internal model-identity port directly.
+  "model-queries.test.ts", // Exercises the model-query module before it is exported.
   "redaction-mutants.test.ts", // Mutation tests target internal redaction helper branches.
   "redaction.test.ts", // Exercises redaction and evidence helpers directly.
   "request-body-mutants.test.ts", // Mutation tests target canonical body internals directly.

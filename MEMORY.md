@@ -6,6 +6,53 @@ Append-only log of non-obvious maintenance decisions and their reasoning, so
 future work does not re-litigate or accidentally reverse them. Newest entries
 first. Keep entries dated, factual, and in consumer-neutral language.
 
+## 2026-08-16 — Model queries: a generic catalogue query plus named identity predicates
+
+Context: consumers need to ask two different kinds of question about a model
+id — "does the catalogue record capability X for it?" and "is it Opus 4.7?".
+The obvious shortcut is to answer both from one mechanism.
+
+Decision: **`src/model-queries.ts` ships both surfaces and keeps them
+separate.**
+
+- `modelCapability(model, capability, profile)` is the generic query. The
+  catalogue is the source of truth: normalize the id, look the entry up in
+  `profile.supportedModels`, ask whether the verbatim upstream capability
+  string is present. It invents no mapping, so it answers for the capability
+  strings this package does not model as a `ClaudeCodeCapabilities` field
+  (`fast_mode`, `lean_prompt`, `mid_conv_system`, ...) as readily as for the
+  six it does. Ids the profile does not catalogue answer `false`: absence of
+  evidence is reported as absence.
+- The named predicates (`isOpus47Model`, `isHaikuModel`, `isClaude3Model`,
+  `isAdaptiveThinkingModel`, ...) are written over `normalizeModelId` and
+  `modelFamilyOf`. **A family is not a catalogue capability** — it is an
+  identity question — so no new family regex was introduced and the catalogue
+  is not consulted. `isAdaptiveThinkingModel` in particular is the union of
+  the named family predicates rather than a `adaptive_thinking` catalogue
+  read: it gates the emitted `thinking` block shape, and an uncatalogued id
+  must not inherit adaptive thinking from the deliberately permissive
+  capability fallback documented in `model-capabilities.ts`.
+
+Two deliberate consequences, recorded so they are not "fixed" later:
+
+1. `hasOneMillionContext` is marker-only and does **not** read
+   `context.native1m`. The catalogue field states the model's native window;
+   the predicate states that the id itself demands 1M. `claude-opus-4-7` is
+   natively 1M and still answers `false`. `isEligibleFor1MContext` is the one
+   that consults the catalogue (`context.supports1mBeta`), falling back to the
+   ported family set for uncatalogued ids.
+2. `supportsStructuredOutputs` delegates to the predicate ported from the
+   genuine client (`j4e` in `model-capabilities.ts`), not to a family-shaped
+   heuristic. One name, one meaning, and the better-evidenced one wins.
+
+Predicates return `false` for a non-string or empty id instead of throwing
+`ClaudeCodeWireError("INVALID_INPUT")` as `resolveModel` does. Their upstream
+counterparts are total functions on a falsy model, and a predicate that throws
+cannot be used in the boolean position its callers put it in.
+
+Not a version bump and not a re-seal: additive read-only surface, no wire byte
+changes, golden fixtures unchanged.
+
 ## 2026-08-16 — Drift verifier re-anchored to 2.1.233; sdkVersion resolved via the CLI map
 
 Context: `npm run drift:check` compares this package's profile data against an
