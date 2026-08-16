@@ -6,6 +6,46 @@ Append-only log of non-obvious maintenance decisions and their reasoning, so
 future work does not re-litigate or accidentally reverse them. Newest entries
 first. Keep entries dated, factual, and in consumer-neutral language.
 
+## 2026-08-16 — The external drift verifier is retired; the plugin is no longer the protocol oracle
+
+Context: `npm run drift:check` (`scripts/verify-drift.mjs`, plus the
+fixture-driven `test/drift` suite) compared this package's pinned profile data
+against a sibling checkout of the `opencode-anthropic-fix` plugin — seven checks
+over cliVersion, sdkVersion, endpoint, beta registry, header names, billing
+prefix and golden hashes. That worked while the plugin held an independent
+transcription of the genuine client: two transcriptions disagreeing was real
+evidence.
+
+Decision: **the verifier, its suite, its synthetic fixtures and the `drift:check`
+script are deleted.** The plugin has migrated onto this package. It is removing
+`lib/request-headers.mjs` and the mimicry functions in `system-prompt.mjs` and
+now imports header names, beta strings and version constants from here. Once a
+consumer derives its values from this package, comparing the package against
+that consumer asserts only that the package equals itself — a tautology that
+reads as a green gate. The deletion is not merely tidying: with those plugin
+modules gone the script's source-real mode could no longer read anything and
+would exit 2 with `SOURCE_UNAVAILABLE` on every run, so the only surviving mode
+was the synthetic-fixture one, which tests the verifier rather than the
+protocol.
+
+Replacement oracle: **the transcription procedure in
+`docs/plans/UPSTREAM-TRACKING-RUNBOOK.md`, run against a genuine Claude Code
+binary**, which produces an analysis document under `docs/protocol/versions/`
+before any profile module moves. What that procedure yields is pinned
+mechanically by the sealed golden fixtures (`npm run fixtures:check`) and
+replayed behaviourally by the differential suite. Upstream is the only thing
+that can be drifted from, and only a fresh read of upstream can detect it.
+
+This supersedes the "Drift verifier re-anchored to 2.1.233" entry below: the
+default-profile and `CLI_TO_SDK_VERSION` reasoning recorded there is still true
+of the source, and the part of it that mattered — read the CLI-to-SDK map, never
+the standalone fallback constant — now lives in `docs/source-trace.md` where the
+transcription procedure can use it. `test/governance/ci-policy.test.ts` carries
+a guard so the circular gate cannot quietly return.
+
+Not a version bump and not a re-seal: no `src/` module, no published surface, no
+golden fixture and no wire byte changed. Repository infrastructure only.
+
 ## 2026-08-16 — Cache: placement is the package's, TTL policy and breakpoint heuristics are the host's
 
 Context: a consumer's cache helper (`lib/mimicry/cache.mjs` in the

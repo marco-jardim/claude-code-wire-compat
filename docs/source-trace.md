@@ -54,20 +54,28 @@ implement it. The module has since landed. The governance test in
 every profile module must be registered here, and every entry registered here must cite an analysis
 document that exists.
 
-### Drift monitoring covers 2.1.195 and 2.1.233
+### Drift monitoring is the tracking runbook, not an external checkout
 
-The drift check monitors both profiles. `claude-code-2.1.233-sdk-0.112.1` is the **default** — the
-profile an unflagged `npm run drift:check` compares — because drift is measured against an external
-consumer project and that project has advanced to 2.1.233; its `FALLBACK_CLAUDE_CLI_VERSION` tracks
-this package's default profile. `claude-code-2.1.195-sdk-0.94.0` stays monitored and reachable via
-`--profile`, verifiable against a source pinned to that era; it is no longer the default only
-because no live source mirrors it today.
+An earlier revision of this document described an offline drift verifier that compared the pinned
+profiles against a sibling checkout of a consumer project. **That verifier is retired.** The
+consumer it read has migrated onto this package: it no longer transcribes header names, beta
+strings or version constants of its own, it imports them from here. Comparing this package against
+a project that derives its values from this package asserts nothing about upstream — it is a
+tautology dressed as a gate, and it would have started reporting `SOURCE_UNAVAILABLE` the moment
+the consumer deleted its transcription modules.
 
-The SDK version is resolved from the source the way the source resolves it — `CLI_TO_SDK_VERSION`
-first, and the standalone `ANTHROPIC_SDK_VERSION` constant only as the fallback for a CLI version
-the map does not carry. Comparing that constant directly would be wrong: it is the fallback for
-unmapped versions, not the SDK version of the tracked one. Upstream holds it at `0.94.0` while
-pairing `2.1.233` with `0.112.1`.
+The oracle for upstream drift is therefore singular and direct: the transcription procedure in
+`docs/plans/UPSTREAM-TRACKING-RUNBOOK.md`, run against a genuine Claude Code binary, producing an
+analysis document under `docs/protocol/versions/` before any profile module changes. What that
+procedure produces is guarded mechanically by the sealed golden fixtures (`npm run fixtures:check`)
+and replayed behaviourally by the differential suite, so a value that moves without evidence fails
+the build regardless of which release it belongs to.
+
+Both pinned profiles remain fully covered by that arrangement. The SDK version of a release is the
+one its own CLI-to-SDK mapping carries — upstream holds the standalone fallback constant at
+`0.94.0` while pairing `2.1.233` with `0.112.1`, so a transcription must read the mapping and never
+the fallback constant. That distinction is a property of the source, and it survives the removal of
+the tooling that once encoded it.
 
 ## Conscious and permanent divergences
 

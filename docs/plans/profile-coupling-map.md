@@ -15,6 +15,13 @@ files that must stop assuming a single profile.
 - **Raw listing:** the complete, unfiltered `rg` output (275 occurrences across
   74 files) is reproduced verbatim in the [appendix](#appendix--raw-rg-listing).
 
+> **Amendment (2026-08-16):** the rows naming `scripts/verify-drift.mjs` and
+> `test/drift/**` describe files that have since been deleted. The external
+> drift verifier was retired once its comparison source began importing its
+> constants from this package. Those rows are retained as part of the captured
+> inventory; they carry no remaining work. See `MEMORY.md`, entry dated
+> 2026-08-16.
+
 ## Classification
 
 | Class         | Meaning                                                                                                                                           | Occurrences |
