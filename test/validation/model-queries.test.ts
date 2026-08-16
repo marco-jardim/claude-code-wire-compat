@@ -2,8 +2,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { ClaudeCodeProtocolProfile } from "../../src/contracts.js";
 import {
+  CLAUDE_CODE_2_1_195_PROFILE,
+  CLAUDE_CODE_2_1_233_PROFILE,
   hasOneMillionContext,
   isAdaptiveThinkingModel,
   isClaude3Model,
@@ -18,9 +19,8 @@ import {
   modelCapability,
   supportsStructuredOutputs,
   supportsWebSearch,
-} from "../../src/model-queries.js";
-import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
-import { CLAUDE_CODE_2_1_233_PROFILE } from "../../src/profiles/claude-code-2.1.233.js";
+} from "../../src/index.js";
+import type { ClaudeCodeProtocolProfile } from "../../src/index.js";
 
 /** Rebuilds the pinned profile with one catalogue entry's capabilities replaced. */
 function withCapabilities(

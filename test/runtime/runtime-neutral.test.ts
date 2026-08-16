@@ -73,8 +73,22 @@ describe("runtime/runtime-neutral (Wave 1 RED specification)", () => {
       "antiVerbosityText",
       "buildClaudeCodeCountTokensRequest",
       "buildClaudeCodeRequest",
+      "hasOneMillionContext",
+      "isAdaptiveThinkingModel",
+      "isClaude3Model",
+      "isEligibleFor1MContext",
+      "isFable5Model",
+      "isHaikuModel",
+      "isMythos5Model",
+      "isOpus46Model",
+      "isOpus47Model",
+      "isOpus48Model",
+      "isSonnet46Model",
+      "modelCapability",
       "parseBuiltClaudeCodeRequest",
       "selectAntiVerbositySection",
+      "supportsStructuredOutputs",
+      "supportsWebSearch",
     ]);
     expect(globalsAfterFirst).toEqual(globalsBefore);
     expect(Reflect.ownKeys(globalThis)).toEqual(globalsBefore);
