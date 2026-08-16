@@ -87,7 +87,7 @@ New versions enter the next cycle.
   baseline (99.04/98.8/100/99.69) — a real drop fails the gate.
 - Per-commit gates: `npm run lint && npm run typecheck && npm test && npm run build && npm run format:check`.
   End-of-phase adds `test:coverage`, `pack:check`, `test:pack`,
-  `npx vitest run test/drift`, `fixtures:check`.
+  `fixtures:check`.
 
 ## Troubleshooting / traps
 
@@ -129,9 +129,9 @@ Governance tests that bite (beyond the runbook checklist):
   `package.json.version` (dated for stable, undated for prerelease);
   `test/runtime/runtime-neutral.test.ts` pins the public export set as a
   closed sorted list.
-- Six drift mirrors under `test/drift/fixtures/*/test/fixtures/golden/manifest.json`
-  must track the real manifest after every seal; the `golden-hash` mirror is
-  deliberately mismatched — do not "fix" it.
+- `test/governance/ci-policy.test.ts` also asserts the external drift
+  verifier stays retired: no `scripts/verify-drift.mjs`, no `test/drift/`, no
+  `drift:check` script. Upstream drift is the runbook's job now.
 - `fixtures:seal` refuses on: modified tracked files outside its two
   targets, untracked files inside the golden directory, and any truthy `CI`
   env. `manifest.models` is hand-maintained seal _input_ — edit it by hand

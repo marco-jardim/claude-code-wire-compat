@@ -39,9 +39,21 @@ describe("CI policy", () => {
     "npm run pack:check",
     "license-checker-rseidelsohn",
     "gitleaks",
-    "npx vitest run test/drift",
   ])("contains quality gate %s", (gate) => {
     expect(ci).toContain(gate);
+  });
+
+  it("has fully retired the external drift verifier", () => {
+    // The verifier compared this package's pinned profile against a sibling
+    // checkout of a consumer project. That consumer now builds its requests
+    // from this package, so the comparison degenerated into asserting the
+    // package against itself. Upstream drift is caught by the transcription
+    // procedure in docs/plans/UPSTREAM-TRACKING-RUNBOOK.md plus the sealed
+    // golden fixtures. This guard prevents the circular gate from returning.
+    expect(existsSync(join(root, "scripts", "verify-drift.mjs"))).toBe(false);
+    expect(existsSync(join(root, "test", "drift"))).toBe(false);
+    expect(packageJson).not.toContain("drift:check");
+    expect(ci).not.toContain("test/drift");
   });
 
   it("has fully removed the Stryker mutation-testing gate", () => {

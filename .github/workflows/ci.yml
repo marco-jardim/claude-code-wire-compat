@@ -112,5 +112,3 @@ jobs:
           tar -xzf gitleaks.tar.gz gitleaks
           ./gitleaks detect --no-git --source . --redact --config .gitleaks.toml --exit-code 1
           rm -f gitleaks.tar.gz gitleaks
-      - name: Offline drift verification (fixtures)
-        run: npx vitest run test/drift

@@ -58,7 +58,7 @@ export default tseslint.config(
   {
     // Untyped JavaScript tooling (root configs and `scripts/**`). The globs must
     // be recursive: a bare `*.mjs` matches only repository-root files, which
-    // silently left `scripts/verify-drift.mjs` without a parser project.
+    // silently left the scripts under `scripts/` without a parser project.
     files: ["**/*.js", "**/*.mjs"],
     ...tseslint.configs.disableTypeChecked,
     languageOptions: { globals: globals.node },

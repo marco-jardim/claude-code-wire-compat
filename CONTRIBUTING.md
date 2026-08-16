@@ -12,7 +12,7 @@ Install with `npm ci`, then run `npm run lint`, `npm run typecheck`, `npm test`,
 
 Test quality is enforced statically rather than through mutation testing. `npm run lint` includes the `@vitest/eslint-plugin` rule set, which rejects assertion-free tests, conditional or misplaced `expect` calls, focused or disabled tests, and duplicate test titles; `npm run test:coverage` enforces line, statement, function, and branch thresholds. This is a cheaper, faster, and less precise signal than the mutation testing it replaces: it does not detect a weak assertion that still runs against covered code, so data-table modules in particular need explicit per-value assertions rather than relying on coverage alone.
 
-`npm run drift:check` compares the pinned profile against a local checkout of the upstream source, so it is a local quality gate. When that checkout is absent, it deliberately exits nonzero with `SOURCE_UNAVAILABLE`; do not suppress or work around that result. CI instead runs the fixture-driven `test/drift` suite.
+There is no automated check against an external copy of the upstream client, and adding one back is not an improvement: the only consumer project that carried a parallel transcription now imports its constants from this package, so a comparison against it is circular. Upstream drift is detected by re-running the transcription procedure in `docs/plans/UPSTREAM-TRACKING-RUNBOOK.md` against a genuine client binary, and the result is held in place by `npm run fixtures:check` over the sealed golden fixtures.
 
 ## Golden fixtures
 

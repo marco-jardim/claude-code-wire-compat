@@ -19,7 +19,7 @@ This document is the normative trace from the pinned upstream implementation to 
 Every wire profile this package recognizes is registered here. A profile is registered against its
 analysis document, which is the evidence of record; the `src/profiles/` module is code that follows
 the evidence, not the other way round. A trace entry may therefore precede its TypeScript module by
-one phase, and one currently does.
+one phase; none currently does.
 
 ### Profile `claude-code-2.1.195-sdk-0.94.0`
 
@@ -44,25 +44,38 @@ one phase, and one currently does.
 | Build time      | `2026-08-14T17:21:48Z`                                   |
 | Git SHA         | `f8d57569aaf350fe25dc4dfa10cad59db8ea4d45`               |
 | Analysis        | `docs/protocol/versions/claude-code-2.1.233-analysis.md` |
-| Profile module  | not yet present — added in the catalogue phase           |
+| Profile module  | `src/profiles/claude-code-2.1.233.ts`                    |
 
-`src/profiles/claude-code-2.1.233.ts` does not exist yet, and its absence is deliberate rather than
-an oversight. This entry is anchored in the analysis document above, which is committed and is the
-sole source for the values in the table. Registering the trace entry first keeps the order of
+This entry is anchored in the analysis document above, which is the sole source for the values in
+the table. The trace entry was registered before the module existed, which keeps the order of
 operations honest: the evidence is recorded, reviewable, and testable before any code claims to
-implement it. The profile module is added in the catalogue phase, and the governance test in
+implement it. The module has since landed. The governance test in
 `test/governance/source-trace-profiles.test.ts` enforces the invariant that survives both states —
 every profile module must be registered here, and every entry registered here must cite an analysis
 document that exists.
 
-### Drift monitoring covers 2.1.195 only
+### Drift monitoring is the tracking runbook, not an external checkout
 
-The drift check verifies the `claude-code-2.1.195-sdk-0.94.0` profile and no other. That scope is
-deliberate, not an omission: drift is measured against an external consumer project, and that
-project publishes protocol data for 2.1.195 alone. There is nothing for a 2.1.233 entry to compare
-against, and a monitored profile with no external counterpart would report a permanent absence
-rather than a real divergence. The profile joins the check if and when an external source for it
-exists.
+An earlier revision of this document described an offline drift verifier that compared the pinned
+profiles against a sibling checkout of a consumer project. **That verifier is retired.** The
+consumer it read has migrated onto this package: it no longer transcribes header names, beta
+strings or version constants of its own, it imports them from here. Comparing this package against
+a project that derives its values from this package asserts nothing about upstream — it is a
+tautology dressed as a gate, and it would have started reporting `SOURCE_UNAVAILABLE` the moment
+the consumer deleted its transcription modules.
+
+The oracle for upstream drift is therefore singular and direct: the transcription procedure in
+`docs/plans/UPSTREAM-TRACKING-RUNBOOK.md`, run against a genuine Claude Code binary, producing an
+analysis document under `docs/protocol/versions/` before any profile module changes. What that
+procedure produces is guarded mechanically by the sealed golden fixtures (`npm run fixtures:check`)
+and replayed behaviourally by the differential suite, so a value that moves without evidence fails
+the build regardless of which release it belongs to.
+
+Both pinned profiles remain fully covered by that arrangement. The SDK version of a release is the
+one its own CLI-to-SDK mapping carries — upstream holds the standalone fallback constant at
+`0.94.0` while pairing `2.1.233` with `0.112.1`, so a transcription must read the mapping and never
+the fallback constant. That distinction is a property of the source, and it survives the removal of
+the tooling that once encoded it.
 
 ## Conscious and permanent divergences
 
@@ -210,7 +223,7 @@ supersedes, if any.
 | Model identity passthrough            | genuine client `$_` (226639025) and `dp` (226644497)                   |           — | The client **never rejects** a model identifier: `$_` normalizes for capability lookup only, and unrecognized identifiers fall through to a date-suffix strip. `dp` removes `[1m]`/`[2m]` markers. The package therefore sends the caller's model string **verbatim** minus any marker, and uses the normalized id solely to derive capabilities. Ported in `src/model-identity.ts`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `test/validation/model-identity.test.ts`    |
 | Capability derivation                 | genuine client `Kw`, `Hke`, `Yte`, `Uot`, `QOt`, `RCn`, `LCn`, `U4e`   |           — | Nine predicates ported in `src/model-capabilities.ts` produce the nine booleans of `ClaudeCodeCapabilities`. Each one reduces, on first party, to its exclusion list alone; the upstream `W9`/`JB`/`ZO` overrides and fallbacks are elided because no first-party path reaches them. `LCn` is the single allowlist — see "Temperature model gate".                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `test/model-capability-wire.test.ts`        |
 | Count-tokens endpoint                 | `buildClaudeCodeCountTokensRequest`                                    |           — | `POST https://api.anthropic.com/v1/messages/count_tokens?beta=true`. Betas move **out of the body** and into the `anthropic-beta` header, filtered to the count-tokens subset, with `token-counting-2024-11-01` appended.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `test/validation/count-tokens.test.ts`      |
-| Beta registry and push order          | genuine client `Udd`, ordered by `$9r` plus the request builder        |           — | **Supersedes "Experimental beta set", "Beta shortcut aliases" and "Shortcut resolution".** The client carries a 28-entry keyed registry, ported verbatim as `BETA_REGISTRY` in `src/beta-registry.ts`. There is no flat opt-in list and no alias table. Wire order is **emergent**, not declared: it falls out of `$9r` combined with the order in which the request builder pushes each gated flag.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `test/betas.test.ts`                        |
+| Beta registry and push order          | genuine client `Udd`, ordered by `$9r` plus the request builder        |           — | **Supersedes "Experimental beta set", "Beta shortcut aliases" and "Shortcut resolution".** The client carries a 28-entry keyed registry, ported verbatim as `BETA_REGISTRY` in `src/beta-registry.ts`. There is no flat opt-in list and no alias table. Wire order is **emergent**, not declared: it falls out of `$9r` combined with the order in which the request builder pushes each gated flag. Both registries — `BETA_REGISTRY` (28 entries) and `BETA_REGISTRY_2_1_233` (31 entries) — are **exported read-only protocol constants**; their shape, the `tool_search` feature-key reuse, and the deliberate 2.1.222+ removal of `NARRATION_SUMMARIES` from the 2.1.233 registry are pinned by `test/validation/beta-registry-surface.test.ts`. Reading a header off a registry is not the same as emitting it: composition and gating stay inside the package. | `test/betas.test.ts`                        |
 | Max-tokens clamp                      | genuine client `qct` (238199436), `Fue` (229566641), `Xxe` (227378240) |           — | Defect D16. The client emits `Fi = Math.min(callerValue, qct(model))`, and `qct` is `Fue("CLAUDE_CODE_MAX_OUTPUT_TOKENS", <env>, Xxe(model).default, Xxe(model).upperLimit).effective`. `Fue` returns the default untouched when the environment variable is unset and only ever clamps the **environment** value against `upperLimit`, so for this package — which reads no environment — `qct` reduces to `Xxe(model).default`. An oversized `max_tokens` is therefore **silently capped, not rejected**, and the bound is the model **default**, never its upper limit. The same clamped `Fi` feeds the thinking budget via `Tr = Math.min(Fi - 1, Tr)`, so both call sites receive the capped value. `Vkd` and `bvi` are not modelled: `Vkd` reads a host config object absent on a default install, and `bvi` sits behind `_vi()`, which returns a hard `false`. | `test/validation/max-tokens-clamp.test.ts`  |
 
 ## Conformance

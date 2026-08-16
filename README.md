@@ -30,6 +30,38 @@ import { CLAUDE_CODE_2_1_233_PROFILE } from "@tormentalabs/claude-code-wire-comp
 
 The fail-closed rule is unchanged: only these exported singletons are accepted. Any other object, even a structurally identical clone, is rejected with `ClaudeCodeWireError` code `INVALID_INPUT`. This prevents callers from substituting an unpinned protocol profile.
 
+## Endpoint URL and custom base URLs
+
+`built.url` is the **pinned endpoint of the profile**, not a suggestion. It is literal-typed, so the type is part of the contract:
+
+- `buildClaudeCodeRequest` → `"https://api.anthropic.com/v1/messages?beta=true"`
+- `buildClaudeCodeCountTokensRequest` → `"https://api.anthropic.com/v1/messages/count_tokens?beta=true"`
+
+A host that talks to a proxy, a gateway, or a regional endpoint **overrides the origin and nothing else**: replace protocol, hostname and port; keep the package's `pathname` and `search` verbatim. The `?beta=true` query and the `/v1/messages` path are wire contract — dropping either changes what the server does, and the golden fixtures no longer describe the request that was sent.
+
+```ts
+const built = await buildClaudeCodeRequest(input);
+
+// Origin override. `pathname` and `search` come from the package, untouched.
+const target = new URL(built.url);
+const base = new URL(hostBaseUrl); // whatever the host resolved, e.g. from its own config
+target.protocol = base.protocol;
+target.hostname = base.hostname;
+target.port = base.port;
+
+await fetch(target, {
+  method: built.method,
+  headers: built.headers,
+  body: built.body,
+});
+```
+
+**The input will not gain a `baseUrl` field.** Three reasons, recorded so the request does not come back:
+
+1. `BuiltClaudeCodeRequest["url"]` is a string literal type. Widening it to `string` to accommodate an arbitrary base is a breaking change at the type level for every consumer that pins the endpoint.
+2. Speculative surface is not added to this package. A host that has a base URL already has a URL library; a package field would be a second way to do the same thing, with a validation and normalisation burden this package would then own.
+3. The only real consumer case observed is an origin override, which the four lines above express exactly — including the case where the base URL carries a path prefix, which a naive `baseUrl + pathname` concatenation gets wrong.
+
 ## Protocol documentation
 
 The wire contract this package pins was reverse engineered before it was

@@ -100,14 +100,15 @@ would build differently from the client it claims to mimic.
 
 Recorded for future maintenance; neither blocks execution.
 
-**O1 — drift fixture mirrors duplicate the golden manifest.** The seven
-synthetic source trees under `test/drift/fixtures/` each carry a copy of
-`test/fixtures/golden/manifest.json`'s `fixtures` map. Sealing new golden
-fixtures therefore requires hand-updating six of the seven mirrors (the
-`golden-hash` case keeps its deliberate mismatch). Deriving the mirrors
-from the real manifest at test time would remove the duplication without
-weakening the guard; until then, every fixture addition must touch the
-mirrors in the same commit as the seal.
+**O1 — drift fixture mirrors duplicate the golden manifest. RESOLVED
+2026-08-16 by deletion.** The seven synthetic source trees under
+`test/drift/fixtures/` each carried a copy of the golden manifest's
+`fixtures` map, so sealing new fixtures meant hand-updating six mirrors.
+The observation is moot: the external drift verifier they served was
+retired along with its suite, because the consumer project it compared
+against now imports its constants from this package and the comparison had
+become circular. Sealing golden fixtures no longer touches anything outside
+`test/fixtures/golden/` and `docs/source-trace.md`.
 
 **O2 — four parameterised suites cover the second profile only partially.**
 `build-request-mutants`, `model-wire-identity`, `model-identity`, and
