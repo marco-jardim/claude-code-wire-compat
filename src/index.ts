@@ -4,8 +4,9 @@
  * Public entry point for the Claude Code wire compatibility package.
  *
  * Only the surfaces listed below are public. Internal protocol modules remain
- * private; the documented builder, parser, anti-verbosity helpers and
- * read-only model queries are exported here, and nothing else.
+ * private; the documented builder, parser, anti-verbosity helpers, read-only
+ * model queries and the transcribed beta registries are exported here, and
+ * nothing else.
  *
  * Importing this module has no side effects. It reads no environment, opens
  * no network connection, touches no clock or random source, and holds no
@@ -53,11 +54,15 @@ export {
   selectAntiVerbositySection,
 } from "./anti-verbosity.js";
 
+export { BETA_REGISTRY } from "./beta-registry.js";
+
 export {
   buildClaudeCodeCountTokensRequest,
   buildClaudeCodeRequest,
   parseBuiltClaudeCodeRequest,
 } from "./build-request.js";
+
+export { TOKEN_COUNTING_BETA } from "./count-tokens.js";
 
 export {
   hasOneMillionContext,
@@ -76,5 +81,6 @@ export {
   supportsWebSearch,
 } from "./model-queries.js";
 
+export { BETA_REGISTRY_2_1_233 } from "./profiles/beta-registry-2.1.233.js";
 export { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 export { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";

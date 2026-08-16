@@ -66,10 +66,13 @@ describe("runtime/runtime-neutral (Wave 1 RED specification)", () => {
     // additional runtime export — including an accidental internal helper —
     // fails this assertion.
     expect(Object.keys(first).sort()).toEqual([
+      "BETA_REGISTRY",
+      "BETA_REGISTRY_2_1_233",
       "CLAUDE_CODE_2_1_195_PROFILE",
       "CLAUDE_CODE_2_1_233_PROFILE",
       "ClaudeCodeWireError",
       "DEFAULT_ANTI_VERBOSITY_POLICY",
+      "TOKEN_COUNTING_BETA",
       "antiVerbosityText",
       "buildClaudeCodeCountTokensRequest",
       "buildClaudeCodeRequest",
