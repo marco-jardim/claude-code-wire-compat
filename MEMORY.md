@@ -6,6 +6,97 @@ Append-only log of non-obvious maintenance decisions and their reasoning, so
 future work does not re-litigate or accidentally reverse them. Newest entries
 first. Keep entries dated, factual, and in consumer-neutral language.
 
+## 2026-08-16 — Cache: placement is the package's, TTL policy and breakpoint heuristics are the host's
+
+Context: a consumer's cache helper (`lib/mimicry/cache.mjs` in the
+`opencode-anthropic-fix` plugin) was reviewed function by function to decide
+what, if anything, should migrate into this package.
+
+Decision: **nothing migrates.** The split is already correct, and it is
+recorded here so the review is not repeated:
+
+- `resolveCacheTtl` — **host policy.** It reads environment overrides and
+  applies a role-scoped TTL. Both halves are host concerns: this package reads
+  no environment, and the TTL choice is deployment policy rather than wire
+  contract.
+- `shouldPlaceToolBreakpoint` and `updateBoundaryStability` — **host
+  heuristic.** They are a turn-to-turn stability optimisation: state carried
+  ACROSS requests to decide whether a boundary has settled enough to be worth a
+  cache breakpoint. This package is a pure function of one request and holds no
+  mutable module state, so the heuristic cannot live here without changing what
+  the package is. It is also a cost optimisation, not a compatibility
+  requirement — a wrong answer costs money, not correctness.
+- Canonical `cache_control` placement — **already here.** `src/request-body.ts`
+  owns breakpoint placement for the emitted body; that is the part that has to
+  match the genuine client byte for byte, and it does.
+
+Consequence: a consumer keeps its cache heuristics and passes the result in
+through the existing seams. No new input field was added for TTL or breakpoint
+hints.
+
+## 2026-08-16 — Endpoint URL: origin override by the host, no `baseUrl` input
+
+Context: consumers that route through a proxy or a regional endpoint asked
+whether the package should accept a base URL.
+
+Decision: **`built.url` stays the profile's pinned, literal-typed endpoint, and
+the input gains no `baseUrl` field.** A host with a custom base substitutes
+protocol, hostname and port and preserves the package's `pathname` and
+`search`. The contract and the four-line recipe are documented in the README
+("Endpoint URL and custom base URLs").
+
+Reasons, so the request does not come back:
+
+1. `BuiltClaudeCodeRequest["url"]` is a string literal type. Widening it to
+   `string` is a breaking change at the type level for every consumer that
+   pins the endpoint — and the pin is a feature: `?beta=true` and the
+   `/v1/messages` path are wire contract, not defaults.
+2. Speculative surface is not added here. A base-URL field would duplicate what
+   `URL` already does and would hand this package a validation and
+   normalisation burden it does not need.
+3. The only real consumer case observed is an origin override, which the
+   documented recipe expresses exactly — including a base URL carrying a path
+   prefix, which naive concatenation gets wrong.
+
+## 2026-08-16 — Beta registries exported; the policy sets stay private
+
+Context: consumers were transcribing beta header strings by hand — the
+`opencode-anthropic-fix` plugin carries its own copy of
+`prompt-caching-scope-2026-01-05` and of the beta shortcut strings — which
+drifts silently the moment upstream moves.
+
+Decision: **`BETA_REGISTRY` (28 entries), `BETA_REGISTRY_2_1_233` (31 entries)
+and `TOKEN_COUNTING_BETA` are public.** They are protocol constants: the
+package transcribed them from the genuine client, so it is the honest owner of
+their spelling, and a consumer reading a header off the registry cannot drift
+from the package that emits it. Reading a header is not emitting one —
+composition, gating and push order stay inside the package.
+
+**`THIRD_PARTY_ALLOWED_BETAS`, `BEDROCK_UNSUPPORTED_BETAS` and
+`COUNT_TOKENS_BETAS` (and their `_2_1_233` counterparts) stay private.** They
+are policy sets, not constants: no consumer reads them today, and exporting a
+set on the theory that someone might is the speculative surface this package
+refuses. Aliases and policy sets belong to the host.
+
+`test/validation/beta-registry-surface.test.ts` pins entry shape, header
+uniqueness, the deliberate `tool_search` feature-key reuse across
+`ADVANCED_TOOL_USE` and `TOOL_SEARCH`, the 2.1.233 additions
+(`PROMPT_CACHING_EVICT`, `PER_MESSAGE_EFFORT`,
+`SERVER_SIDE_FALLBACK_CATEGORY`, `AUTO_MODE_CLASSIFIER`) and — the load-bearing
+one — the NEGATIVE assertion that `NARRATION_SUMMARIES` is absent from the
+2.1.233 registry. That absence is upstream's 2.1.222+ removal, not a
+transcription gap, and re-adding it would emit a header the genuine client no
+longer sends.
+
+Note on the changelog: this release note is **not** in `CHANGELOG.md` yet.
+`test/governance/release-policy.test.ts` requires the FIRST `## [version]`
+heading to equal the manifest version, so an `Unreleased` or pre-written
+`0.5.0` heading fails the gate. The entry lands in the same commit as the
+version bump, by design.
+
+Not a re-seal: additive read-only surface, no wire byte changes, golden
+fixtures unchanged.
+
 ## 2026-08-16 — Model queries: a generic catalogue query plus named identity predicates
 
 Context: consumers need to ask two different kinds of question about a model
