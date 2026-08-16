@@ -6,6 +6,36 @@ Append-only log of non-obvious maintenance decisions and their reasoning, so
 future work does not re-litigate or accidentally reverse them. Newest entries
 first. Keep entries dated, factual, and in consumer-neutral language.
 
+## 2026-08-16 — Drift verifier re-anchored to 2.1.233; sdkVersion resolved via the CLI map
+
+Context: `npm run drift:check` compares this package's profile data against an
+external consumer project. That project advanced its
+`FALLBACK_CLAUDE_CLI_VERSION` from `2.1.195` to `2.1.233`, so the check failed
+on `cliVersion` against a source that had simply moved on.
+
+Decision (a): **the default monitored profile is now
+`claude-code-2.1.233-sdk-0.112.1`**, the version the live source actually
+mirrors. `claude-code-2.1.195-sdk-0.94.0` stays monitored and reachable via
+`--profile` rather than being dropped — the profile still ships, and it is
+verifiable against a source pinned to that era.
+
+Decision (b): **the `sdkVersion` assertion now resolves the source's SDK
+version instead of comparing a constant.** It reads `CLI_TO_SDK_VERSION` for
+the profile's CLI version and falls back to the standalone
+`ANTHROPIC_SDK_VERSION` constant only when the map has no entry — exactly what
+the source's own `getSdkVersion` does. The old comparison (constant ===
+profile sdkVersion) reported false drift: upstream holds that constant at
+`0.94.0` as the fallback for **unmapped** CLI versions while pairing `2.1.233`
+with `0.112.1`. It only ever passed because the default profile happened to sit
+in the fallback era, so it was reading a coincidence as a protocol fact. The
+second assertion — that the literal `[cli, sdk]` pair appears in the source —
+is unchanged, so the check still fails if upstream drops the pairing.
+
+Not a version bump and not a re-seal: no `src/` module, published surface or
+golden fixture changed. Only the verifier, its synthetic drift fixtures, its
+test, and `docs/source-trace.md` (whose "monitoring covers 2.1.195 only" and
+"2.1.233 module does not exist yet" claims were stale).
+
 ## 2026-08-15 — TypeScript 7.0.2 bump deferred (typescript-eslint hard-blocks)
 
 Context: Dependabot proposed four dev-tooling bumps. Three landed (globals

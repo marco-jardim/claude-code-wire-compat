@@ -16,7 +16,8 @@ const scriptPath = path.join(repositoryRoot, "scripts", "verify-drift.mjs");
 const fixtureRoot = path.join(repositoryRoot, "test", "drift", "fixtures");
 const realSource = String.raw`D:\git\opencode-anthropic-fix`;
 
-const DEFAULT_PROFILE_ID = "claude-code-2.1.195-sdk-0.94.0";
+const DEFAULT_PROFILE_ID = "claude-code-2.1.233-sdk-0.112.1";
+const MONITORED_PROFILE_IDS = `${DEFAULT_PROFILE_ID},claude-code-2.1.195-sdk-0.94.0`;
 
 function runVerifier(source: string, ...extra: readonly string[]) {
   return spawnSync(
@@ -35,7 +36,7 @@ describe("offline protocol drift verifier", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toBe(
-      "profile=claude-code-2.1.195-sdk-0.94.0 drift=none\n",
+      "profile=claude-code-2.1.233-sdk-0.112.1 drift=none\n",
     );
     expect(result.stderr).toBe("");
   });
@@ -86,7 +87,7 @@ describe("offline protocol drift verifier", () => {
       expect(result.status).toBe(1);
       expect(result.stdout).toBe(`category=${category} fields=${field}\n`);
       expect(result.stdout).not.toContain(forbidden);
-      expect(result.stdout).not.toContain("claude-code-2.1.195-sdk-0.94.0");
+      expect(result.stdout).not.toContain("claude-code-2.1.233-sdk-0.112.1");
       expect(result.stderr).toBe("");
     },
   );
@@ -134,7 +135,7 @@ describe("offline protocol drift verifier", () => {
     // not be able to masquerade as any of those.
     expect(result.status).toBe(3);
     expect(result.stdout).toBe(
-      `error=unknown-profile known=${DEFAULT_PROFILE_ID}\n`,
+      `error=unknown-profile known=${MONITORED_PROFILE_IDS}\n`,
     );
     expect(result.stderr).toBe("");
   });
@@ -144,13 +145,13 @@ describe("offline protocol drift verifier", () => {
 
     expect(result.status).toBe(3);
     expect(result.stdout).toBe(
-      `error=unknown-profile known=${DEFAULT_PROFILE_ID}\n`,
+      `error=unknown-profile known=${MONITORED_PROFILE_IDS}\n`,
     );
     expect(result.stderr).toBe("");
   });
 
   it("does not echo the requested profile back into the log", () => {
-    const injected = "claude-code-2.1.195-sdk-0.94.0-LEAKED-SECRET";
+    const injected = "claude-code-2.1.233-sdk-0.112.1-LEAKED-SECRET";
     const result = runVerifier(
       path.join(fixtureRoot, "valid"),
       "--profile",
@@ -184,7 +185,7 @@ describe("offline protocol drift verifier", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toBe(
-      "profile=claude-code-2.1.195-sdk-0.94.0 drift=none\n",
+      "profile=claude-code-2.1.233-sdk-0.112.1 drift=none\n",
     );
     expect(result.stderr).toBe("");
   });

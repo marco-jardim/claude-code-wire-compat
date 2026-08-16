@@ -22,19 +22,32 @@ const repositoryRoot = path.resolve(
 
 /*
  * The profiles this script can verify, keyed by the profile `id` a caller
- * passes to `--profile`. One entry today, and that is a scope decision rather
- * than a gap: drift is measured against an external consumer project, and that
- * project publishes protocol data for 2.1.195 alone. A 2.1.233 entry would have
- * nothing to compare against and would report a permanent absence instead of a
- * real divergence. A later profile joins as a second entry, with its own source
- * file and its own pinned upstream expectations, once an external source for it
- * exists.
+ * passes to `--profile`. Which one is the DEFAULT is the load-bearing part:
+ * drift is measured against an external consumer project, and that project has
+ * advanced to 2.1.233 -- its `FALLBACK_CLAUDE_CLI_VERSION` tracks this
+ * package's default profile. So 2.1.233 is what the unflagged run compares,
+ * because that is the version the source actually mirrors.
+ *
+ * 2.1.195 stays monitored rather than being dropped: the profile still ships,
+ * and `--profile` keeps it verifiable against a source pinned to that era. It
+ * is no longer the default only because no live source mirrors it today.
  *
  * `--profile` is omitted by every current caller (`npm run drift:check`), so
  * the default MUST keep producing byte-identical output -- `test/drift`
  * asserts that stdout verbatim.
  */
 const MONITORED_PROFILES = new Map([
+  [
+    "claude-code-2.1.233-sdk-0.112.1",
+    {
+      sourceFile: path.join(
+        repositoryRoot,
+        "src",
+        "profiles",
+        "claude-code-2.1.233.ts",
+      ),
+    },
+  ],
   [
     "claude-code-2.1.195-sdk-0.94.0",
     {
@@ -47,7 +60,7 @@ const MONITORED_PROFILES = new Map([
     },
   ],
 ]);
-const DEFAULT_PROFILE_ID = "claude-code-2.1.195-sdk-0.94.0";
+const DEFAULT_PROFILE_ID = "claude-code-2.1.233-sdk-0.112.1";
 const goldenManifestPath = path.join(
   repositoryRoot,
   "test",
@@ -190,6 +203,31 @@ function upstreamBetaHeaders(headers) {
   return collected;
 }
 
+/*
+ * The SDK version the source pairs with `cliVersion`, resolved exactly the way
+ * the source resolves it: `getSdkVersion` reads `CLI_TO_SDK_VERSION` first and
+ * only falls back to the standalone `ANTHROPIC_SDK_VERSION` constant for a CLI
+ * version the map does not carry.
+ *
+ * Comparing the constant directly would be wrong. It is the fallback for
+ * UNMAPPED versions, not the SDK version of the tracked one -- upstream keeps
+ * it at 0.94.0 while pairing 2.1.233 with 0.112.1. That comparison only held
+ * while the default profile happened to sit in the fallback era (2.1.195), so
+ * it was reading a coincidence as a protocol fact.
+ */
+function sourceSdkVersion(requestHeaders, cliVersion) {
+  if (cliVersion !== undefined) {
+    const escapedCli = cliVersion.replaceAll(".", "\\.");
+    const mapped = requestHeaders.match(
+      new RegExp(
+        `\\[\\s*["']${escapedCli}["']\\s*,\\s*["']([^"']+)["']\\s*\\]`,
+      ),
+    )?.[1];
+    if (mapped !== undefined) return mapped;
+  }
+  return quotedConstant(requestHeaders, "ANTHROPIC_SDK_VERSION");
+}
+
 function cliSdkPairMatches(requestHeaders, cliVersion, sdkVersion) {
   if (cliVersion === undefined || sdkVersion === undefined) return false;
   const escapedCli = cliVersion.replaceAll(".", "\\.");
@@ -328,7 +366,7 @@ async function verify(sourceRoot, monitored) {
   );
   recordDrift(
     drifts,
-    quotedConstant(requestHeaders, "ANTHROPIC_SDK_VERSION") ===
+    sourceSdkVersion(requestHeaders, profile.cliVersion) ===
       profile.sdkVersion &&
       cliSdkPairMatches(requestHeaders, profile.cliVersion, profile.sdkVersion),
     "sdkVersion",

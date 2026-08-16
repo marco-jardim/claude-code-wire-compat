@@ -19,7 +19,7 @@ This document is the normative trace from the pinned upstream implementation to 
 Every wire profile this package recognizes is registered here. A profile is registered against its
 analysis document, which is the evidence of record; the `src/profiles/` module is code that follows
 the evidence, not the other way round. A trace entry may therefore precede its TypeScript module by
-one phase, and one currently does.
+one phase; none currently does.
 
 ### Profile `claude-code-2.1.195-sdk-0.94.0`
 
@@ -44,25 +44,30 @@ one phase, and one currently does.
 | Build time      | `2026-08-14T17:21:48Z`                                   |
 | Git SHA         | `f8d57569aaf350fe25dc4dfa10cad59db8ea4d45`               |
 | Analysis        | `docs/protocol/versions/claude-code-2.1.233-analysis.md` |
-| Profile module  | not yet present — added in the catalogue phase           |
+| Profile module  | `src/profiles/claude-code-2.1.233.ts`                    |
 
-`src/profiles/claude-code-2.1.233.ts` does not exist yet, and its absence is deliberate rather than
-an oversight. This entry is anchored in the analysis document above, which is committed and is the
-sole source for the values in the table. Registering the trace entry first keeps the order of
+This entry is anchored in the analysis document above, which is the sole source for the values in
+the table. The trace entry was registered before the module existed, which keeps the order of
 operations honest: the evidence is recorded, reviewable, and testable before any code claims to
-implement it. The profile module is added in the catalogue phase, and the governance test in
+implement it. The module has since landed. The governance test in
 `test/governance/source-trace-profiles.test.ts` enforces the invariant that survives both states —
 every profile module must be registered here, and every entry registered here must cite an analysis
 document that exists.
 
-### Drift monitoring covers 2.1.195 only
+### Drift monitoring covers 2.1.195 and 2.1.233
 
-The drift check verifies the `claude-code-2.1.195-sdk-0.94.0` profile and no other. That scope is
-deliberate, not an omission: drift is measured against an external consumer project, and that
-project publishes protocol data for 2.1.195 alone. There is nothing for a 2.1.233 entry to compare
-against, and a monitored profile with no external counterpart would report a permanent absence
-rather than a real divergence. The profile joins the check if and when an external source for it
-exists.
+The drift check monitors both profiles. `claude-code-2.1.233-sdk-0.112.1` is the **default** — the
+profile an unflagged `npm run drift:check` compares — because drift is measured against an external
+consumer project and that project has advanced to 2.1.233; its `FALLBACK_CLAUDE_CLI_VERSION` tracks
+this package's default profile. `claude-code-2.1.195-sdk-0.94.0` stays monitored and reachable via
+`--profile`, verifiable against a source pinned to that era; it is no longer the default only
+because no live source mirrors it today.
+
+The SDK version is resolved from the source the way the source resolves it — `CLI_TO_SDK_VERSION`
+first, and the standalone `ANTHROPIC_SDK_VERSION` constant only as the fallback for a CLI version
+the map does not carry. Comparing that constant directly would be wrong: it is the fallback for
+unmapped versions, not the SDK version of the tracked one. Upstream holds it at `0.94.0` while
+pairing `2.1.233` with `0.112.1`.
 
 ## Conscious and permanent divergences
 
