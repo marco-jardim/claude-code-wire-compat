@@ -67,7 +67,7 @@
     "fast-check": "4.9.0",
     "globals": "17.11.0",
     "license-checker-rseidelsohn": "5.0.1",
-    "miniflare": "4.20260722.0",
+    "miniflare": "4.20260730.0",
     "prettier": "3.9.6",
     "publint": "0.3.22",
     "typescript": "6.0.3",
