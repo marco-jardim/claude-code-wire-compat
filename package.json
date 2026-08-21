@@ -69,7 +69,7 @@
     "license-checker-rseidelsohn": "5.0.1",
     "miniflare": "4.20260722.0",
     "prettier": "3.9.6",
-    "publint": "0.3.22",
+    "publint": "0.3.23",
     "typescript": "6.0.3",
     "typescript-eslint": "8.67.0",
     "vitest": "4.1.10"
