@@ -1100,20 +1100,24 @@ describe("build-request surviving parser mutants", () => {
     expectParseError(cloneEvidence(built, { [key]: value }));
   });
 
-  it.each(["contextHint", "adaptiveThinking", "effort", "interleavedThinking"])(
-    "rejects non-boolean parsed capability %s",
-    async (key) => {
-      const built = await buildClaudeCodeRequest(validInput());
-      expectParseError(
-        cloneEvidence(built, {
-          capabilityDecisions: {
-            ...built.evidence.capabilityDecisions,
-            [key]: "true",
-          },
-        }),
-      );
-    },
-  );
+  it.each([
+    "contextHint",
+    "adaptiveThinking",
+    "effort",
+    "interleavedThinking",
+    "midConvToolChange",
+    "perTurnEffort",
+  ])("rejects non-boolean parsed capability %s", async (key) => {
+    const built = await buildClaudeCodeRequest(validInput());
+    expectParseError(
+      cloneEvidence(built, {
+        capabilityDecisions: {
+          ...built.evidence.capabilityDecisions,
+          [key]: "true",
+        },
+      }),
+    );
+  });
 
   it("rejects unknown and forbidden evidence keys", async () => {
     const built = await buildClaudeCodeRequest(validInput());

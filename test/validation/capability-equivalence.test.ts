@@ -20,7 +20,8 @@ import { modelOutputTokenLimits } from "../../src/thinking.js";
  *
  *   1. Cell-by-cell equivalence between the wire-authoritative predicates in
  *      `src/model-capabilities.ts` and the profile catalogue's
- *      `capabilities[]` strings, for the six catalogue-backed capabilities.
+ *      `capabilities[]` strings, for the catalogue-backed capabilities that
+ *      have a predicate to compare against.
  *   2. The single known divergence (see docs/plans/BLOCKERS.md finding C1),
  *      pinned from BOTH sides so drift on either side fails.
  *   3. Exact tables for the capabilities that have no catalogue
@@ -28,8 +29,14 @@ import { modelOutputTokenLimits } from "../../src/thinking.js";
  *      `ClaudeCodeCapabilities`, and for ids absent from the catalogue.
  */
 
-/** Catalogue string <-> `ClaudeCodeCapabilities` field, for the six
- * capabilities that the catalogue represents. */
+/*
+ * Catalogue string <-> `ClaudeCodeCapabilities` field, restricted to the
+ * capabilities that have BOTH a catalogue string and a ported predicate, which
+ * is what makes a cell-by-cell equivalence check meaningful. The two
+ * catalogue-only fields added for 2.1.280 have no predicate and are therefore
+ * deliberately absent here; they are covered by
+ * `test/validation/capabilities-2.1.280.test.ts`.
+ */
 const CATALOGUE_BACKED = [
   ["effort", "effort"],
   ["maxEffort", "max_effort"],

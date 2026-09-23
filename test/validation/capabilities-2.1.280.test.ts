@@ -8,9 +8,11 @@ import type {
   ClaudeCodeProtocolProfile,
 } from "../../src/index.js";
 import {
+  buildClaudeCodeRequest,
   CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
   CLAUDE_CODE_2_1_280_PROFILE,
+  parseBuiltClaudeCodeRequest,
 } from "../../src/index.js";
 import { deriveCapabilitiesFromCatalogue } from "../../src/model-capabilities.js";
 
@@ -174,6 +176,14 @@ describe("2.1.280 catalogue-backed capabilities", () => {
     }).toEqual({ carriesPerTurnTiming: true, perTurnEffort: false });
   });
 
+  it("covers every id the 2.1.280 catalogue declares", () => {
+    // The two `it.each` blocks below iterate the hand-written list, so without
+    // this a twenty-first catalogue entry would be silently uncovered by both.
+    expect([...IDS_2_1_280].sort()).toEqual(
+      Object.keys(CLAUDE_CODE_2_1_280_PROFILE.supportedModels).sort(),
+    );
+  });
+
   it.each(IDS_2_1_280)("%s derives perTurnEffort correctly", (id) => {
     const expected = EXPECTED_PER_TURN_EFFORT.includes(id);
     expect({ id, perTurnEffort: derive280(id).perTurnEffort }).toEqual({
@@ -246,6 +256,113 @@ describe("2.1.280 catalogue-backed capabilities", () => {
       rejectsDisabledThinking: false,
       midConvToolChange: false,
       perTurnEffort: false,
+    });
+  });
+});
+
+describe("2.1.280 capability decisions reach the evidence", () => {
+  const BASE = {
+    accessToken: "sentinel-token-capability-evidence-3f81",
+    maxTokens: 1024,
+    messages: [{ role: "user", content: "hi" }],
+    runtime: {
+      sessionId: "00000000-0000-4000-8000-000000000001",
+      deviceId:
+        "0000000000000000000000000000000000000000000000000000000000000002",
+      accountUuid: "00000000-0000-4000-8000-000000000000",
+      runtime: "node",
+      runtimeVersion: "22.0.0",
+      os: "Linux",
+      arch: "x64",
+    },
+    clientRequestId: "request",
+  } as const;
+
+  /*
+   * `evidence.capabilityDecisions` records the caller's stated `capabilities`
+   * (absent => every field false), after the builder has cross-checked them
+   * against the model. So each row is supplied as the request's
+   * `capabilities` and must come back unchanged in the evidence: a request a
+   * swapped cross-check would refuse, or a swapped redaction would mis-echo.
+   *
+   * Why these two models: they differ in exactly two of the eleven fields,
+   * `rejectsDisabledThinking` and `perTurnEffort`. On the new pair,
+   * claude-opus-4-8 carries midConvToolChange=true / perTurnEffort=false, so a
+   * swap between those two fields anywhere in the plumbing flips that row and
+   * fails. claude-opus-5-5 carries both true and pins that neither is dropped.
+   * A pair that agreed on both new fields would not catch a swap.
+   */
+  const OPUS_4_8 = {
+    thinking: true,
+    adaptiveThinking: true,
+    interleavedThinking: true,
+    effort: true,
+    maxEffort: true,
+    xhighEffort: true,
+    contextManagement: true,
+    temperature: false,
+    rejectsDisabledThinking: false,
+    midConvToolChange: true,
+    perTurnEffort: false,
+  } as const;
+
+  const OPUS_5_5 = {
+    thinking: true,
+    adaptiveThinking: true,
+    interleavedThinking: true,
+    effort: true,
+    maxEffort: true,
+    xhighEffort: true,
+    contextManagement: true,
+    temperature: false,
+    rejectsDisabledThinking: true,
+    midConvToolChange: true,
+    perTurnEffort: true,
+  } as const;
+
+  it("claude-opus-4-8 reaches the evidence with midConvToolChange true and perTurnEffort false", async () => {
+    const result = await buildClaudeCodeRequest(
+      { ...BASE, model: "claude-opus-4-8", capabilities: OPUS_4_8 },
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
+    expect(result.evidence.capabilityDecisions).toEqual(OPUS_4_8);
+  });
+
+  it("claude-opus-5-5 reaches the evidence with both new capabilities true", async () => {
+    const result = await buildClaudeCodeRequest(
+      { ...BASE, model: "claude-opus-5-5", capabilities: OPUS_5_5 },
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
+    expect(result.evidence.capabilityDecisions).toEqual(OPUS_5_5);
+  });
+
+  it("the decisions survive a parse round-trip", async () => {
+    const built = await buildClaudeCodeRequest(
+      { ...BASE, model: "claude-opus-5-5", capabilities: OPUS_5_5 },
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
+    const parsed = parseBuiltClaudeCodeRequest(
+      built,
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
+    expect(parsed.evidence.capabilityDecisions).toEqual(
+      built.evidence.capabilityDecisions,
+    );
+  });
+
+  it("requesting per_turn_effort on a model that lacks it is refused", async () => {
+    await expect(
+      buildClaudeCodeRequest(
+        {
+          ...BASE,
+          model: "claude-opus-4-8",
+          capabilities: { perTurnEffort: true },
+        },
+        CLAUDE_CODE_2_1_280_PROFILE,
+      ),
+    ).rejects.toMatchObject({
+      name: "ClaudeCodeWireError",
+      code: "UNSUPPORTED_CAPABILITY",
     });
   });
 });

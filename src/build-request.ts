@@ -1048,7 +1048,7 @@ function parseCapabilityDecisions(
   value: unknown,
 ): ClaudeCodeCapabilityDecisions {
   if (!isRecord(value)) fail();
-  // The nine capability keys are mandatory; the package-extension override keys
+  // Every capability key is mandatory; the package-extension override keys
   // are optional and must survive the round-trip untouched, so they are allowed
   // here but never synthesized.
   assertExactKeys(value, CAPABILITY_DECISION_KEY_SET);

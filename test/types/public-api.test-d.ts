@@ -104,7 +104,7 @@ expectTypeOf<
   NonNullable<ClaudeCodeRequestInput["cacheControl"]>["suppressIdentityBlock"]
 >().toEqualTypeOf<boolean | null | undefined>();
 
-// The nine capability keys stay mandatory; the seam key is additive-only.
+// Every capability key stays mandatory; the seam key is additive-only.
 expectTypeOf<ClaudeCodeCapabilityDecisions>().toExtend<
   Readonly<Record<keyof ClaudeCodeCapabilities, boolean>>
 >();

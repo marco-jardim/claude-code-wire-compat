@@ -218,9 +218,10 @@ export const CLAUDE_CODE_2_1_280_PROFILE: ClaudeCodeProtocolProfile =
         ],
         defaultEffort: "xhigh",
       },
-      // Gains `mid_conv_tool_change` since 2.1.233. That key is not one of the
-      // six `deriveCapabilitiesFromCatalogue` maps today, but it does drive a
-      // beta header (section 7.6), so "unmapped" is not "no wire effect".
+      // Gains `mid_conv_tool_change` since 2.1.233. That key is mapped by
+      // `deriveCapabilitiesFromCatalogue` to `midConvToolChange`, and it
+      // drives the `mid-conversation-tool-changes-2026-07-01` beta header
+      // (section 7.6) through the guard transcribed in section 13.3.
       "claude-opus-4-8": {
         family: "opus",
         context: { window: 1e6, native1m: true, supports1mBeta: true },

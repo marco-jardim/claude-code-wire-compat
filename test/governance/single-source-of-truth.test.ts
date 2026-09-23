@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 /*
  * Since T1.1.2, `src/model-capabilities.ts` has ONE source of truth for the
- * six catalogue-backed capabilities: the profile catalogue, read in one place
+ * catalogue-backed capabilities: the profile catalogue, read in one place
  * by `deriveCapabilitiesFromCatalogue`. The per-model knowledge that remains
  * in code is confined to two demarcated zones:
  *
@@ -122,11 +122,13 @@ const CATALOGUE_CAPABILITY_STRINGS = [
   "adaptive_thinking",
   "context_management",
   "rejects_disabled_thinking",
+  "mid_conv_tool_change",
+  "per_turn_effort",
   // Beta-only gate, read by `supportsMidConversationSystem` rather than by
   // `deriveCapabilitiesFromCatalogue`. It joined this list the moment it
   // became a code-level catalogue read: the uniqueness rule is what actually
   // forbids a second mapping table, and it must cover every catalogue string
-  // the module reads, not just the six that reach `ClaudeCodeCapabilities`.
+  // the module reads, not only those that reach `ClaudeCodeCapabilities`.
   "mid_conv_system",
 ] as const;
 
@@ -336,8 +338,8 @@ describe("model capabilities: one source of truth per capability", () => {
     /*
      * Exact equality, never a subset: a third reader must fail this.
      *
-     * `deriveCapabilitiesFromCatalogue` is the sole reader for the six
-     * capabilities that reach `ClaudeCodeCapabilities`.
+     * `deriveCapabilitiesFromCatalogue` is the sole reader for the
+     * catalogue-backed capabilities that reach `ClaudeCodeCapabilities`.
      * `supportsMidConversationSystem` is the second and last: `mid_conv_system`
      * is a beta-only gate consumed by `src/betas.ts` by id, deliberately
      * absent from `ClaudeCodeCapabilities`, so it cannot travel through the

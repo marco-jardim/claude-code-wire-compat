@@ -1225,8 +1225,9 @@ export interface RedactedRequestEvidence {
 }
 
 /**
- * Records the nine model capability decisions, plus any package-extension beta
- * override the caller supplied.
+ * Records every model capability decision -- the key set is exactly
+ * `keyof ClaudeCodeCapabilities`, so it widens whenever that interface does --
+ * plus any package-extension beta override the caller supplied.
  *
  * The override keys are OPTIONAL and are emitted only when the corresponding
  * member of `betaOverrides` is present, so evidence for a request that omits
