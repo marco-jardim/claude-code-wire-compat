@@ -68,6 +68,58 @@ const UPSTREAM_HEADERS_IN_ARRAY_ORDER: readonly string[] = [
 ];
 
 /*
+ * The same table's feature-key column. Upstream calls this field `name` and
+ * feeds it to logging, not to `anthropic-beta`, so a slip here is not a wire
+ * defect -- but it is the column the registry keys are derived from, and
+ * nothing else in this suite would catch a typo in thirty-nine of the forty.
+ *
+ * `tool_search` appears TWICE, at positions 8 and 9. That is upstream's own
+ * duplication, not a transcription error.
+ */
+const UPSTREAM_FEATURE_KEYS_IN_ARRAY_ORDER: readonly string[] = [
+  "claude_code",
+  "oauth_auth",
+  "interleaved_thinking",
+  "long_context",
+  "context_management",
+  "structured_outputs",
+  "web_search",
+  "tool_search",
+  "tool_search",
+  "effort",
+  "task_budgets",
+  "prompt_caching_scope",
+  "prompt_caching_evict",
+  "extended_cache_ttl",
+  "speed",
+  "redact_thinking",
+  "thinking_resumption",
+  "thinking_token_count",
+  "afk_mode",
+  "advisor_tool",
+  "cache_diagnosis",
+  "context_hint",
+  "mcp_servers",
+  "files_api",
+  "environments",
+  "ccr_byoc",
+  "mid_conversation_system",
+  "per_message_effort",
+  "per_turn_timing",
+  "mid_conv_tool_change",
+  "inline_tools",
+  "server_side_fallback",
+  "server_side_fallback_category",
+  "fallback_credit",
+  "auto_mode_classifier",
+  "dangerous_tool_use",
+  "thinking_display_updates",
+  "message_threads",
+  "mid_conversation_system_clear_at",
+  "thinking_binding_controls",
+];
+
+/*
  * The nine entries new since 2.1.233, marked **NEW** in the section 4.1 table.
  * Four of them are INSERTED rather than appended, which is why the order test
  * above is order-sensitive: an append-only assumption mis-aligns eleven
@@ -90,8 +142,10 @@ const NEW_SINCE_2_1_233: readonly string[] = [
  * `...BR ? [BR] : []` contributes `thinking-token-count-2026-05-13` in
  * thirteenth position because `BR` is unconditionally defined in this build.
  *
- * Fourteen members. This count is a COINCIDENCE, unrelated to the fourteen
- * identifiers of the default-path `anthropic-beta` literal.
+ * Fourteen members. This count is a COINCIDENCE: the default-path
+ * `anthropic-beta` literal analysed in section 7.6 of the analysis document
+ * also has fourteen identifiers, and the two sets are neither equal nor
+ * related. Do not derive one from the other.
  */
 const THIRD_PARTY_ALLOWED_IN_UPSTREAM_ORDER: readonly string[] = [
   "claude-code-20250219",
@@ -150,8 +204,30 @@ describe("claude-code-2.1.280 beta registry", () => {
     expect(headers).toEqual(UPSTREAM_HEADERS_IN_ARRAY_ORDER);
   });
 
+  it("lists feature keys in upstream array order", () => {
+    expect(featureKeys).toEqual(UPSTREAM_FEATURE_KEYS_IN_ARRAY_ORDER);
+  });
+
   it("has no duplicate headers", () => {
     expect(new Set(headers).size).toBe(40);
+    // Feature keys are NOT unique: `tool_search` is upstream's own duplicate.
+    expect(new Set(featureKeys).size).toBe(39);
+  });
+
+  /*
+   * Both the registry and this suite read section 4.1 of the analysis document,
+   * so a defect introduced while READING that table -- a homoglyph hyphen
+   * (U+2010), a trailing space, an uppercase letter -- would be copied into
+   * both and agree with itself. Only a property assertion catches that class,
+   * because it depends on neither transcription.
+   */
+  it("emits only lowercase ASCII beta identifiers", () => {
+    expect(
+      headers.filter((header) => !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(header)),
+    ).toEqual([]);
+    expect(
+      featureKeys.filter((key) => !/^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(key)),
+    ).toEqual([]);
   });
 
   it("carries the nine entries new since 2.1.233 and no others", () => {
@@ -229,10 +305,15 @@ describe("claude-code-2.1.280 beta registry", () => {
     );
   });
 
-  it("names entry 39 by the registry's own alias-uppercasing convention", () => {
+  it("names entry 39 by uppercasing its feature key, per the file's convention", () => {
     /*
      * Load-bearing for Phase 3.2: the `ComposableBetaRegistry` key must match
      * this string character for character, or the push site is silently inert.
+     *
+     * The key is derived from the FEATURE KEY column, not from the upstream
+     * alias -- the alias here is `V1`. `ADVANCED_TOOL_USE` is the one entry
+     * named from its header instead, because it shares `tool_search` with
+     * `TOOL_SEARCH` and two keys cannot collide.
      */
     expect(Object.keys(BETA_REGISTRY_2_1_280)).toContain(
       "MID_CONVERSATION_SYSTEM_CLEAR_AT",
@@ -256,6 +337,14 @@ describe("claude-code-2.1.280 beta registry", () => {
     expect(headers.at(-1)).toBe("thinking-binding-controls-2026-08-01");
   });
 
+  /*
+   * `Object.isFrozen` on a `Set` is weaker than it looks: freezing seals the
+   * object's own properties but leaves the internal set data mutable, so
+   * `.add()` still succeeds. The real guarantee is `ReadonlySet<string>`, which
+   * is compile-time only. The assertion is kept because it does pin that the
+   * exported object was frozen -- it is not evidence that the membership cannot
+   * change at runtime, and must not be read as such.
+   */
   it("THIRD_PARTY_ALLOWED_BETAS_2_1_280 has the 14 members in upstream order", () => {
     expect([...THIRD_PARTY_ALLOWED_BETAS_2_1_280]).toEqual(
       THIRD_PARTY_ALLOWED_IN_UPSTREAM_ORDER,
@@ -277,7 +366,14 @@ describe("claude-code-2.1.280 beta registry", () => {
     expect(Object.isFrozen(COUNT_TOKENS_BETAS_2_1_280)).toBe(true);
   });
 
-  it("every auxiliary-set member is a registry header", () => {
+  /*
+   * TAUTOLOGICAL AGAINST TODAY'S SOURCE, DELIBERATELY KEPT. The three sets are
+   * built from `BETA_REGISTRY_2_1_280.<KEY>.header` reads, so membership holds
+   * by construction and this cannot fail on current data. It exists to catch
+   * the next edit: the moment anyone writes a bare string literal into one of
+   * the sets -- the obvious way to add a member -- this becomes a real check.
+   */
+  it("keeps every auxiliary-set member resolvable to a registry header", () => {
     const known = new Set(headers);
     const auxiliary = [
       ...THIRD_PARTY_ALLOWED_BETAS_2_1_280,

@@ -30,18 +30,22 @@ function deepFreeze<T>(value: T): T {
  * inserted at position 17, and `per_turn_timing`, `mid_conv_tool_change` and
  * `inline_tools` are inserted at 29-31, ahead of four entries that already
  * existed. A diff that assumes new identifiers only ever land at the end will
- * mis-align eleven entries. See
+ * mis-align fifteen entries: 2.1.233 positions 17-27 shift by one and 28-31
+ * shift by four. See
  * `docs/protocol/versions/claude-code-2.1.280-analysis.md` section 4.2.
  *
  * The upstream array carries 42 slots with two explicit `null`s (indices 34 and
  * 37, `kAt` at byte 6279405 and `hZt` at byte 6279537) which `.filter(e => e
- * !== null)` removes, leaving the forty entries below. `kAt` still has dead
- * consumers at byte 14167580 -- a retry-strip handler short-circuited by
- * `kAt === null`, and a rejection reporter that reads `kAt.name` under an
- * "Auto mode classifier" label -- so upstream removed the entry and left the
- * machinery that referenced it behind. That machinery says nothing about WHICH
- * beta the slot held; see the note above `AUTO_MODE_CLASSIFIER`. Neither null
- * slot is transcribed here; a null is not an entry.
+ * !== null)` removes, leaving the forty entries below. Both slots are null IN
+ * THIS BUILD, which is all the bytes establish: upstream treats registry
+ * members as nullable per build -- `Dg` carries `...BR ? [BR] : []` and `hRr`
+ * guards on `kAt === null` -- so a compile-time feature gate fits the evidence
+ * as well as a removal does, and this file claims neither. `kAt` still has two
+ * consumers at byte 14167580: `hRr`, short-circuited by that null check, and
+ * `yRr`, which reads `kAt.name` with no null guard and so is either unreachable
+ * or a throw path. Neither says WHICH beta the slot held; see the note above
+ * `AUTO_MODE_CLASSIFIER`. Neither null slot is transcribed here; a null is not
+ * an entry.
  *
  * Two further registry members are deliberately absent:
  * `mid_conv_cache_promotion_latch` and `mid_conv_cache_promotion_ok_latch`
@@ -49,6 +53,18 @@ function deepFreeze<T>(value: T): T {
  * declares them through the same factory but excludes them from the ordered
  * array, and their "header" values are internal `x-cc-*` names, not beta
  * identifiers. Transcribing them would corrupt the registry.
+ *
+ * Every one of the nine entries new since 2.1.233 was confirmed against its own
+ * `N(alias, header)` declaration in the carved dump rather than against the
+ * analysis document alone, so no new header rests on a single reading:
+ * `rrt` 6278299, `w$` 6278910, `j_` 6278959, `W_` 6279023, and `qk`, `Aoe`,
+ * `cD`, `V1`, `lD` in the window at 6279405.
+ *
+ * `oauth_auth` is the one entry whose header is NOT a string literal upstream:
+ * the declaration reads `swe=N("oauth_auth",Ru)`. `Ru` is an imported binding,
+ * re-exported as `OAUTH_BETA_HEADER` at byte 25341943, and the only beta-shaped
+ * `oauth-*` literal in the bundle is `"oauth-2025-04-20"` at byte 4418398.
+ * Resolved by that binding, not by name similarity.
  */
 export const BETA_REGISTRY_2_1_280 = deepFreeze({
   CLAUDE_CODE: { featureKey: "claude_code", header: "claude-code-20250219" },
@@ -188,9 +204,9 @@ export const BETA_REGISTRY_2_1_280 = deepFreeze({
   },
   /*
    * The SECOND null slot (`hZt`, upstream index 37) belongs here. As with the
-   * first, what upstream removed is unknown: no header string in any analysed
-   * release is tied to it by evidence. It is recorded rather than silently
-   * closed up, because a future build may reuse the slot.
+   * first, what it once held -- if anything -- is unknown: no header string in
+   * any analysed release is tied to it by evidence. It is recorded rather than
+   * silently closed up, because a future build may reuse the slot.
    */
   // New at 2.1.280.
   THINKING_DISPLAY_UPDATES: {
