@@ -519,17 +519,31 @@ which is exactly why it must be transcribed rather than inferred: a convention
 that holds for twenty entries is not a rule the bundle states anywhere, and
 `family` is a key upstream could repoint for a renamed model without changing
 the name. The seventeen carried-over values agree with the 2.1.233 profile
-module. `family` never reaches the wire in this package; it appears only in
-redacted evidence (`src/contracts.ts`), which bounds the blast radius of an
-error here but does not license a guess.
+module. `family` never reaches the wire in this package. `resolveModel`
+(`src/models.ts`) puts it on an internal resolved-model record, and its only
+sink is `RedactedRequestEvidence.modelFamily` (`src/redaction.ts`,
+`src/contracts.ts`), which the request builder returns as a sibling of `body`
+and `headers` rather than merging into either; the contract type carries the
+comment "Model families used only in redacted evidence, never on the wire".
+That bounds the blast radius of an error here but does not license a guess.
 
 **Extraction method, so this is reproducible.** Read the carved dump
-`cc-2.1.280.full.js` as latin1 in one string; find every occurrence of the
-literal `id:"claude-`; delimit each catalogue entry by bounding its match with
-the index of the *next* match. Bounding matters: an unbounded window bleeds
-into the following entry and mis-reports `default_effort` for
-`claude-mythos-5`, whose entry is the shortest of the twenty at 447 bytes. The
-cluster bounds are given at the head of §5.
+`cc-2.1.280.full.js` as latin1 in one string and slice bytes
+5,941,320-5,955,961 — the wire-catalogue cluster named at the head of §5 —
+then **restrict the search to that slice**. Searching the whole dump for the
+literal `id:"claude-` over-matches: §9.4 shows the app-surface model list uses
+the same textual form (`{id:"claude-haiku-4-5-20251001", …`), and that is the
+precise leak which puts 23 rows in the extractor's report for a 20-entry
+catalogue. Within the slice, expect exactly twenty matches. Delimit match *k*
+by the index of match *k+1*, and match twenty by the end of the slice. Read
+each entry's family as the first `family:"([a-z]+)"` inside its delimited
+bounds.
+
+Bounding matters, and `claude-mythos-5` is why. It is the only one of the
+twenty that declares no `default_effort` (§5.2), and its entry is also the
+shortest at 447 bytes, so an unbounded forward search from its `id:` runs past
+the end of the entry and returns `claude-mythos-5-1`'s `high` instead. A
+method that reports any `default_effort` for `claude-mythos-5` has this bug.
 
 ### 5.3 Context objects, verbatim
 
@@ -1714,8 +1728,19 @@ source, the remote flag `c()`, a per-request `o` latch, and
 *not* a valid justification for a library whose purpose is to reproduce the
 main-thread request.
 
-The body field `context_hint: {enabled, target_tokens_saved?}` is not modelled
-by this package.
+The body field `context_hint: {enabled, target_tokens_saved?}` is modelled only
+in part. `src/request-body.ts` emits `context_hint: {enabled: true}` whenever
+the profile sets `contextHintEnabled`; `target_tokens_saved` is not modelled,
+because its value comes from a per-request token measurement this package does
+not perform.
+
+> **2026-09-23 — correction.** An earlier revision of this paragraph said the
+> field "is not modelled by this package" without qualification. That is wrong
+> for `enabled` and right only for `target_tokens_saved`. The distinction
+> matters because a porter reading the unqualified sentence would conclude the
+> flag has no body effect, when it in fact has two wire effects: the
+> `context-hint-2026-04-09` beta identifier and this body field. Every pinned
+> profile sets `contextHintEnabled: false`, so neither fires today.
 
 ### 9.3 `clear_at` is on the wire
 

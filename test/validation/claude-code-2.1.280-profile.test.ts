@@ -404,9 +404,9 @@ describe("CLAUDE_CODE_2_1_280_PROFILE (independent transcription of the analysis
   });
 
   it("keeps all seventeen 2.1.233 ids and adds exactly the three new ones", () => {
-    // Anchors the comparand: this test is the one place the previous profile
-    // is used as an oracle, so a wrong import would otherwise weaken it
-    // silently rather than fail.
+    // Anchors the comparand: the id assertion pins which profile the oracle
+    // is, so a wrong import fails here rather than silently weakening this
+    // test -- and the cross-profile sweep below relies on the same module.
     expect(CLAUDE_CODE_2_1_233_PROFILE.id).toBe(
       "claude-code-2.1.233-sdk-0.112.1",
     );
@@ -458,8 +458,13 @@ describe("CLAUDE_CODE_2_1_280_PROFILE (independent transcription of the analysis
  * Everything above compares the module to a transcription of the analysis
  * document. Both were produced by reading the same document, so an identical
  * misreading agrees with itself and passes. This sweep uses a different oracle
- * entirely: the 2.1.233 profile module, whose bytes are pinned by a frozen
- * cross-runtime digest and therefore cannot be edited to make a test pass.
+ * entirely: the 2.1.233 profile module. What makes it trustworthy is
+ * `test/validation/catalogue-2.1.233.test.ts`, which asserts that catalogue
+ * cell by cell against its own analysis document, so the module cannot be
+ * edited to make this sweep pass without failing that test. The frozen
+ * `test:pack` digest is only an additional constraint, and a narrow one: it
+ * hashes emitted request bytes, `family` never reaches the wire, and the other
+ * swept fields reach it only for the model the digest scenario uses.
  * Every id present in both catalogues is compared field by field, and the only
  * capability differences tolerated are the ones declared here.
  *
@@ -470,6 +475,13 @@ describe("CLAUDE_CODE_2_1_280_PROFILE (independent transcription of the analysis
  * correct data. Instead: the carried-over strings must appear in their previous
  * relative order, and whatever else is present must be exactly the declared
  * additions.
+ *
+ * Limitation: this constrains the relative order of carried-over capabilities
+ * and catches drops, duplicates and undeclared additions, but it is
+ * position-blind for a declared addition -- a newly added string could sit at
+ * any index and still pass. That is inherent, since the 2.1.233 module carries
+ * no information about where a new string belongs; the per-model ordered-array
+ * assertion against §5.4 earlier in this file is what pins position.
  */
 interface CapabilityDelta {
   readonly removed: readonly string[];

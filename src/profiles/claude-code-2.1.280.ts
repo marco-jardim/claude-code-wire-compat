@@ -51,8 +51,9 @@ export const CLAUDE_CODE_2_1_280_PROFILE: ClaudeCodeProtocolProfile =
     // RETAINED from 2.1.233, not asserted. The 2.1.280 analysis document does
     // not examine the billing block at all -- it contains no occurrence of
     // "attribution" -- so this is silence, which is not the same as evidence of
-    // no change. The only indirect support is that the fingerprint salt the
-    // billing line carries is unchanged (section 13). Section 13.2 draws this
+    // no change. The only indirect support is that the salt behind the
+    // fingerprint is unchanged (section 13); the fingerprint it produces, not
+    // the salt, is what appears on the billing line. Section 13.2 draws this
     // exact distinction for the beta policy and it applies here too: where the
     // evidence is absent the previous release's value is retained rather than
     // re-derived, and a later release that captures live traffic should settle
