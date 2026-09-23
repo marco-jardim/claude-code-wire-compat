@@ -146,13 +146,27 @@ describe("published tarball policy", () => {
      *
      * This case shells out to `npm pack --dry-run --json`, so its wall time is
      * a subprocess's, not an assertion's. Measured directly it takes about
-     * 1100ms; under the contention of a shared CI runner executing five
-     * `npm test` jobs it has been measured at 5567ms. Crossing the default
-     * there reports a packaging defect that does not exist, and a gate that
-     * fails randomly teaches a maintainer to re-run until green.
+     * 1100ms; under contention it has been measured at 5567ms. Crossing the
+     * default there reports a packaging defect that does not exist, and a gate
+     * that fails randomly teaches a maintainer to re-run until green.
+     *
+     * The number is the worst observed time rounded up to roughly five times
+     * itself. That ratio is the rule, stated so the next reader can re-derive
+     * the value rather than inherit it: contention scales wall time by a factor
+     * this machine has already shown to exceed four, so a headroom that merely
+     * clears the worst observation would be tuned to one measurement.
      *
      * Raised per-case rather than globally in `vitest.config.ts`, because the
      * default is what catches a genuine hang everywhere else.
+     *
+     * What it does NOT buy, stated so nobody relies on it: `execFileSync`
+     * blocks the thread, and vitest cannot interrupt a synchronous call -- it
+     * compares elapsed time only once control returns. So this timeout turns a
+     * slow subprocess into a clear failure, but a genuinely hung `npm pack`
+     * would hang the run regardless of the number here. Bounding that is
+     * `execFileSync`'s own `timeout` option, which is deliberately not added:
+     * it has never been observed to hang, and a guard against an unobserved
+     * failure mode is speculation of the kind this repository avoids.
      */
   }, 30_000);
 
@@ -175,9 +189,10 @@ describe("published tarball policy", () => {
     const packageSlug = manifest.name.replace(/^@/u, "").replace(/\//gu, "-");
     expect(packResult.filename).toBe(`${packageSlug}-${manifest.version}.tgz`);
     /*
-     * Same subprocess, same exposure, same timeout. This case has not been
-     * observed to time out, but it runs the identical `npm pack` call as the
-     * one above; leaving it on the default would keep an identical landmine
+     * Same subprocess, same exposure, same timeout, and the same caveat about
+     * what a timeout on a synchronous call can and cannot do. This case has not
+     * been observed to time out, but it runs the identical `npm pack` call as
+     * the one above; leaving it on the default would keep an identical landmine
      * armed and let it be rediscovered as a mystery rather than read as a
      * known property of shelling out.
      */
