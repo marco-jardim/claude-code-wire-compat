@@ -76,6 +76,8 @@ const CAPABILITIES: ClaudeCodeCapabilities = {
   contextManagement: true,
   temperature: false,
   rejectsDisabledThinking: false,
+  midConvToolChange: false,
+  perTurnEffort: false,
 };
 
 const INPUT = {

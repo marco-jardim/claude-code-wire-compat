@@ -153,6 +153,8 @@ const CAPABILITY_KEYS = [
   "contextManagement",
   "temperature",
   "rejectsDisabledThinking",
+  "midConvToolChange",
+  "perTurnEffort",
 ] as const;
 const CAPABILITY_KEY_SET = new Set(CAPABILITY_KEYS);
 /** Adds the optional package-extension override keys carried by evidence. */
@@ -956,6 +958,8 @@ function requestedCapabilities(
     temperature: raw?.temperature ?? supported.temperature,
     rejectsDisabledThinking:
       raw?.rejectsDisabledThinking ?? supported.rejectsDisabledThinking,
+    midConvToolChange: raw?.midConvToolChange ?? supported.midConvToolChange,
+    perTurnEffort: raw?.perTurnEffort ?? supported.perTurnEffort,
   };
   for (const key of CAPABILITY_KEYS) {
     if (typeof result[key] !== "boolean") fail("UNSUPPORTED_CAPABILITY");
@@ -1070,6 +1074,8 @@ function parseCapabilityDecisions(
     contextManagement: readBoolean("contextManagement"),
     temperature: readBoolean("temperature"),
     rejectsDisabledThinking: readBoolean("rejectsDisabledThinking"),
+    midConvToolChange: readBoolean("midConvToolChange"),
+    perTurnEffort: readBoolean("perTurnEffort"),
   };
 }
 

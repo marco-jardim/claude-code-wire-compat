@@ -268,6 +268,8 @@ function capabilityDecisions(
     contextManagement: requested?.contextManagement ?? false,
     temperature: requested?.temperature ?? false,
     rejectsDisabledThinking: requested?.rejectsDisabledThinking ?? false,
+    midConvToolChange: requested?.midConvToolChange ?? false,
+    perTurnEffort: requested?.perTurnEffort ?? false,
   });
 }
 

@@ -820,6 +820,8 @@ describe("build-request surviving input-validation mutants", () => {
       contextManagement: false,
       temperature: false,
       rejectsDisabledThinking: false,
+      midConvToolChange: false,
+      perTurnEffort: false,
     });
     expect(bodyRecord(built.body)["metadata"]).toBeDefined();
   });

@@ -357,6 +357,8 @@ type ModelResolution = Readonly<{
     contextManagement: boolean;
     temperature: boolean;
     rejectsDisabledThinking: boolean;
+    midConvToolChange: boolean;
+    perTurnEffort: boolean;
   }>;
 }>;
 
@@ -1451,7 +1453,11 @@ function modelResolution(
     (capabilities.temperature !== undefined &&
       typeof capabilities.temperature !== "boolean") ||
     (capabilities.rejectsDisabledThinking !== undefined &&
-      typeof capabilities.rejectsDisabledThinking !== "boolean")
+      typeof capabilities.rejectsDisabledThinking !== "boolean") ||
+    (capabilities.midConvToolChange !== undefined &&
+      typeof capabilities.midConvToolChange !== "boolean") ||
+    (capabilities.perTurnEffort !== undefined &&
+      typeof capabilities.perTurnEffort !== "boolean")
   ) {
     fail("INVALID_INPUT");
   }
@@ -1485,6 +1491,14 @@ function modelResolution(
       rejectsDisabledThinking: capabilityBoolean(
         capabilities.rejectsDisabledThinking,
         derived.rejectsDisabledThinking,
+      ),
+      midConvToolChange: capabilityBoolean(
+        capabilities.midConvToolChange,
+        derived.midConvToolChange,
+      ),
+      perTurnEffort: capabilityBoolean(
+        capabilities.perTurnEffort,
+        derived.perTurnEffort,
       ),
     },
   };

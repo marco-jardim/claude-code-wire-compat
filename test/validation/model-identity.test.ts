@@ -111,6 +111,8 @@ describe("model identity", () => {
           contextManagement: true,
           temperature: false,
           rejectsDisabledThinking: true,
+          midConvToolChange: false,
+          perTurnEffort: false,
         },
       });
       const catalogued = MYTHOS_CATALOGUED_BY_PROFILE[entry.id];
@@ -180,6 +182,8 @@ describe("model identity", () => {
         contextManagement: true,
         temperature: false,
         rejectsDisabledThinking: true,
+        midConvToolChange: false,
+        perTurnEffort: false,
       },
     });
   });

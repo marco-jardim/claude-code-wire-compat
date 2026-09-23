@@ -337,11 +337,19 @@ export function rejectsDisabledThinking(normalizedId: string): boolean {
 }
 
 /**
- * The six `ClaudeCodeCapabilities` fields the catalogue represents, paired
- * with their verbatim upstream capability string. The three omitted fields --
- * `thinking`, `interleavedThinking`, `temperature` -- have no catalogue
- * string in any client version and are derived from their predicates on both
- * paths.
+ * The `ClaudeCodeCapabilities` fields the catalogue represents, paired with
+ * their verbatim upstream capability string. Whatever is not a key here --
+ * `thinking`, `interleavedThinking` and `temperature` today -- has no
+ * catalogue string in any client version and is derived from its predicate on
+ * both paths. The literal below is the enumeration; no count is restated in
+ * prose, because a count beside the thing it counts goes stale on the next
+ * port.
+ *
+ * `per_turn_timing` is deliberately NOT mapped. It is a real 2.1.280
+ * catalogue string carried by three models, but the beta it would gate,
+ * `timing-2026-09-09`, is environment-gated off on the default path, so a
+ * field here would be a capability nothing reads. Mapping it would invent a
+ * derived value with no emission behind it.
  */
 const CATALOGUE_BACKED_CAPABILITIES = {
   effort: "effort",
@@ -350,12 +358,14 @@ const CATALOGUE_BACKED_CAPABILITIES = {
   adaptiveThinking: "adaptive_thinking",
   contextManagement: "context_management",
   rejectsDisabledThinking: "rejects_disabled_thinking",
+  midConvToolChange: "mid_conv_tool_change",
+  perTurnEffort: "per_turn_effort",
 } as const;
 
 /**
- * Pure catalogue -> capabilities mapping. Reads nothing but `entry` for the
- * six catalogue-backed fields; `normalizedId` is used only for the three
- * fields the catalogue does not represent.
+ * Pure catalogue -> capabilities mapping. Reads nothing but `entry` for every
+ * catalogue-backed field; `normalizedId` is used only for the fields the
+ * catalogue does not represent.
  *
  * This function applies no exceptions and no id special cases. The one cell
  * where the 2.1.195 catalogue disagrees with the wire is corrected by the
@@ -381,6 +391,8 @@ export function deriveCapabilitiesFromCatalogue(
     rejectsDisabledThinking: has(
       CATALOGUE_BACKED_CAPABILITIES.rejectsDisabledThinking,
     ),
+    midConvToolChange: has(CATALOGUE_BACKED_CAPABILITIES.midConvToolChange),
+    perTurnEffort: has(CATALOGUE_BACKED_CAPABILITIES.perTurnEffort),
   });
 }
 
@@ -408,6 +420,16 @@ function deriveCapabilitiesFromPredicates(
     contextManagement: supportsContextManagement(normalizedId),
     temperature: supportsTemperature(normalizedId),
     rejectsDisabledThinking: rejectsDisabledThinking(normalizedId),
+    /*
+     * Both are FALSE on this path, deliberately. Neither has an upstream
+     * predicate -- they exist only as catalogue strings -- so there is nothing
+     * to consult for a model the catalogue does not carry. Granting them to an
+     * uncatalogued model would reproduce upstream's permissive fallback, which
+     * `docs/source-trace.md` records as a divergence this package does not
+     * port.
+     */
+    midConvToolChange: false,
+    perTurnEffort: false,
   });
 }
 

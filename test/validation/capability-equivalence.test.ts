@@ -325,6 +325,10 @@ const MAXIMALLY_PERMISSIVE: ClaudeCodeCapabilities = {
   contextManagement: true,
   temperature: false,
   rejectsDisabledThinking: true,
+  // Catalogue-only capabilities: no predicate exists, so an uncatalogued id
+  // never gains them. See `deriveCapabilitiesFromPredicates`.
+  midConvToolChange: false,
+  perTurnEffort: false,
 };
 
 const OUT_OF_CATALOGUE_IDS = [

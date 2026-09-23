@@ -669,6 +669,10 @@ export interface ClaudeCodeCapabilities {
   readonly contextManagement: boolean;
   readonly temperature: boolean;
   readonly rejectsDisabledThinking: boolean;
+  /** Catalogue string `mid_conv_tool_change`. */
+  readonly midConvToolChange: boolean;
+  /** Catalogue string `per_turn_effort`. */
+  readonly perTurnEffort: boolean;
 }
 
 /** Host-state beta gates pinned for a default first-party environment. */
