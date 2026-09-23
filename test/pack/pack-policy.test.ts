@@ -74,6 +74,20 @@ function npmCliPath(): string {
   return npmCli;
 }
 
+/**
+ * npm 12 changed `npm pack --dry-run --json` from an array of pack results
+ * to an object keyed by package name. Accept both so the policy gate does
+ * not depend on the contributor's npm major version.
+ */
+function firstPackResult(packOutput: string): PackResult | undefined {
+  const parsed: unknown = JSON.parse(packOutput);
+  if (Array.isArray(parsed)) return parsed[0] as PackResult | undefined;
+  if (parsed !== null && typeof parsed === "object") {
+    return Object.values(parsed as Record<string, PackResult>)[0];
+  }
+  return undefined;
+}
+
 describe("published tarball policy", () => {
   beforeAll(() => {
     execFileSync(process.execPath, [npmCliPath(), "run", "build"], {
@@ -92,8 +106,11 @@ describe("published tarball policy", () => {
       [npmCliPath(), "pack", "--dry-run", "--json", "--ignore-scripts"],
       { cwd: repositoryRoot, encoding: "utf8" },
     );
-    const [packResult] = JSON.parse(packOutput) as PackResult[];
+    const packResult = firstPackResult(packOutput);
     expect(packResult).toBeDefined();
+    if (packResult === undefined) {
+      throw new Error("npm pack --dry-run --json returned no pack result");
+    }
 
     const declaredEntries = manifest.files.map((entry) =>
       entry.replace(/\\/gu, "/").replace(/\/$/u, ""),
@@ -145,8 +162,11 @@ describe("published tarball policy", () => {
       [npmCliPath(), "pack", "--dry-run", "--json", "--ignore-scripts"],
       { cwd: repositoryRoot, encoding: "utf8" },
     );
-    const [packResult] = JSON.parse(packOutput) as PackResult[];
+    const packResult = firstPackResult(packOutput);
     expect(packResult).toBeDefined();
+    if (packResult === undefined) {
+      throw new Error("npm pack --dry-run --json returned no pack result");
+    }
 
     const packageSlug = manifest.name.replace(/^@/u, "").replace(/\//gu, "-");
     expect(packResult.filename).toBe(`${packageSlug}-${manifest.version}.tgz`);
