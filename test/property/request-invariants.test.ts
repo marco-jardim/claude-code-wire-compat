@@ -105,7 +105,25 @@ describe("request properties", () => {
       }),
       { seed: SEED, numRuns: 60, verbose: true },
     );
-  });
+    /*
+     * Explicit timeout, well above the vitest default of 5000ms.
+     *
+     * This case runs 60 generated inputs through two full builds each, and
+     * every build hashes the body with SHA-256, so its wall time scales with
+     * how much CPU the machine has left rather than with anything it asserts.
+     * Idle it finishes in about a second; under the contention of a shared CI
+     * runner executing five `npm test` jobs it has been measured at 5091ms,
+     * which is a scheduling fact, not a regression. Failing there would train
+     * a maintainer to re-run until green, which is indistinguishable from
+     * ignoring a real failure.
+     *
+     * Raised here rather than globally in `vitest.config.ts`: the default is
+     * what catches a genuine hang in the other several thousand tests, and
+     * weakening it everywhere to accommodate two load-sensitive cases trades
+     * a real guarantee for a convenience. Lowering `numRuns` was the other
+     * option and is worse -- it would buy speed with coverage.
+     */
+  }, 30_000);
 
   it("rejects explicit cyclic, Unicode, depth, size, pollution, and duplicate-id cases", async () => {
     const cyclic: Record<string, unknown> = {};

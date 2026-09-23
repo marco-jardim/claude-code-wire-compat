@@ -140,7 +140,21 @@ describe("published tarball policy", () => {
     const sourcePaths = paths.filter((path) => path.startsWith("src/"));
     expect(sourcePaths.length).toBeGreaterThan(0);
     expect(sourcePaths.filter((path) => !path.endsWith(".ts"))).toEqual([]);
-  });
+    /*
+     * Explicit timeout, well above the vitest default of 5000ms, matching the
+     * reasoning already applied to the 120_000 hook above.
+     *
+     * This case shells out to `npm pack --dry-run --json`, so its wall time is
+     * a subprocess's, not an assertion's. Measured directly it takes about
+     * 1100ms; under the contention of a shared CI runner executing five
+     * `npm test` jobs it has been measured at 5567ms. Crossing the default
+     * there reports a packaging defect that does not exist, and a gate that
+     * fails randomly teaches a maintainer to re-run until green.
+     *
+     * Raised per-case rather than globally in `vitest.config.ts`, because the
+     * default is what catches a genuine hang everywhere else.
+     */
+  }, 30_000);
 
   it("derives the tarball filename from package identity", () => {
     const manifest = JSON.parse(
@@ -160,5 +174,12 @@ describe("published tarball policy", () => {
 
     const packageSlug = manifest.name.replace(/^@/u, "").replace(/\//gu, "-");
     expect(packResult.filename).toBe(`${packageSlug}-${manifest.version}.tgz`);
-  });
+    /*
+     * Same subprocess, same exposure, same timeout. This case has not been
+     * observed to time out, but it runs the identical `npm pack` call as the
+     * one above; leaving it on the default would keep an identical landmine
+     * armed and let it be rediscovered as a mystery rather than read as a
+     * known property of shelling out.
+     */
+  }, 30_000);
 });
