@@ -35,11 +35,13 @@ function deepFreeze<T>(value: T): T {
  *
  * The upstream array carries 42 slots with two explicit `null`s (indices 34 and
  * 37, `kAt` at byte 6279405 and `hZt` at byte 6279537) which `.filter(e => e
- * !== null)` removes, leaving the forty entries below. `kAt` still has a dead
- * consumer at byte 14167580 -- a retry-strip handler short-circuited by
- * `kAt === null` -- which is the 2.1.280 analogue of the `narration_summaries`
- * story: upstream removes the entry and leaves the machinery that referenced
- * it. Neither null slot is transcribed here; a null is not an entry.
+ * !== null)` removes, leaving the forty entries below. `kAt` still has dead
+ * consumers at byte 14167580 -- a retry-strip handler short-circuited by
+ * `kAt === null`, and a rejection reporter that reads `kAt.name` under an
+ * "Auto mode classifier" label -- so upstream removed the entry and left the
+ * machinery that referenced it behind. That machinery says nothing about WHICH
+ * beta the slot held; see the note above `AUTO_MODE_CLASSIFIER`. Neither null
+ * slot is transcribed here; a null is not an entry.
  *
  * Two further registry members are deliberately absent:
  * `mid_conv_cache_promotion_latch` and `mid_conv_cache_promotion_ok_latch`
@@ -160,10 +162,20 @@ export const BETA_REGISTRY_2_1_280 = deepFreeze({
     header: "fallback-credit-2026-06-01",
   },
   /*
-   * NARRATION_SUMMARIES BELONGS HERE AND IS DELIBERATELY ABSENT, exactly as in
-   * the 2.1.233 registry. Upstream slot 34 of the 2.1.280 array is `kAt`, which
-   * is `null`. Re-adding the entry would reintroduce a header the genuine
-   * client no longer sends. Do not "fix" it.
+   * NARRATION_SUMMARIES IS DELIBERATELY ABSENT, exactly as in the 2.1.233
+   * registry, and re-adding it would reintroduce a header the genuine client no
+   * longer sends. Do not "fix" it.
+   *
+   * This position -- between `FALLBACK_CREDIT` and `AUTO_MODE_CLASSIFIER` -- is
+   * where the 2.1.233 registry records the removal, and it is also where array
+   * index 34 (`kAt`, null) falls. That correspondence is suggestive and NOT
+   * EVIDENCED: the `summarize-connector-text-2026-03-13` header string appears
+   * nowhere in the 2.1.280 bundle, so nothing ties it to `kAt` rather than to
+   * `hZt`, and `kAt`'s surviving consumer at byte 14167580 reports rejections
+   * under an "Auto mode classifier" label, which points the other way. The
+   * analysis document asserts only that two slots are null and this file
+   * asserts no more. See section 4.2 of
+   * `docs/protocol/versions/claude-code-2.1.280-analysis.md`.
    */
   AUTO_MODE_CLASSIFIER: {
     featureKey: "auto_mode_classifier",
@@ -175,10 +187,10 @@ export const BETA_REGISTRY_2_1_280 = deepFreeze({
     header: "dangerous-tool-use-2026-09-03",
   },
   /*
-   * The SECOND null slot (`hZt`, upstream index 37) belongs here. Unlike the
-   * first it has no known predecessor in any analysed release, so what upstream
-   * removed is unknown. It is recorded rather than silently closed up, because
-   * a future build may reuse the slot.
+   * The SECOND null slot (`hZt`, upstream index 37) belongs here. As with the
+   * first, what upstream removed is unknown: no header string in any analysed
+   * release is tied to it by evidence. It is recorded rather than silently
+   * closed up, because a future build may reuse the slot.
    */
   // New at 2.1.280.
   THINKING_DISPLAY_UPDATES: {
