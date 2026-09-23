@@ -62,6 +62,14 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: bun test test/governance
+      # The packed-consumer digest gate needs node, bun and the
+      # miniflare/workerd toolchain in one job, and this is the only job that
+      # has all three: node and bun from the steps above, workerd from the
+      # miniflare devDependency installed by `npm ci`. It enforces the frozen
+      # per-profile digests, so a wire-output change to a profile that was
+      # supposed to be untouched fails here rather than going unobserved.
+      - name: Cross-runtime packed consumer digests
+        run: npm run test:pack
 
   workerd:
     name: workerd
