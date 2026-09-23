@@ -18,7 +18,7 @@
 
 1. `CLAUDE_CODE_2_1_280_PROFILE` (mirroring the 2.1.233 export naming) is exported from `D:\git\claude-code-wire-compat\src\index.ts` and via the `./profiles/claude-code-2.1.280` subpath, accepted by identity in `D:\git\claude-code-wire-compat\src\build-request.ts`, parsed by `D:\git\claude-code-wire-compat\src\headers.ts`, pinned in `D:\git\claude-code-wire-compat\src\redaction.ts`, and is `DEFAULT_PROFILE`.
 2. The 14-identifier `anthropic-beta` literal test for the `claude-opus-5-5` default path passes and is a golden fixture with a sealed byte hash.
-3. `npm run test:pack` reports three profile digests; 2.1.195 = `6b9609b29463c890544845dd94acf560206b6f8165538faafd8886750037d277` and 2.1.233 = `4e06af42310d63549a4fa9af60ff0c9b13e95d7864624c6b7bf94d45ce9a3997` are unchanged; the 2.1.280 digest agrees across node/bun/workerd and is recorded in `D:\git\claude-code-wire-compat\scripts\verify-packed-consumers.mjs` and `D:\git\claude-code-wire-compat\AGENTS.md`.
+3. `npm run test:pack` reports three profile digests; 2.1.195 = `6b9609b29463c890544845dd94acf560206b6f8165538faafd8886750037d277` and 2.1.233 = `4e06af42310d63549a4fa9af60ff0c9b13e95d7864624c6b7bf94d45ce9a3997` are unchanged; the 2.1.280 digest agrees across node/bun/workerd and is recorded in `D:\git\claude-code-wire-compat\scripts\verify-packed-consumers.mjs` and `D:\git\claude-code-wire-compat\AGENTS.md`. **Amended 2026-09-23 (C0c):** "unchanged" is now machine-enforced rather than eyeballed. The script carries an `EXPECTED_DIGESTS` table and fails when a pinned case moves; the `default` case is pinned to a case _name_ via `EXPECTED_DEFAULT_CASE` rather than to a literal, because the Phase 4.2 default switch moves it on purpose. Recording the 2.1.280 digest in Phase 4.1 therefore means adding a third entry to `EXPECTED_DIGESTS`, and the Phase 4.2 switch means repointing `EXPECTED_DEFAULT_CASE` to `"2.1.280"` in the same isolated commit.
 4. `D:\git\claude-code-wire-compat\test\fingerprint-2.1.280.test.ts` carries known-answer vectors computed outside the package, calibrated against the known 2.1.233 vectors.
 5. Every gate is green at every commit: `npm run lint && npm run typecheck && npm test && npm run build && npm run format:check`; at every wave end additionally `npm run test:coverage && npm run pack:check && npm run test:pack && npm run fixtures:check`.
 6. `D:\git\claude-code-wire-compat\package.json` is `0.6.0` and `D:\git\claude-code-wire-compat\CHANGELOG.md` carries a dated `## [0.6.0]` heading with a Breaking section and the exact rollback instruction.
@@ -301,13 +301,14 @@ None authored in this phase. The committed `D:\git\claude-code-wire-compat\test\
 #### Pre-flight check
 
 1. Correct repository and branch: `git -C "D:\git\claude-code-wire-compat" branch --show-current` → `port/claude-code-2.1.280`.
-2. Clean worktree except the known untracked draft: `git status --porcelain` → exactly `?? src/profiles/beta-registry-2.1.280.ts`.
-3. Expected baseline: `GATE-COMMIT` green at HEAD; HEAD is at or after C2 and the worktree is clean.
-4. Evidence present: `Select-String -Path "D:\git\claude-code-wire-compat\docs\protocol\versions\claude-code-2.1.280-analysis.md" -Pattern "thinking-binding-controls-2026-08-01" -SimpleMatch` returns at least one hit.
-5. Shape reference read (fast tier): `D:\git\claude-code-wire-compat\src\profiles\beta-registry-2.1.233.ts` — record its export names, the `deepFreeze` import path, the entry type name (`BetaRegistryEntry` per `D:\git\claude-code-wire-compat\src\betas.ts`), how the duplicated alias `tool_search` (entries 8 and 9) is keyed, and where the 2.1.233 registry test lives.
-6. Draft size sanity: `(Get-Content "D:\git\claude-code-wire-compat\src\profiles\beta-registry-2.1.280.ts").Count` is roughly 280.
+2. Clean worktree: `git status --porcelain` → empty. **Amended 2026-09-23:** the draft is **tracked**, not untracked — it landed on `main` in `4674148` before this cycle began, so the original expectation of exactly `?? src/profiles/beta-registry-2.1.280.ts` can never be met and any non-empty status here is a blocking problem (directive 1b) as originally intended.
+3. Expected baseline: `GATE-COMMIT` green at HEAD; HEAD is at or after C2 and the worktree is clean. C1 and C2 are already landed on `main` as part of `37a81cf`, so this reduces to "HEAD is on the port branch with a clean tree".
+4. **Coverage closure (added 2026-09-23).** `npm run test:coverage` is red at the start of this phase and this phase is what closes it: the tracked draft is imported by nothing, so it reports `0 | 0 | 0 | 0` and drags `functions` to `99.66% (298/299)` against a `100` threshold. Record the measured `functions` figure before starting. Importing the module is **not** by itself sufficient — istanbul reports 100 for zero-of-zero, so the per-file `0` proves the draft contains at least one function that must actually execute. If `npm run test:coverage` does not return to `functions 100% (299/299)` once Task 1.1.3 lands, the test must call the remaining function directly rather than merely importing the module.
+5. Evidence present: `Select-String -Path "D:\git\claude-code-wire-compat\docs\protocol\versions\claude-code-2.1.280-analysis.md" -Pattern "thinking-binding-controls-2026-08-01" -SimpleMatch` returns at least one hit.
+6. Shape reference read (fast tier): `D:\git\claude-code-wire-compat\src\profiles\beta-registry-2.1.233.ts` — record its export names, the `deepFreeze` import path, the entry type name (`BetaRegistryEntry` per `D:\git\claude-code-wire-compat\src\betas.ts`), how the duplicated alias `tool_search` (entries 8 and 9) is keyed, and where the 2.1.233 registry test lives.
+7. Draft size sanity: `(Get-Content "D:\git\claude-code-wire-compat\src\profiles\beta-registry-2.1.280.ts").Count` is roughly 280.
 
-#### Task 1.1.1 (REG-DIFF) [tier:fast]: Compare the untracked draft against the analysis document, entry by entry
+#### Task 1.1.1 (REG-DIFF) [tier:fast]: Compare the pre-landed draft against the analysis document, entry by entry
 
 **Files:** read-only.
 
@@ -333,7 +334,7 @@ None authored in this phase. The committed `D:\git\claude-code-wire-compat\test\
 - [ ] **Step 1.1.2.3:** Entry 17 `thinking_resumption` / `thinking-resumption-2026-07-17` sits between `redact_thinking` and `thinking_token_count`; entry 40 `thinking_binding_controls` is last even though declared earlier upstream — add a one-line comment stating array order is authoritative.
 - [ ] **Step 1.1.2.4:** Export the three auxiliary sets as `readonly string[]` (never `ReadonlyArray<string>`), deep-frozen, in upstream literal order. Add a comment on the 14-member third-party set that it is unrelated to the 14-identifier default-path literal (same count, different thing).
 - [ ] **Step 1.1.2.5:** `npx prettier --write "D:\git\claude-code-wire-compat\src\profiles\beta-registry-2.1.280.ts"`; `npm run lint`; `npm run typecheck`. Note: the file is not yet imported anywhere; `npm run build` must still compile it if `tsconfig` includes `src/**` — confirm the build output contains `dist/profiles/beta-registry-2.1.280.js`.
-- [ ] **Step 1.1.2.6:** `git add "D:\git\claude-code-wire-compat\src\profiles\beta-registry-2.1.280.ts"`.
+- [ ] **Step 1.1.2.6:** `git add "D:\git\claude-code-wire-compat\src\profiles\beta-registry-2.1.280.ts"`. The file is already tracked, so this stages a modification rather than an addition; if Task 1.1.1 found no discrepancy at all, there is nothing to stage from this task and the commit carries only Task 1.1.3's test — say so in the commit body rather than manufacturing a change.
 
 #### Task 1.1.3 (REG-TEST) [tier:medium]: Author the registry known-answer test
 
@@ -371,6 +372,7 @@ This file must import `../../src/index.js` at least once, or `D:\git\claude-code
 
 - Task 1.1.1's discrepancy report is recorded in the commit body (count and nature).
 - `GATE-COMMIT` green; the two frozen digests untouched (`npm run test:pack` not required at this commit but must be green at wave end).
+- **`npm run test:coverage` is green again**, reporting `functions 100% (299/299)`. This is the phase that closes the inherited failure described in pre-flight item 4; a still-red coverage gate at the end of this phase is a blocking problem, not something to defer.
 - The file matches the analysis document on all 40 entries, both nulls, both exclusions and the three sets.
 
 #### Definition of Done
@@ -1809,30 +1811,33 @@ Primary repository `D:\git\claude-code-wire-compat`, branch `port/claude-code-2.
 > 0.1.3 / Task 0.1.4 are no-ops. The letters of C3..C20 are unchanged; one
 > unplanned commit C0b was inserted (see its row).
 
-| #   | Subject                                                                                                                                                         | Phase |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| C0  | `test(pack): accept npm 12 keyed-object pack output in pack-policy`                                                                                             | 0.1   |
-| C0b | `fix(scripts): accept npm 12 keyed-object pack output in the digest gate` (unplanned; see the Wave 0 deviation note below)                                      | 0.1   |
-| C1  | `docs(protocol): add claude-code-2.1.280 analysis document` — **already landed on `main` as part of `37a81cf`**                                                 | 0.1   |
-| C2  | `docs(plans): add claude-code-2.1.280 port plan` — **already landed on `main` as part of `37a81cf`**                                                            | 0.1   |
-| C3  | `feat(profiles): add claude-code-2.1.280 beta registry`                                                                                                         | 1.1   |
-| C4  | `feat(profiles): add claude-code-2.1.280 profile and 20-model catalogue`                                                                                        | 1.2   |
-| C5  | `feat(profiles): register claude-code-2.1.280 across export and acceptance seams` (plus the `docs/source-trace.md` profile row if Wave 0 fact (ii) requires it) | 2.1   |
-| C6  | `docs(source-trace): record claude-code-2.1.280 divergences not ported`                                                                                         | 2.1   |
-| C7  | `feat(capabilities): derive mid_conv_tool_change and per_turn_effort from the catalogue`                                                                        | 3.1   |
-| C8  | `feat(betas): add per-turn, tool-change, clear-at and thinking-binding push sites`                                                                              | 3.2   |
-| C9  | `feat(thinking): inject display updates beta, body field and redact-thinking removal`                                                                           | 3.3   |
-| C10 | `test(pack): freeze claude-code-2.1.280 cross-runtime digest`                                                                                                   | 4.1   |
-| C11 | `test: derive default-profile expectations from DEFAULT_PROFILE` (only if needed)                                                                               | 4.2   |
-| C12 | `feat(build-request): default to claude-code-2.1.280` — one `src/` line                                                                                         | 4.2   |
-| C13 | `test(build-request): prove unpinned requests equal pinned claude-code-2.1.280`                                                                                 | 4.2   |
-| C14 | `test(fixtures): add claude-code-2.1.280 golden fixtures and reseal`                                                                                            | 5.1   |
-| C15 | `test(matrix): register claude-code-2.1.280 in the profile matrix`                                                                                              | 5.2   |
-| C16 | `test(conformance): add claude-code-2.1.280 reference adapter and differential cases`                                                                           | 5.3   |
-| C17 | `test(fingerprint): add independently computed claude-code-2.1.280 vectors`                                                                                     | 5.4   |
-| C18 | `docs(memory): record claude-code-2.1.280 behaviour-flag audit`                                                                                                 | 5.5   |
-| C19 | `docs: update README, AGENTS, runbook and memory for claude-code-2.1.280`                                                                                       | 6.1   |
-| C20 | `chore(release): 0.6.0`                                                                                                                                         | 6.2   |
+| #   | Subject                                                                                                                                                          | Phase |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| C0  | `test(pack): accept npm 12 keyed-object pack output in pack-policy`                                                                                              | 0.1   |
+| C0b | `fix(scripts): accept npm 12 keyed-object pack output in the digest gate` (unplanned; see the Wave 0 deviation note below)                                       | 0.1   |
+| C0c | `test(pack): enforce the frozen cross-runtime digests in the digest gate` (unplanned, from the Wave 0 QA review; the gate asserted only cross-runtime agreement) | 0.1   |
+| C0d | `ci: run the packed consumer digest gate in CI` (unplanned, from the Wave 0 QA review; `test:pack` ran in no workflow)                                           | 0.1   |
+| C0e | `refactor(scripts): share and harden the npm pack --json parser` (unplanned, from the Wave 0 QA review; the C0/C0b helper was duplicated and partly untested)    | 0.1   |
+| C1  | `docs(protocol): add claude-code-2.1.280 analysis document` — **already landed on `main` as part of `37a81cf`**                                                  | 0.1   |
+| C2  | `docs(plans): add claude-code-2.1.280 port plan` — **already landed on `main` as part of `37a81cf`**                                                             | 0.1   |
+| C3  | `feat(profiles): add claude-code-2.1.280 beta registry`                                                                                                          | 1.1   |
+| C4  | `feat(profiles): add claude-code-2.1.280 profile and 20-model catalogue`                                                                                         | 1.2   |
+| C5  | `feat(profiles): register claude-code-2.1.280 across export and acceptance seams` (plus the `docs/source-trace.md` profile row if Wave 0 fact (ii) requires it)  | 2.1   |
+| C6  | `docs(source-trace): record claude-code-2.1.280 divergences not ported`                                                                                          | 2.1   |
+| C7  | `feat(capabilities): derive mid_conv_tool_change and per_turn_effort from the catalogue`                                                                         | 3.1   |
+| C8  | `feat(betas): add per-turn, tool-change, clear-at and thinking-binding push sites`                                                                               | 3.2   |
+| C9  | `feat(thinking): inject display updates beta, body field and redact-thinking removal`                                                                            | 3.3   |
+| C10 | `test(pack): freeze claude-code-2.1.280 cross-runtime digest`                                                                                                    | 4.1   |
+| C11 | `test: derive default-profile expectations from DEFAULT_PROFILE` (only if needed)                                                                                | 4.2   |
+| C12 | `feat(build-request): default to claude-code-2.1.280` — one `src/` line                                                                                          | 4.2   |
+| C13 | `test(build-request): prove unpinned requests equal pinned claude-code-2.1.280`                                                                                  | 4.2   |
+| C14 | `test(fixtures): add claude-code-2.1.280 golden fixtures and reseal`                                                                                             | 5.1   |
+| C15 | `test(matrix): register claude-code-2.1.280 in the profile matrix`                                                                                               | 5.2   |
+| C16 | `test(conformance): add claude-code-2.1.280 reference adapter and differential cases`                                                                            | 5.3   |
+| C17 | `test(fingerprint): add independently computed claude-code-2.1.280 vectors`                                                                                      | 5.4   |
+| C18 | `docs(memory): record claude-code-2.1.280 behaviour-flag audit`                                                                                                  | 5.5   |
+| C19 | `docs: update README, AGENTS, runbook and memory for claude-code-2.1.280`                                                                                        | 6.1   |
+| C20 | `chore(release): 0.6.0`                                                                                                                                          | 6.2   |
 
 QA-driven fixes are inserted after the commit they correct as `fix(<scope>): …` or `test(<scope>): …` with the root cause in the body; they never amend.
 
@@ -1926,6 +1931,102 @@ QA-driven fixes are inserted after the commit they correct as `fix(<scope>): …
 >   object in the same branch. The Phase 3.2 mechanism-seam design must
 >   therefore introduce the separation it assumes, under the Task 3.2.1.3
 >   key-insertion-order invariant.
+
+> **2026-09-23 — Wave 0 QA amendments (corrections to the note above).** An
+> adversarial `@heavy` review of the Wave 0 commits produced eleven findings.
+> Three were fixed in code and are recorded in Appendix C as C0b, C0c and C0d.
+> The remaining corrections to the preceding note are these.
+>
+> - **The frozen digests were not enforced by anything.** Before C0c,
+>   `D:\git\claude-code-wire-compat\scripts\verify-packed-consumers.mjs`
+>   asserted only that each case's digest agreed **across runtimes**. A change
+>   that moved the 2.1.195 digest identically under node, bun and workerd
+>   printed the new value and exited 0; the freeze was held by a human
+>   comparing 64-character hex strings. The two literals appeared in five
+>   documents and in no file the machine reads. C0c adds `EXPECTED_DIGESTS`
+>   and `EXPECTED_DEFAULT_CASE` and was proved in both directions — green
+>   unmodified, and failing with both cases reported when one hex character
+>   and the default pin were deliberately corrupted.
+> - **The gate ran in no CI job.** `npm run test:pack` appeared in neither
+>   `ci.yml` nor `publish.yml`; only `pack:check`, a different script, ran.
+>   C0d adds it to the `bun` job, which is the only job holding all three
+>   runtimes at once (node and bun from its setup steps, workerd from the
+>   `miniflare` devDependency installed by `npm ci`), and adds the command to
+>   the required-gate list in
+>   `D:\git\claude-code-wire-compat\test\governance\ci-policy.test.ts` so it
+>   cannot be silently dropped. That test asserts containment, not a closed
+>   set, so additive workflow changes are safe; any new `uses:` step must
+>   still be pinned to a 40-character commit SHA.
+> - **Correction to (iv): "digest-safe by construction" was overstated, and
+>   is now replaced by a checkable invariant.** Half of it is proved: the
+>   canary hashes `JSON.stringify({url, method, headers, body})` with
+>   `authorization` and `x-api-key` stripped and the remaining headers sorted
+>   — **wire fields only**, so no evidence or audit field can move a digest
+>   under any circumstances. The other half is a per-profile fact that must be
+>   checked, not assumed: a new push site is inert for an older profile **iff
+>   the beta's header string is absent from that profile's registry**.
+>   Checked on 2026-09-23 —
+>   `rg -n "<the nine new headers, alternated>" src/beta-registry.ts src/profiles/beta-registry-2.1.233.ts`
+>   returns **no output**, and the three registries declare 29, 32 and 41
+>   `header:` occurrences respectively (one more than their entry counts in
+>   each case, the extra being the entry type's own field declaration).
+>   Re-run that grep at the start of Phase 3.2 rather than trusting this line.
+> - **Correction to (i): "does not arise" was too broad.** What was shown is
+>   that the Task 2.1.7.1 contingency does not arise **from
+>   `D:\git\claude-code-wire-compat\test\governance\profile-coverage.test.ts`**,
+>   which is matrix-driven. That says nothing about the other guards that fire
+>   at export and registration:
+>   `D:\git\claude-code-wire-compat\test\runtime\runtime-neutral.test.ts`
+>   (closed export list),
+>   `D:\git\claude-code-wire-compat\test\governance\baseline-evidence.test.ts`
+>   (fixture ↔ hash-table bijection),
+>   `D:\git\claude-code-wire-compat\test\governance\source-trace-profiles.test.ts`,
+>   `PINNED_PROFILE_IDS` in `D:\git\claude-code-wire-compat\src\redaction.ts`,
+>   and `parseProfile` identity in
+>   `D:\git\claude-code-wire-compat\src\headers.ts`. The contingency stands.
+>   Phase 2.1's pre-flight gains a sweep:
+>   `rg -n "ACCEPTED_PROFILES|PROFILES_UNDER_TEST|PINNED_PROFILE_IDS|readdirSync" test/`
+>   with every hit dispositioned before any registration seam is edited.
+> - **Resolution of the (ii) open question.**
+>   `source-trace-profiles.test.ts` skips any filename that does not start
+>   with `claude-code-` (recording it as `misnamed` only if it nevertheless
+>   declares an `id`), so `beta-registry-2.1.280.ts` is correctly invisible to
+>   it. The `D:\git\claude-code-wire-compat\docs\source-trace.md` profile-row
+>   obligation therefore arrives with **Phase 1.2**'s `claude-code-2.1.280.ts`,
+>   not with Phase 1.1, and no beta-registry row is required at all — the
+>   document's single beta-registry row covers the mechanism, not each file.
+> - **Correction to (iii): the invariant is broader than stated.** Nothing
+>   under `test/` except `test/types/` is typechecked by `npm run typecheck` —
+>   `test/validation/**` is only the instance that mattered for Phases 3.1 and
+>   3.2. `test/pack/**`, edited in Wave 0 itself, is equally untypechecked.
+>   ESLint is the only type-aware gate over those files, via
+>   `D:\git\claude-code-wire-compat\tsconfig.eslint.json`, whose `include` was
+>   extended in C0e to cover `scripts/lib/**/*.mjs`.
+> - **(v) is downgraded to UNVERIFIED pending Phase 3.2.** The claim that
+>   moving where the `thinking` key is inserted "changes bytes for every
+>   profile" was asserted without citing the body-assembly site. What is
+>   verified: `D:\git\claude-code-wire-compat\src\request-body.ts` imports only
+>   `clampMaxTokens` and `resolveThinking`, and assigns
+>   `result["thinking"] = resolved.emitted` behind an `!== undefined` guard.
+>   What is **not** yet verified is whether the surrounding assembly fixes key
+>   positions independently of that assignment. Phase 3.2 must establish it
+>   from the code before relying on the invariant; do not carry the claim
+>   forward as settled.
+> - **Cycle-base fragility.** "Cycle base = `1500e00`" holds only while this
+>   branch never merges `main`. State it as
+>   `git merge-base main port/claude-code-2.1.280` and hold to the rule: **no
+>   merges from `main` mid-wave; rebase only at a wave boundary, followed by a
+>   full `GATE-WAVE` re-run.** A hotfix landing on `main` that touched
+>   `baseline-2026-08-05.md`, the fixture seal, the closed export list in
+>   `runtime-neutral.test.ts`, or `package.json`'s version would otherwise
+>   invalidate every literal-base review command in this plan.
+> - **`main` stays red until this port merges.** The inherited
+>   `npm run test:coverage` failure sits on `main` as well as on this branch,
+>   because the draft registry landed there. Reverting it on `main` or
+>   rebasing this branch onto a revert was rejected: both are surgery on a
+>   shared branch without authorisation, and the revert would create a
+>   modify/delete hazard against Phase 1.1's edit of the same file. Phase 1.1
+>   closes it. No release may be cut from `main` before then.
 
 Sibling repositories:
 

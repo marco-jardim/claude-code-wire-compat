@@ -6,6 +6,68 @@ Append-only log of non-obvious maintenance decisions and their reasoning, so
 future work does not re-litigate or accidentally reverse them. Newest entries
 first. Keep entries dated, factual, and in consumer-neutral language.
 
+## 2026-09-23 — The frozen packed-consumer digests are now enforced, not eyeballed
+
+Context: `scripts/verify-packed-consumers.mjs` builds the same request from a
+packed tarball under node, bun and workerd, and prints a SHA-256 digest per
+profile. Its own block comment said each explicit case's digest "must not move
+for any reason other than a change to that profile's own wire output" — but the
+only assertion in the script was that the three runtimes agreed with **each
+other**. A change that moved a profile's digest identically everywhere printed
+the new value and exited 0. The two frozen literals lived in `AGENTS.md`,
+`docs/source-trace.md` and three planning documents, and in no file the machine
+reads, so the freeze was held by a human comparing 64-character hex strings.
+
+Decision: the script now carries an `EXPECTED_DIGESTS` table and fails when a
+pinned case moves. The `default` case is deliberately **not** pinned to a
+literal — switching `DEFAULT_PROFILE` moves it on purpose — but to a case name
+via `EXPECTED_DEFAULT_CASE`, so a default switch becomes a one-line change that
+is still verified rather than an unobserved drift. A case present in
+`CASE_NAMES` but absent from `EXPECTED_DIGESTS` is intentionally unpinned; that
+is how a newly added profile behaves until its digest is first recorded.
+
+When this fires, the fix is to find and revert the change that altered the wire
+bytes. Editing a literal to match the new output defeats the entire point of
+the gate and must never be done.
+
+Related: the gate ran in no CI workflow at all. It now runs in the `bun` job of
+`.github/workflows/ci.yml`, which is the only job that holds node, bun and the
+miniflare/workerd toolchain together, and `test/governance/ci-policy.test.ts`
+lists `npm run test:pack` among its required gates so the step cannot be quietly
+removed.
+
+## 2026-09-23 — `npm pack --json` has two output shapes; accept both, in one place
+
+Context: npm 12 changed `npm pack --json` and `npm pack --dry-run --json` from
+emitting an array of pack results to emitting an object keyed by package name.
+Two gates parse that output — the published-tarball policy test and the
+cross-runtime digest verifier — and both broke on a contributor machine running
+npm 12 while remaining green in CI, which pins node 20/22/24 and their bundled
+npm 10/10/11.
+
+Decision: accept both shapes rather than pinning an npm major. The parser lives
+once, in `scripts/lib/pack-json.mjs`, and both callers import it; two
+independent copies of a parser for an external tool's output is exactly the pair
+that drifts when the shape changes again. It also handles a third shape
+defensively — a non-null object carrying its own `filename` is returned as-is,
+before the keyed-object fallback — because a future npm emitting the single
+result flat would otherwise be silently misread into the value of its first
+property.
+
+Consequence worth knowing: `tsconfig.eslint.json` gained `allowJs` and a
+`scripts/lib/**/*.mjs` include so the TypeScript test file's import of that
+JavaScript module resolves to the types its JSDoc declares. Without it, every
+call through the import trips `no-unsafe-call` under typed linting. `checkJs`
+stays off and `npm run typecheck` is unaffected — it uses `tsconfig.json` and
+`tsconfig.types.json`, not that one. A hand-written `.d.mts` sidecar was tried
+first and rejected: it matches neither glob in `eslint.config.js`, so it
+inherits the type-checked preset with no parser project and crashes `eslint .`
+outright.
+
+The keyed-object branch and the `undefined` fallback are covered by
+`test/pack/pack-json.test.ts` with literal inputs and no subprocess, because
+neither branch runs on any CI machine.
+
 ## 2026-09-22 — Upstream binaries are no longer one bundle; carving must concatenate modules
 
 Context: the runbook's Step 0 told the reader to scan the platform executable
