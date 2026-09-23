@@ -332,7 +332,20 @@ None authored in this phase. The committed `D:\git\claude-code-wire-compat\test\
 - [ ] **Step 1.1.2.1:** Apply every discrepancy from Task 1.1.1; if more than three discrepancies exist, re-derive the whole file from the analysis document instead of patching.
 - [ ] **Step 1.1.2.2:** Shape: mirror `D:\git\claude-code-wire-compat\src\profiles\beta-registry-2.1.233.ts` exactly — same `deepFreeze` usage, same entry type, same export naming pattern (the registry constant name follows the 2.1.233 name with `2_1_280`), same file header comment style; the two null slots and the two internal non-beta members are documented in a comment block that quotes their upstream indices/names and states they are not transcribed.
 - [ ] **Step 1.1.2.3:** Entry 17 `thinking_resumption` / `thinking-resumption-2026-07-17` sits between `redact_thinking` and `thinking_token_count`; entry 40 `thinking_binding_controls` is last even though declared earlier upstream — add a one-line comment stating array order is authoritative.
-- [ ] **Step 1.1.2.4:** Export the three auxiliary sets as `readonly string[]` (never `ReadonlyArray<string>`), deep-frozen, in upstream literal order. Add a comment on the 14-member third-party set that it is unrelated to the 14-identifier default-path literal (same count, different thing).
+- [ ] **Step 1.1.2.4:** Export the three auxiliary sets in the shape the two existing registries already use, deep-frozen, in upstream literal order. Add a comment on the 14-member third-party set that it is unrelated to the 14-identifier default-path literal (same count, different thing).
+
+> **2026-09-23 — Step 1.1.2.4 corrected during execution.** This step originally
+> demanded `readonly string[]` ("never `ReadonlyArray<string>`"). That contradicted
+> Step 1.1.2.2, which demands mirroring `src/profiles/beta-registry-2.1.233.ts`
+> exactly: both existing registries declare all three auxiliary sets as
+> `ReadonlySet<string> = Object.freeze(new Set([...]))`, with members written as
+> `BETA_REGISTRY_*.<KEY>.header` references rather than bare literals. Mirroring
+> won — a lone array-shaped registry would break the uniform surface that
+> `test/validation/beta-registry-surface.test.ts` reads. The ESLint ban the
+> original text invoked is on the `ReadonlyArray<T>` **array** type alias (use
+> `readonly T[]`); it says nothing about `ReadonlySet<T>`, which has no
+> shorthand form and is the correct type here.
+
 - [ ] **Step 1.1.2.5:** `npx prettier --write "D:\git\claude-code-wire-compat\src\profiles\beta-registry-2.1.280.ts"`; `npm run lint`; `npm run typecheck`. Note: the file is not yet imported anywhere; `npm run build` must still compile it if `tsconfig` includes `src/**` — confirm the build output contains `dist/profiles/beta-registry-2.1.280.js`.
 - [ ] **Step 1.1.2.6:** `git add "D:\git\claude-code-wire-compat\src\profiles\beta-registry-2.1.280.ts"`. The file is already tracked, so this stages a modification rather than an addition; if Task 1.1.1 found no discrepancy at all, there is nothing to stage from this task and the commit carries only Task 1.1.3's test — say so in the commit body rather than manufacturing a change.
 
