@@ -1791,11 +1791,30 @@ Intra-phase parallel tasks are listed in each phase's parallel-safety note. QA r
 
 Primary repository `D:\git\claude-code-wire-compat`, branch `port/claude-code-2.1.280`:
 
+> **2026-09-23 — Wave 0 amendment: branch decision and the commits that
+> pre-landed on `main`.** Task 0.1.1 mandates creating the working branch
+> before any port commit. That did not happen for the first three port
+> commits, which landed directly on `main`:
+> `37a81cf docs(protocol): analyse Claude Code 2.1.280 and plan the port`
+> (which carries BOTH C1 and C2 — the analysis document with its three
+> provenance registrations, and this plan, in one commit),
+> `4674148 chore(profiles): add unverified 2.1.280 beta registry draft`, and
+> `1500e00 docs(plans): add the 2.1.280 port handover prompt`.
+> The **non-destructive** option was taken: branch `port/claude-code-2.1.280`
+> was created from `1500e00` and every later commit goes on it; the three
+> pre-landed commits stay on `main` because two are documentation and the
+> third is an inert, unimported draft. **Cycle base SHA for every review
+> brief's diff base: `1500e00373019b0504ef7a39b96a73329834304c`.**
+> Consequently C1 and C2 are recorded below as already landed, and Task
+> 0.1.3 / Task 0.1.4 are no-ops. The letters of C3..C20 are unchanged; one
+> unplanned commit C0b was inserted (see its row).
+
 | #   | Subject                                                                                                                                                         | Phase |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
 | C0  | `test(pack): accept npm 12 keyed-object pack output in pack-policy`                                                                                             | 0.1   |
-| C1  | `docs(protocol): add claude-code-2.1.280 analysis document` (only if uncommitted)                                                                               | 0.1   |
-| C2  | `docs(plans): add claude-code-2.1.280 port plan`                                                                                                                | 0.1   |
+| C0b | `fix(scripts): accept npm 12 keyed-object pack output in the digest gate` (unplanned; see the Wave 0 deviation note below)                                      | 0.1   |
+| C1  | `docs(protocol): add claude-code-2.1.280 analysis document` — **already landed on `main` as part of `37a81cf`**                                                 | 0.1   |
+| C2  | `docs(plans): add claude-code-2.1.280 port plan` — **already landed on `main` as part of `37a81cf`**                                                            | 0.1   |
 | C3  | `feat(profiles): add claude-code-2.1.280 beta registry`                                                                                                         | 1.1   |
 | C4  | `feat(profiles): add claude-code-2.1.280 profile and 20-model catalogue`                                                                                        | 1.2   |
 | C5  | `feat(profiles): register claude-code-2.1.280 across export and acceptance seams` (plus the `docs/source-trace.md` profile row if Wave 0 fact (ii) requires it) | 2.1   |
@@ -1816,6 +1835,97 @@ Primary repository `D:\git\claude-code-wire-compat`, branch `port/claude-code-2.
 | C20 | `chore(release): 0.6.0`                                                                                                                                         | 6.2   |
 
 QA-driven fixes are inserted after the commit they correct as `fix(<scope>): …` or `test(<scope>): …` with the root cause in the body; they never amend.
+
+> **2026-09-23 — Wave 0 deviation note (pre-flight findings and the five
+> resolved repository facts).**
+>
+> _Deviations from the Phase 0.1 pre-flight expectations:_
+>
+> 1. Item 2 expected `?? src/profiles/beta-registry-2.1.280.ts`. The draft is
+>    **tracked**, committed on `main` as `4674148`. Only
+>    ` M test/pack/pack-policy.test.ts` was dirty.
+> 2. Item 5 expected `npx vitest run test/docs test/governance` → 17 files /
+>    408 tests. Observed 17 files / **411** tests; the three extra tests are
+>    the link/provenance coverage of the documents added by `37a81cf` and
+>    `1500e00`. `npm test` → 104 files / **2998** tests.
+> 3. `npm run test:pack` **crashed** at the cycle base:
+>    `D:\git\claude-code-wire-compat\scripts\verify-packed-consumers.mjs:200`
+>    carried the same npm-12 array→object pack-output bug as the test file,
+>    so neither frozen digest could be observed. Fixed as C0b with the same
+>    shape-tolerant helper. Both frozen digests then observed unchanged and
+>    identical across node, bun and workerd; the `default` case currently
+>    equals the 2.1.233 digest, and is expected to equal the 2.1.280 digest
+>    from C12 onward.
+> 4. `npm run test:coverage` **fails at the cycle base** —
+>    `functions 99.66% (298/299)` against a `100` threshold — solely because
+>    `D:\git\claude-code-wire-compat\src\profiles\beta-registry-2.1.280.ts`
+>    is committed but imported by nothing, so it reports `0%` across the
+>    board. Coverage `include` is `src/**/*.ts`, so C0b's `scripts/` helper
+>    cannot be the cause. This is inherited from `4674148` and is closed by
+>    Phase 1.1, whose registry test imports the file; the plan's expectation
+>    that the draft would still be untracked is what made it invisible.
+>    Wave 0 therefore records every `GATE-WAVE` component green EXCEPT
+>    `test:coverage`, with that one failure attributed, bounded and closed
+>    one phase later; `GATE-WAVE` is asserted fully green at the end of
+>    Wave 1 (Task 1.2.3.4). Toolchain: node `v24.15.0`, npm `12.0.2`, bun
+>    `1.3.14`, workerd via `miniflare@4.20260722.0`; `$env:CI` empty, so
+>    `npm run fixtures:seal` will not refuse on that account.
+>    `npm run pack:check` green; `npm run fixtures:check` → `fixtures=5 sealed=ok`.
+>    Measured coverage at the cycle base: statements `98.71`, branches
+>    `98.68`, functions `99.66`, lines `99.28`; thresholds in
+>    `D:\git\claude-code-wire-compat\vitest.config.ts` are `98 / 97 / 100 / 99`.
+>
+> _The five repository facts of pre-flight item 8, resolved by reading:_
+>
+> - **(i)** `D:\git\claude-code-wire-compat\test\governance\profile-coverage.test.ts`
+>   iterates `PROFILES_UNDER_TEST` imported from
+>   `D:\git\claude-code-wire-compat\test\support\profile-matrix.ts` — it is
+>   **matrix-driven, not `ACCEPTED_PROFILES`-driven**. The Task 2.1.7.1
+>   contingency and the C5 mechanism-inert fixture therefore **do not
+>   arise**; the matrix edit stays in Phase 5.2 as written.
+> - **(ii)** `D:\git\claude-code-wire-compat\test\governance\source-trace-profiles.test.ts`
+>   enumerates by `readdirSync` over `D:\git\claude-code-wire-compat\src\profiles\`,
+>   not from a hand-maintained list. The `docs/source-trace.md` profile row
+>   is therefore a **companion guard amendment** and must land in the same
+>   commit as the file that makes the test demand it — see the Phase 1.2
+>   pre-flight, which must establish whether the scan keys off any file in
+>   that directory or only off files declaring a profile id (the already
+>   committed `beta-registry-2.1.280.ts` lives there and the suite is green,
+>   so the scan is not naive).
+> - **(iii)** `npm run typecheck` is
+>   `tsc -p tsconfig.json --noEmit && tsc -p tsconfig.types.json --noEmit`;
+>   `tsconfig.json` has `include: ["src/**/*.ts"]` and
+>   `exclude: [..., "test"]`, and `tsconfig.types.json` has
+>   `include: ["src/**/*.ts", "test/types/**/*.ts"]`. `vitest.config.ts`
+>   declares **no** `typecheck` block. So `test/validation/**` is **not**
+>   typechecked and an `expectTypeOf` assertion placed there proves nothing
+>   — but `test/types/**` **is** typechecked. Every type-level assertion the
+>   plan requests (Phases 3.1 and 3.2) is therefore placed in
+>   `D:\git\claude-code-wire-compat\test\types\` where it bites, rather than
+>   dropped.
+> - **(iv)** The beta-composition "audit" is
+>   `ComposedBetas { readonly betas; readonly suppressedBetaNames }` — two
+>   fields, **not** a per-gate trace. The `NARRATION_SUMMARIES` site records
+>   **nothing at all** when the resolved registry lacks the key: the guard
+>   simply does not fire. `composeBetasWithAudit` and `suppressedBetaNames`
+>   appear in **neither** `scripts/verify-packed-consumers.mjs`, **nor** any
+>   golden fixture JSON, **nor** `test/conformance/differential.test.ts`;
+>   they surface only as request evidence through
+>   `D:\git\claude-code-wire-compat\src\build-request.ts` and
+>   `D:\git\claude-code-wire-compat\src\redaction.ts`. New inert push sites
+>   are therefore digest-safe by construction. **Consequence for Task
+>   3.2.1.7:** there is no audit field in which to "record the removal with a
+>   reason string"; the Phase 3.2 design must either reuse
+>   `suppressedBetaNames` (safe — older profiles never fire site `12b`, and
+>   the field is spread into evidence only when non-empty) or add a new
+>   optional field, and must state which and why.
+> - **(v)** `D:\git\claude-code-wire-compat\src\thinking.ts` exports
+>   `modelOutputTokenLimits`, `clampMaxTokens`, `isThinkingDisplayActive` and
+>   `resolveThinking`. There is **no** separate thinking-_type_ resolver:
+>   `resolveThinking` decides adaptive-vs-enabled and builds the emitted
+>   object in the same branch. The Phase 3.2 mechanism-seam design must
+>   therefore introduce the separation it assumes, under the Task 3.2.1.3
+>   key-insertion-order invariant.
 
 Sibling repositories:
 
