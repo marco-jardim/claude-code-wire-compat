@@ -17,8 +17,8 @@ import { describe, expect, it } from "vitest";
  *
  * `src/profile-behaviors.ts` now owns the question. This file is what stops a
  * fourth copy appearing, because nothing else would: a new inline comparison
- * typechecks, lints, and passes every behavioural suite for the two profiles
- * that exist today.
+ * typechecks, lints, and passes every behavioural suite for the profiles that
+ * exist today.
  *
  * MENTION versus DISPATCH is the hard part here, exactly as it is in
  * `provider-scope.test.ts`, and the same technique answers it. Legitimate

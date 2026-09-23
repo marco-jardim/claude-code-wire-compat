@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_PROFILE } from "../../src/build-request.js";
@@ -107,8 +109,12 @@ describe("2.1.280 registration: builder acceptance", () => {
       CLAUDE_CODE_2_1_280_PROFILE,
     );
 
-    // Read off the profile rather than retyped, so this cannot disagree with it.
+    // NOT discriminating: all three pinned profiles declare the same endpoint,
+    // so this would also pass if the builder had silently substituted another
+    // profile. It is kept because it pins the URL against the profile rather
+    // than against a retyped literal, which is a different property.
     expect(result.url).toBe(CLAUDE_CODE_2_1_280_PROFILE.endpoint);
+    // This is the discriminating assertion: the id is unique per profile.
     expect(result.evidence.profileId).toBe(CLAUDE_CODE_2_1_280_PROFILE.id);
   });
 
@@ -181,21 +187,74 @@ describe("default profile: always an accepted profile", () => {
 });
 
 /*
- * Beta registry binding: documented here, NOT asserted.
+ * Beta registry binding.
  *
- * `src/betas.ts` maps a profile id to its registry through
- * `PROFILE_BETA_REGISTRIES`, read by `resolveBetaRegistry`. Both are
- * module-private: neither is exported, so this file cannot ask which registry
- * the 2.1.280 id resolves to. The only observable consequence of that binding
- * is the composed beta list (`composeBetas` / the `anthropic-beta` header),
- * and those bytes are deliberately excluded from this file while they are
- * still changing.
+ * This is the one registration seam whose failure is SILENT. `src/betas.ts`
+ * maps a profile id to its registry through `PROFILE_BETA_REGISTRIES`, read by
+ * `resolveBetaRegistry`, which falls back to the 2.1.195 registry for an
+ * unknown id rather than throwing. Both symbols are module-private, so no test
+ * can ask the resolver directly what the 2.1.280 id resolves to.
  *
- * What this file therefore does NOT prove: that the 2.1.280 id is bound to
- * `BETA_REGISTRY_2_1_280` rather than to another registry, or bound at all.
- * `resolveBetaRegistry` falls back to the 2.1.195 registry for an unknown id
- * instead of throwing, so an unbound id or a wrong binding would pass every
- * test above without a single failure. That binding is proven later by the
- * test that pins the final composed 2.1.280 beta identifiers once those bytes
- * stop changing.
+ * Worse, a mis-binding is currently INVISIBLE at runtime. Every key that
+ * `ComposableBetaRegistry` requires carries an identical header string in all
+ * three registries, and the one key that differs -- `NARRATION_SUMMARIES` --
+ * is gated off by `narrationSummariesEnabled: false` on all three profiles. So
+ * a 2.1.280 id bound to the 2.1.233 registry, or unbound and falling through
+ * to 2.1.195, produces byte-identical output for every input this repository
+ * can construct today. There is no composed byte to observe.
+ *
+ * The binding is therefore pinned below by reading the source, the same
+ * technique `test/governance/version-dispatch.test.ts` and
+ * `test/governance/provider-scope.test.ts` use. That is not an intermediate
+ * assertion: the map entry is registration, and it does not change when the
+ * composed beta list changes.
+ *
+ * What still has to be discharged later: the test that pins the final composed
+ * 2.1.280 `anthropic-beta` list must include at least one identifier that
+ * exists ONLY in `BETA_REGISTRY_2_1_280`. The five keys new to 2.1.280 are
+ * optional on `ComposableBetaRegistry`, so a fallback registry drops their
+ * push sites silently. A final assertion built only from identifiers the older
+ * registries also carry would pass under a mis-binding.
  */
+describe("2.1.280 registration: beta registry binding", () => {
+  const betasSource = readFileSync(
+    new URL("../../src/betas.ts", import.meta.url),
+    "utf8",
+  );
+  // Comment-stripped and whitespace-collapsed: what the module executes, and
+  // insensitive to how prettier chooses to wrap the map entries.
+  const betasCode = betasSource
+    .replace(/\/\*[\s\S]*?\*\//gu, "")
+    .replace(/\/\/[^\n]*/gu, "")
+    .replace(/\s+/gu, " ");
+
+  function bindingPattern(profile: string, registry: string): RegExp {
+    return new RegExp(
+      `\\[\\s*${profile}\\.id\\s*,\\s*${registry}\\s*,?\\s*\\]`,
+      "u",
+    );
+  }
+
+  it("binds the 2.1.280 profile id to the 2.1.280 registry", () => {
+    expect(betasCode).toMatch(
+      bindingPattern("CLAUDE_CODE_2_1_280_PROFILE", "BETA_REGISTRY_2_1_280"),
+    );
+  });
+
+  it("recognises the existing bindings, so the pattern is not vacuous", () => {
+    expect(betasCode).toMatch(
+      bindingPattern("CLAUDE_CODE_2_1_195_PROFILE", "BETA_REGISTRY"),
+    );
+    expect(betasCode).toMatch(
+      bindingPattern("CLAUDE_CODE_2_1_233_PROFILE", "BETA_REGISTRY_2_1_233"),
+    );
+  });
+
+  it("does not match a binding that is absent", () => {
+    // Guards the reverse failure: a pattern loose enough to match anything
+    // would make the assertions above meaningless.
+    expect(betasCode).not.toMatch(
+      bindingPattern("CLAUDE_CODE_2_1_280_PROFILE", "BETA_REGISTRY_2_1_233"),
+    );
+  });
+});

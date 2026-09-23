@@ -320,11 +320,14 @@ function containsString(value: unknown, target: string): boolean {
 }
 
 /**
- * The profiles this package will assemble a request for. Three entries:
- * 2.1.195, 2.1.233 and 2.1.280. Which one a caller gets when it passes none
- * is `DEFAULT_PROFILE` below and is deliberately not restated here, so that
- * a default switch touches one line rather than two. Admitting a profile is
- * exactly this list -- `validateProfile` never changed to accept a new one.
+ * Every pinned profile singleton, and nothing else. The set is not enumerated
+ * in prose here: the literal below is three lines away and cannot go stale,
+ * whereas a count in a comment goes stale on the next port -- which is exactly
+ * what happened to the text this replaced. Which profile a caller gets when it
+ * passes none is `DEFAULT_PROFILE` below and is deliberately not restated
+ * here, so that a default switch touches one line rather than two. Admitting a
+ * profile is exactly this list -- `validateProfile` never changed to accept a
+ * new one.
  *
  * Membership is by REFERENCE, deliberately. A structural check would accept a
  * caller-built object that merely looks like a pinned profile, and every wire
@@ -1074,7 +1077,7 @@ function parseCapabilityDecisions(
  * Validates evidence against the profile the request was parsed under, not
  * against a hardcoded singleton. `parseBuiltClaudeCodeRequest` already
  * validates `url` against `pinnedProfile.endpoint`; the profile id is the one
- * remaining field where the two pinned profiles differ, so it has to follow
+ * remaining field where pinned profiles differ, so it has to follow
  * the same source or a request built with a non-default profile could never
  * be re-parsed. Still fail-closed: the profile reaching here has already
  * passed `validateProfile`.

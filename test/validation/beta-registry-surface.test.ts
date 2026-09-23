@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   BETA_REGISTRY,
   BETA_REGISTRY_2_1_233,
+  BETA_REGISTRY_2_1_280,
   TOKEN_COUNTING_BETA,
 } from "../../src/index.js";
 
@@ -29,6 +30,7 @@ function entriesOf(
 const registries = [
   ["BETA_REGISTRY", BETA_REGISTRY, 28],
   ["BETA_REGISTRY_2_1_233", BETA_REGISTRY_2_1_233, 31],
+  ["BETA_REGISTRY_2_1_280", BETA_REGISTRY_2_1_280, 40],
 ] as const;
 
 describe("public beta registry surface", () => {
