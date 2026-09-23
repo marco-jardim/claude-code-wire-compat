@@ -68,8 +68,10 @@ describe("runtime/runtime-neutral (Wave 1 RED specification)", () => {
     expect(Object.keys(first).sort()).toEqual([
       "BETA_REGISTRY",
       "BETA_REGISTRY_2_1_233",
+      "BETA_REGISTRY_2_1_280",
       "CLAUDE_CODE_2_1_195_PROFILE",
       "CLAUDE_CODE_2_1_233_PROFILE",
+      "CLAUDE_CODE_2_1_280_PROFILE",
       "ClaudeCodeWireError",
       "DEFAULT_ANTI_VERBOSITY_POLICY",
       "TOKEN_COUNTING_BETA",

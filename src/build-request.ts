@@ -30,6 +30,7 @@ import {
 import { resolveModel } from "./models.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 import { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
+import { CLAUDE_CODE_2_1_280_PROFILE } from "./profiles/claude-code-2.1.280.js";
 import type { NormalizedRequestInput } from "./redaction.js";
 import { buildRedactedEvidence, toSafeErrorDetails } from "./redaction.js";
 import {
@@ -319,10 +320,11 @@ function containsString(value: unknown, target: string): boolean {
 }
 
 /**
- * The profiles this package will assemble a request for. Two entries: the
- * 2.1.195 default and the 2.1.233 profile, which callers must pass
- * explicitly. Admitting a profile is exactly this list -- `validateProfile`
- * did not change to accept the second one.
+ * The profiles this package will assemble a request for. Three entries:
+ * 2.1.195, 2.1.233 and 2.1.280. Which one a caller gets when it passes none
+ * is `DEFAULT_PROFILE` below and is deliberately not restated here, so that
+ * a default switch touches one line rather than two. Admitting a profile is
+ * exactly this list -- `validateProfile` never changed to accept a new one.
  *
  * Membership is by REFERENCE, deliberately. A structural check would accept a
  * caller-built object that merely looks like a pinned profile, and every wire
@@ -339,6 +341,7 @@ function containsString(value: unknown, target: string): boolean {
 const ACCEPTED_PROFILES: ReadonlySet<ClaudeCodeProtocolProfile> = new Set([
   CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
+  CLAUDE_CODE_2_1_280_PROFILE,
 ]);
 
 /**

@@ -87,6 +87,10 @@ function policyErrors(value: PackageManifest): readonly string[] {
         types: "./dist/profiles/claude-code-2.1.233.d.ts",
         import: "./dist/profiles/claude-code-2.1.233.js",
       },
+      "./profiles/claude-code-2.1.280": {
+        types: "./dist/profiles/claude-code-2.1.280.d.ts",
+        import: "./dist/profiles/claude-code-2.1.280.js",
+      },
     })
   )
     errors.push("explicit exports");

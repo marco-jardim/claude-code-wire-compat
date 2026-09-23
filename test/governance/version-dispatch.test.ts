@@ -42,7 +42,7 @@ const DISPATCH_MODULE = "profile-behaviors.ts";
  * Upstream client versions this package has profiles for. A literal of one of
  * these in comment-stripped `src/` is what the version-literal scan looks for.
  */
-const VERSION_LITERALS = ["2.1.195", "2.1.233"] as const;
+const VERSION_LITERALS = ["2.1.195", "2.1.233", "2.1.280"] as const;
 
 /**
  * Files permitted to name a profile identity in code, with the reason.
@@ -70,8 +70,8 @@ const VERSION_LITERALS = ["2.1.195", "2.1.233"] as const;
 const ACCEPTANCE_ALLOWLIST: ReadonlyMap<string, string> = new Map([
   [
     "redaction.ts",
-    "Acceptance by id STRING. `PINNED_PROFILE_IDS` is a Set of the two " +
-      "supported profile ids, membership-tested against an id read off an " +
+    "Acceptance by id STRING. `PINNED_PROFILE_IDS` is a Set of every " +
+      "supported profile id, membership-tested against an id read off an " +
       "untrusted object that may not be a real profile at all — so object " +
       "identity comparison is unavailable here and the literals are " +
       "unavoidable. It answers 'is this a profile we support', never 'what " +
