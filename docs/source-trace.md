@@ -54,6 +54,28 @@ implement it. The module has since landed. The governance test in
 every profile module must be registered here, and every entry registered here must cite an analysis
 document that exists.
 
+### Profile `claude-code-2.1.280-sdk-0.112.1`
+
+| Field           | Pinned value                                             |
+| --------------- | -------------------------------------------------------- |
+| Profile id      | `claude-code-2.1.280-sdk-0.112.1`                        |
+| Claude Code CLI | `2.1.280`                                                |
+| Anthropic SDK   | `0.112.1`                                                |
+| Build time      | `2026-09-21T20:40:17Z`                                   |
+| Git SHA         | `80abbfe7d7232280011ff01a21ae3338f4c6e372`               |
+| Analysis        | `docs/protocol/versions/claude-code-2.1.280-analysis.md` |
+| Profile module  | `src/profiles/claude-code-2.1.280.ts`                    |
+
+The SDK version is unchanged from 2.1.233; upstream pairs both CLI releases with `0.112.1`, and the
+value is read from the CLI-to-SDK mapping rather than from the standalone fallback constant.
+
+Two catalogue facts in this release are worth recording here because they are easy to mistake for
+transcription slips. `claude-opus-5-5` is the only entry in any pinned profile whose `default_effort`
+is `medium`, and the only one whose default and upper output-token limits are equal at `128000`.
+`claude-mythos-5` keeps the empty capability array it was catalogued with at 2.1.233 — a denial, not
+a gap — while the new `claude-mythos-5-1` carries eleven capabilities but neither `per_turn_effort`
+nor `refusal_fallback`, unlike the otherwise similar `claude-fable-5-1`.
+
 ### Drift monitoring is the tracking runbook, not an external checkout
 
 An earlier revision of this document described an offline drift verifier that compared the pinned
