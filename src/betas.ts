@@ -87,8 +87,17 @@ const PROFILE_BETA_REGISTRIES: ReadonlyMap<string, ComposableBetaRegistry> =
  * give `composeBetas` a second, differently-worded opinion about profile
  * validity. Standalone callers keep the 2.1.195 behaviour they had before
  * profiles were a parameter.
+ *
+ * Exported for tests only, and deliberately NOT re-exported from
+ * `src/index.ts`: the public runtime surface stays closed. That fallback is
+ * precisely why a test needs to reach this function. A profile bound to the
+ * wrong registry, or to none, silently composes against 2.1.195 instead of
+ * failing, and every required key of `ComposableBetaRegistry` currently
+ * carries an identical header in all three registries -- so a mis-binding
+ * changes no emitted byte and no behavioural suite can see it. Asking this
+ * function directly is the only way to observe the binding at all.
  */
-function resolveBetaRegistry(
+export function resolveBetaRegistry(
   profile: ClaudeCodeProtocolProfile,
 ): ComposableBetaRegistry {
   return PROFILE_BETA_REGISTRIES.get(profile.id) ?? BETA_REGISTRY;

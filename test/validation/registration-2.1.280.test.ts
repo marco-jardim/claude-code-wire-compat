@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { readFileSync } from "node:fs";
-
 import { describe, expect, it } from "vitest";
 
+import { resolveBetaRegistry } from "../../src/betas.js";
 import { DEFAULT_PROFILE } from "../../src/build-request.js";
 import {
+  BETA_REGISTRY,
+  BETA_REGISTRY_2_1_233,
   BETA_REGISTRY_2_1_280,
+  CLAUDE_CODE_2_1_195_PROFILE,
+  CLAUDE_CODE_2_1_233_PROFILE,
   CLAUDE_CODE_2_1_280_PROFILE,
   buildClaudeCodeRequest,
 } from "../../src/index.js";
@@ -192,69 +195,63 @@ describe("default profile: always an accepted profile", () => {
  * This is the one registration seam whose failure is SILENT. `src/betas.ts`
  * maps a profile id to its registry through `PROFILE_BETA_REGISTRIES`, read by
  * `resolveBetaRegistry`, which falls back to the 2.1.195 registry for an
- * unknown id rather than throwing. Both symbols are module-private, so no test
- * can ask the resolver directly what the 2.1.280 id resolves to.
+ * unknown id rather than throwing.
  *
- * Worse, a mis-binding is currently INVISIBLE at runtime. Every key that
+ * A mis-binding is INVISIBLE at runtime today. Every key that
  * `ComposableBetaRegistry` requires carries an identical header string in all
  * three registries, and the one key that differs -- `NARRATION_SUMMARIES` --
  * is gated off by `narrationSummariesEnabled: false` on all three profiles. So
  * a 2.1.280 id bound to the 2.1.233 registry, or unbound and falling through
  * to 2.1.195, produces byte-identical output for every input this repository
- * can construct today. There is no composed byte to observe.
+ * can construct today. There is no composed byte to observe, which is exactly
+ * why the resolver has to be asked directly rather than through its effects.
  *
- * The binding is therefore pinned below by reading the source, the same
- * technique `test/governance/version-dispatch.test.ts` and
- * `test/governance/provider-scope.test.ts` use. That is not an intermediate
- * assertion: the map entry is registration, and it does not change when the
- * composed beta list changes.
+ * An earlier version of this suite matched the map entry in the SOURCE TEXT of
+ * `src/betas.ts` instead. That was too weak, and the failure modes it missed
+ * are worth naming so nobody reinstates it: the tuple relocated into dead code
+ * elsewhere in the module, `resolveBetaRegistry` rewritten to ignore the map,
+ * or the lookup rekeyed off a different profile field would all leave the text
+ * matching while the binding did nothing. `resolveBetaRegistry` is therefore
+ * exported for tests and asserted by identity below.
  *
- * What still has to be discharged later: the test that pins the final composed
- * 2.1.280 `anthropic-beta` list must include at least one identifier that
- * exists ONLY in `BETA_REGISTRY_2_1_280`. The five keys new to 2.1.280 are
- * optional on `ComposableBetaRegistry`, so a fallback registry drops their
- * push sites silently. A final assertion built only from identifiers the older
- * registries also carry would pass under a mis-binding.
+ * What this does NOT discharge: that the registry a profile resolves to is the
+ * registry whose entries reach the wire. Establishing that needs the composed
+ * `anthropic-beta` list to contain at least one identifier only
+ * `BETA_REGISTRY_2_1_280` carries -- and today no such identifier can reach it,
+ * because `ComposableBetaRegistry` declares sixteen required keys plus one
+ * optional, and every key new to 2.1.280 is absent from the type, so
+ * `composeBetas` has no push site for any of them. That obligation therefore
+ * falls to the phase that extends the type and adds the push sites: its final
+ * composed-beta assertion must include at least one such identifier, emitted
+ * under an input this suite can construct.
  */
 describe("2.1.280 registration: beta registry binding", () => {
-  const betasSource = readFileSync(
-    new URL("../../src/betas.ts", import.meta.url),
-    "utf8",
-  );
-  // Comment-stripped and whitespace-collapsed: what the module executes, and
-  // insensitive to how prettier chooses to wrap the map entries.
-  const betasCode = betasSource
-    .replace(/\/\*[\s\S]*?\*\//gu, "")
-    .replace(/\/\/[^\n]*/gu, "")
-    .replace(/\s+/gu, " ");
-
-  function bindingPattern(profile: string, registry: string): RegExp {
-    return new RegExp(
-      `\\[\\s*${profile}\\.id\\s*,\\s*${registry}\\s*,?\\s*\\]`,
-      "u",
-    );
-  }
-
-  it("binds the 2.1.280 profile id to the 2.1.280 registry", () => {
-    expect(betasCode).toMatch(
-      bindingPattern("CLAUDE_CODE_2_1_280_PROFILE", "BETA_REGISTRY_2_1_280"),
+  it("resolves the 2.1.280 profile to the 2.1.280 registry", () => {
+    expect(resolveBetaRegistry(CLAUDE_CODE_2_1_280_PROFILE)).toBe(
+      BETA_REGISTRY_2_1_280,
     );
   });
 
-  it("recognises the existing bindings, so the pattern is not vacuous", () => {
-    expect(betasCode).toMatch(
-      bindingPattern("CLAUDE_CODE_2_1_195_PROFILE", "BETA_REGISTRY"),
+  it("resolves the older profiles to their own registries", () => {
+    // Anti-vacuity: proves the resolver discriminates rather than returning
+    // the 2.1.280 registry, or one registry, for everything.
+    expect(resolveBetaRegistry(CLAUDE_CODE_2_1_195_PROFILE)).toBe(
+      BETA_REGISTRY,
     );
-    expect(betasCode).toMatch(
-      bindingPattern("CLAUDE_CODE_2_1_233_PROFILE", "BETA_REGISTRY_2_1_233"),
+    expect(resolveBetaRegistry(CLAUDE_CODE_2_1_233_PROFILE)).toBe(
+      BETA_REGISTRY_2_1_233,
     );
   });
 
-  it("does not match a binding that is absent", () => {
-    // Guards the reverse failure: a pattern loose enough to match anything
-    // would make the assertions above meaningless.
-    expect(betasCode).not.toMatch(
-      bindingPattern("CLAUDE_CODE_2_1_280_PROFILE", "BETA_REGISTRY_2_1_233"),
-    );
+  it("falls back to the 2.1.195 registry for an unknown id", () => {
+    // Documents the fallback that makes a mis-binding silent. A profile the
+    // map does not know is not refused here; the request builder refuses it.
+    const unknown = {
+      ...CLAUDE_CODE_2_1_280_PROFILE,
+      id: "claude-code-0.0.0-sdk-0.0.0",
+    };
+
+    expect(resolveBetaRegistry(unknown)).toBe(BETA_REGISTRY);
+    expect(resolveBetaRegistry(unknown)).not.toBe(BETA_REGISTRY_2_1_280);
   });
 });

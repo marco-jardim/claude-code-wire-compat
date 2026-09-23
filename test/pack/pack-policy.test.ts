@@ -92,7 +92,7 @@ describe("published tarball policy", () => {
     const packOutput = execFileSync(
       process.execPath,
       [npmCliPath(), "pack", "--dry-run", "--json", "--ignore-scripts"],
-      { cwd: repositoryRoot, encoding: "utf8" },
+      { cwd: repositoryRoot, encoding: "utf8", timeout: 30_000 },
     );
     const packResult = firstPackResult(packOutput) as PackResult | undefined;
     if (packResult === undefined) {
@@ -150,23 +150,24 @@ describe("published tarball policy", () => {
      * default there reports a packaging defect that does not exist, and a gate
      * that fails randomly teaches a maintainer to re-run until green.
      *
-     * The number is the worst observed time rounded up to roughly five times
-     * itself. That ratio is the rule, stated so the next reader can re-derive
-     * the value rather than inherit it: contention scales wall time by a factor
-     * this machine has already shown to exceed four, so a headroom that merely
-     * clears the worst observation would be tuned to one measurement.
+     * The number is roughly five times the worst contended observation. That
+     * multiple is a chosen margin, not a derivation: it is stated so the next
+     * reader knows the value was picked for headroom rather than measured, and
+     * can change it deliberately. A budget that merely cleared 5567ms would be
+     * tuned to a single observation on one machine.
      *
      * Raised per-case rather than globally in `vitest.config.ts`, because the
      * default is what catches a genuine hang everywhere else.
      *
-     * What it does NOT buy, stated so nobody relies on it: `execFileSync`
-     * blocks the thread, and vitest cannot interrupt a synchronous call -- it
-     * compares elapsed time only once control returns. So this timeout turns a
-     * slow subprocess into a clear failure, but a genuinely hung `npm pack`
-     * would hang the run regardless of the number here. Bounding that is
-     * `execFileSync`'s own `timeout` option, which is deliberately not added:
-     * it has never been observed to hang, and a guard against an unobserved
-     * failure mode is speculation of the kind this repository avoids.
+     * What the per-case number does NOT buy, stated so nobody relies on it:
+     * `execFileSync` blocks the thread, and vitest cannot interrupt a
+     * synchronous call -- it compares elapsed time only once control returns.
+     * So on its own this timeout turns a slow subprocess into a clear failure
+     * but would let a genuinely hung `npm pack` hang the whole run. Bounding
+     * that is `execFileSync`'s own `timeout` option, passed at both call sites
+     * in this file, which kills the child and throws instead of blocking
+     * forever. The two numbers are deliberately the same: the point is that
+     * whichever limit trips first, the failure is reported rather than hung.
      */
   }, 30_000);
 
@@ -177,7 +178,7 @@ describe("published tarball policy", () => {
     const packOutput = execFileSync(
       process.execPath,
       [npmCliPath(), "pack", "--dry-run", "--json", "--ignore-scripts"],
-      { cwd: repositoryRoot, encoding: "utf8" },
+      { cwd: repositoryRoot, encoding: "utf8", timeout: 30_000 },
     );
     const packResult = firstPackResult(packOutput) as PackResult | undefined;
     if (packResult === undefined) {
@@ -189,8 +190,7 @@ describe("published tarball policy", () => {
     const packageSlug = manifest.name.replace(/^@/u, "").replace(/\//gu, "-");
     expect(packResult.filename).toBe(`${packageSlug}-${manifest.version}.tgz`);
     /*
-     * Same subprocess, same exposure, same timeout, and the same caveat about
-     * what a timeout on a synchronous call can and cannot do. This case has not
+     * Same subprocess, same exposure, same pair of limits. This case has not
      * been observed to time out, but it runs the identical `npm pack` call as
      * the one above; leaving it on the default would keep an identical landmine
      * armed and let it be rediscovered as a mystery rather than read as a
