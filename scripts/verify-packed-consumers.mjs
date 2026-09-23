@@ -38,6 +38,27 @@ const consumerDirectories = consumerNames.map((name) =>
  * scalars and beta composition rather than about catalogue deltas.
  */
 const CASE_NAMES = ["default", "2.1.195", "2.1.233"];
+/*
+ * The frozen digests the explicit cases must reproduce. A mismatch means a
+ * code change altered the wire output of a profile that was supposed to be
+ * untouched. The correct response is to find and revert that cause — NEVER
+ * to update a literal here to match the new output.
+ *
+ * `default` is deliberately not pinned to a literal: switching
+ * `DEFAULT_PROFILE` moves it on purpose. It is pinned instead to the case name
+ * it must currently agree with, so a default switch is a deliberate one-line
+ * change to `EXPECTED_DEFAULT_CASE` and is still verified rather than going
+ * unobserved.
+ *
+ * A case listed in `CASE_NAMES` but absent from `EXPECTED_DIGESTS` is
+ * intentionally unpinned; that is how a newly added profile behaves until its
+ * digest is first recorded.
+ */
+const EXPECTED_DIGESTS = {
+  "2.1.195": "6b9609b29463c890544845dd94acf560206b6f8165538faafd8886750037d277",
+  "2.1.233": "4e06af42310d63549a4fa9af60ff0c9b13e95d7864624c6b7bf94d45ce9a3997",
+};
+const EXPECTED_DEFAULT_CASE = "2.1.233";
 const consumerSource = `
 import {
   CLAUDE_CODE_2_1_195_PROFILE,
@@ -323,6 +344,56 @@ try {
       `Packed consumer digests do not match for: ${mismatched.join(", ")}`,
     );
   }
+
+  // Every case is now known to be identical across runtimes, so the node
+  // digest is a sound single reference for the agreed value of each case.
+  const referenceDigests = digests.get("node");
+  const agreed = new Map(
+    CASE_NAMES.map((name) => [name, referenceDigests[name]]),
+  );
+
+  // Frozen-digest enforcement. Failures are collected, not thrown on the
+  // first, so a reviewer sees whether one profile moved or several did.
+  const frozenFailures = [];
+  for (const [name, expected] of Object.entries(EXPECTED_DIGESTS)) {
+    const observed = agreed.get(name);
+    if (observed !== expected) {
+      frozenFailures.push({ name, expected, observed });
+    }
+  }
+  if (!agreed.has(EXPECTED_DEFAULT_CASE)) {
+    throw new Error(
+      `EXPECTED_DEFAULT_CASE "${EXPECTED_DEFAULT_CASE}" is not in CASE_NAMES ` +
+        `(${CASE_NAMES.join(", ")}); fix this script's configuration.`,
+    );
+  }
+  const expectedDefault = agreed.get(EXPECTED_DEFAULT_CASE);
+  const observedDefault = agreed.get("default");
+  if (observedDefault !== expectedDefault) {
+    frozenFailures.push({
+      name: `default (must equal ${EXPECTED_DEFAULT_CASE})`,
+      expected: expectedDefault,
+      observed: observedDefault,
+    });
+  }
+  if (frozenFailures.length > 0) {
+    const lines = frozenFailures.map(
+      ({ name, expected, observed }) =>
+        `  ${name}: expected ${expected}, observed ${observed}`,
+    );
+    throw new Error(
+      [
+        "Frozen packed consumer digests moved:",
+        ...lines,
+        "Do NOT edit EXPECTED_DIGESTS or EXPECTED_DEFAULT_CASE to make this " +
+          "pass. Find the change that altered the wire bytes and revert it.",
+      ].join("\n"),
+    );
+  }
+  console.log(
+    `Frozen digests matched for: ${Object.keys(EXPECTED_DIGESTS).join(", ")}; ` +
+      `default matches ${EXPECTED_DEFAULT_CASE}.`,
+  );
   console.log("Packed consumer digests are identical.");
 } finally {
   if (tarballPath) {
