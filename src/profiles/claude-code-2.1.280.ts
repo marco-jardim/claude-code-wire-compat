@@ -11,7 +11,10 @@ import { COUNT_TOKENS_ENDPOINT } from "../count-tokens.js";
  * `docs/protocol/versions/claude-code-2.1.280-analysis.md`, which records the
  * byte offsets they came from. The catalogue was additionally re-extracted
  * from the carved bundle independently of that document (cluster bytes
- * 5941320-5955961) and agreed on every field of all twenty entries.
+ * 5941320-5955961) and agreed on every field of all twenty entries; that
+ * re-extraction is not a claim you have to take on trust, because the method
+ * it used is written down in section 5.2.1 of the analysis document and can be
+ * re-run against the same dump.
  *
  * `effort_cost_index` is deliberately omitted, as in the 2.1.233 profile, and
  * so are the other nine static-catalogue fields the package does not model
@@ -45,35 +48,69 @@ export const CLAUDE_CODE_2_1_280_PROFILE: ClaudeCodeProtocolProfile =
     userAgent: "claude-cli/2.1.280 (external, cli)",
     buildTime: "2026-09-21T20:40:17Z",
     gitSha: "80abbfe7d7232280011ff01a21ae3338f4c6e372",
-    // Unchanged from 2.1.233. The analysis document enumerates the transport
-    // scalars in section 8.1 and records no change to the attribution header,
-    // so the value is inherited rather than re-derived.
+    // RETAINED from 2.1.233, not asserted. The 2.1.280 analysis document does
+    // not examine the billing block at all -- it contains no occurrence of
+    // "attribution" -- so this is silence, which is not the same as evidence of
+    // no change. The only indirect support is that the fingerprint salt the
+    // billing line carries is unchanged (section 13). Section 13.2 draws this
+    // exact distinction for the beta policy and it applies here too: where the
+    // evidence is absent the previous release's value is retained rather than
+    // re-derived, and a later release that captures live traffic should settle
+    // it.
     attributionHeaderEnabled: true,
     provider: "anthropic",
     anthropicVersion: "2023-06-01",
-    // Section 9.2: `context_hint` remains off for 2.1.280. Corroborated
-    // independently by section 7.6 -- the fourteen-identifier default-path
-    // `anthropic-beta` literal contains no `context-hint` identifier, and this
-    // flag is one of the two things that would put one there.
+    // Section 9.2: `context_hint` remains off for 2.1.280. Section 7.6 agrees
+    // -- its fourteen-identifier default-path `anthropic-beta` literal contains
+    // no `context-hint` identifier -- but that is the same gate restated, not a
+    // second line of evidence, because the 7.6 row cites the gate 9.2 resolves.
+    // Only two things put that identifier into an emitted list: this flag,
+    // which also emits a `context_hint` body field, and a caller passing the
+    // identifier explicitly through the `additionalBetas` request seam.
     contextHintEnabled: false,
+    /*
+     * The eleven flags of analysis document section 13.2, which grades each
+     * one. That grading is carried here per flag, because two of the eleven are
+     * *retained* from 2.1.233 rather than resolved from this build -- their
+     * upstream gates gave no answer -- and nothing in the value itself
+     * distinguishes a retained flag from a derived one. A later release that
+     * resolves a retained gate changes that flag on evidence; a later release
+     * that merely repeats it has learned nothing.
+     */
     betaPolicy: {
+      // RETAINED. The gate reduces to a predicate whose own gate is
+      // unresolved. What it decides is position rather than presence: the SDK
+      // appends the OAuth beta unconditionally on a token-cache session
+      // (section 8.3), so the choice is slot 2 versus appended last, and this
+      // profile pins slot 2 as 2.1.195 and 2.1.233 do.
       oauthAuthenticated: true,
+      // Derived.
       experimentalBetasEnabled: true,
+      // From the bundle: the gate reads an opt-out environment variable that is
+      // unset by default.
       oneMillionContextEnabled: true,
+      // Derived.
       interleavedThinkingEnabled: true,
+      // Derived.
       interactive: true,
+      // Derived.
       thinkingSummariesShown: false,
+      // Derived.
       thinkingTokenCountEnabled: true,
-      // Inert for this profile: the 2.1.280 registry slot that would carry
-      // `narration_summaries` is null in this build, so there is no entry for
-      // this flag to gate.
+      // From the bundle, and inert for this profile either way: the 2.1.280
+      // registry slot that would carry `narration_summaries` is null in this
+      // build, so there is no entry for this flag to gate.
       narrationSummariesEnabled: false,
+      // Derived.
       structuredOutputsEnabled: false,
+      // RETAINED. Its gates are unresolved in this build.
       afkModeEnabled: false,
-      // Changed from 2.1.233, where this profile pins `false`. Section 7.6.2
-      // resolves the 2.1.280 gate to true. Whether the 2.1.233 value was
-      // always wrong cannot be settled without the 2.1.233 binary, so that
-      // profile is deliberately left alone.
+      // Changed from 2.1.233, where the 2.1.233 profile pins `false`. Section
+      // 7.6.2 resolves all three legs of the 2.1.280 gate to true. Whether the
+      // 2.1.233 value was always wrong cannot be settled without the 2.1.233
+      // binary, and inferring one release's value from another's is exactly
+      // what the tracking runbook forbids, so that profile is deliberately left
+      // alone.
       cacheDiagnosisEnabled: true,
     },
     /**

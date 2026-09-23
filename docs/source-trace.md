@@ -66,15 +66,19 @@ document that exists.
 | Analysis        | `docs/protocol/versions/claude-code-2.1.280-analysis.md` |
 | Profile module  | `src/profiles/claude-code-2.1.280.ts`                    |
 
-The SDK version is unchanged from 2.1.233; upstream pairs both CLI releases with `0.112.1`, and the
-value is read from the CLI-to-SDK mapping rather than from the standalone fallback constant.
+The SDK version is unchanged from 2.1.233; upstream pairs both CLI releases with `0.112.1`. The
+mapping-versus-fallback distinction recorded below for the plugin-era profiles does not arise here,
+because it is a property of the plugin rather than of the client: in the 2.1.280 client build the
+version is a single constant, and the analysis document records both its sole declaration and the
+one site that consumes it as the `X-Stainless-Package-Version` header.
 
 Two catalogue facts in this release are worth recording here because they are easy to mistake for
 transcription slips. `claude-opus-5-5` is the only entry in any pinned profile whose `default_effort`
 is `medium`, and the only one whose default and upper output-token limits are equal at `128000`.
 `claude-mythos-5` keeps the empty capability array it was catalogued with at 2.1.233 — a denial, not
-a gap — while the new `claude-mythos-5-1` carries eleven capabilities but neither `per_turn_effort`
-nor `refusal_fallback`, unlike the otherwise similar `claude-fable-5-1`.
+a gap — while the new `claude-mythos-5-1` carries twelve capabilities but neither `per_turn_effort`
+nor `refusal_fallback`, unlike the otherwise similar `claude-fable-5-1`. The eleven-capability entry
+is `claude-fable-5`.
 
 ### Drift monitoring is the tracking runbook, not an external checkout
 
@@ -93,7 +97,7 @@ procedure produces is guarded mechanically by the sealed golden fixtures (`npm r
 and replayed behaviourally by the differential suite, so a value that moves without evidence fails
 the build regardless of which release it belongs to.
 
-Both pinned profiles remain fully covered by that arrangement. The SDK version of a release is the
+All three pinned profiles remain fully covered by that arrangement. The SDK version of a release is the
 one its own CLI-to-SDK mapping carries — upstream holds the standalone fallback constant at
 `0.94.0` while pairing `2.1.233` with `0.112.1`, so a transcription must read the mapping and never
 the fallback constant. That distinction is a property of the source, and it survives the removal of

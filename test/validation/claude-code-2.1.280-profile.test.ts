@@ -65,6 +65,63 @@ const MAX_OUTPUT_TOKENS: Record<string, { default: number; upper: number }> = {
   "claude-mythos-5-1": { default: 64000, upper: 128000 },
 };
 
+// §5.2.1, verbatim. Every value is the one the model name implies, which is
+// precisely why the bundle has to be read for it: the bundle states no such
+// rule, so a name-derived family would be an inference, not a transcription.
+const FAMILIES: Record<string, string> = {
+  "claude-3-5-haiku": "haiku",
+  "claude-haiku-4-5": "haiku",
+  "claude-3-5-sonnet": "sonnet",
+  "claude-3-7-sonnet": "sonnet",
+  "claude-sonnet-4-0": "sonnet",
+  "claude-sonnet-4-5": "sonnet",
+  "claude-sonnet-4-6": "sonnet",
+  "claude-sonnet-5": "sonnet",
+  "claude-opus-4-0": "opus",
+  "claude-opus-4-1": "opus",
+  "claude-opus-4-5": "opus",
+  "claude-opus-4-6": "opus",
+  "claude-opus-4-7": "opus",
+  "claude-opus-4-8": "opus",
+  "claude-opus-5": "opus",
+  "claude-opus-5-5": "opus",
+  "claude-fable-5": "fable",
+  "claude-fable-5-1": "fable",
+  "claude-mythos-5": "mythos",
+  "claude-mythos-5-1": "mythos",
+};
+
+/*
+ * Every distinct capability string in §5.4, as a closed set.
+ *
+ * The character-class assertion further down cannot catch a plausible typo:
+ * `context_managment` and `per_turn_timeing` are both `^[a-z0-9_]+$`. Since the
+ * catalogue and its expectations were transcribed from one document by two
+ * readers, an identical slip would agree with itself. A closed vocabulary is
+ * the check that does not depend on the two transcriptions disagreeing -- it
+ * fails on any string that is not one of the eighteen, however it got there.
+ */
+const CAPABILITY_VOCABULARY: readonly string[] = [
+  "adaptive_thinking",
+  "context_management",
+  "effort",
+  "fable_5_1_prompt_bundle",
+  "fable_5_mitigations",
+  "fast_mode",
+  "lean_prompt",
+  "max_effort",
+  "mid_conv_system",
+  "mid_conv_tool_change",
+  "opus_5_5_prompt_bundle",
+  "opus_5_prompt_bundle",
+  "per_turn_effort",
+  "per_turn_timing",
+  "refusal_fallback",
+  "rejects_disabled_thinking",
+  "thinking_disabled_effort_cap",
+  "xhigh_effort",
+];
+
 // §5.4, verbatim and in document order.
 const CAPABILITIES: Record<string, readonly string[]> = {
   "claude-3-5-haiku": [],
@@ -227,14 +284,12 @@ const DEFAULT_EFFORTS: Record<string, string> = {
 
 describe("CLAUDE_CODE_2_1_280_PROFILE (independent transcription of the analysis doc)", () => {
   it("carries the §8.1 transport scalars", () => {
-    expect(CLAUDE_CODE_2_1_233_PROFILE.id).toBe(
-      "claude-code-2.1.233-sdk-0.112.1",
-    );
     expect({
       id: profile.id,
       cliVersion: profile.cliVersion,
       sdkVersion: profile.sdkVersion,
       endpoint: profile.endpoint,
+      countTokensEndpoint: profile.countTokensEndpoint,
       entrypoint: profile.entrypoint,
       userAgent: profile.userAgent,
       buildTime: profile.buildTime,
@@ -246,6 +301,8 @@ describe("CLAUDE_CODE_2_1_280_PROFILE (independent transcription of the analysis
       cliVersion: "2.1.280",
       sdkVersion: "0.112.1",
       endpoint: "https://api.anthropic.com/v1/messages?beta=true",
+      countTokensEndpoint:
+        "https://api.anthropic.com/v1/messages/count_tokens?beta=true",
       entrypoint: "cli",
       userAgent: "claude-cli/2.1.280 (external, cli)",
       buildTime: "2026-09-21T20:40:17Z",
@@ -347,6 +404,12 @@ describe("CLAUDE_CODE_2_1_280_PROFILE (independent transcription of the analysis
   });
 
   it("keeps all seventeen 2.1.233 ids and adds exactly the three new ones", () => {
+    // Anchors the comparand: this test is the one place the previous profile
+    // is used as an oracle, so a wrong import would otherwise weaken it
+    // silently rather than fail.
+    expect(CLAUDE_CODE_2_1_233_PROFILE.id).toBe(
+      "claude-code-2.1.233-sdk-0.112.1",
+    );
     const previous = Object.keys(CLAUDE_CODE_2_1_233_PROFILE.supportedModels);
     const current = Object.keys(models);
     expect(previous).toHaveLength(17);
@@ -356,6 +419,21 @@ describe("CLAUDE_CODE_2_1_280_PROFILE (independent transcription of the analysis
       "claude-fable-5-1",
       "claude-mythos-5-1",
     ]);
+  });
+
+  it("matches the §5.2.1 family of every model", () => {
+    expect(
+      Object.fromEntries(
+        Object.entries(models).map(([id, entry]) => [id, entry.family]),
+      ),
+    ).toEqual(FAMILIES);
+  });
+
+  it("uses only the eighteen §5.4 capability strings", () => {
+    const vocabulary = [
+      ...new Set(Object.values(models).flatMap((entry) => entry.capabilities)),
+    ].sort((left, right) => left.localeCompare(right));
+    expect(vocabulary).toEqual(CAPABILITY_VOCABULARY);
   });
 
   it("uses only plain ASCII in model ids and capability strings", () => {
@@ -371,5 +449,107 @@ describe("CLAUDE_CODE_2_1_280_PROFILE (independent transcription of the analysis
       badIds: [],
       badCapabilities: [],
     });
+  });
+});
+
+/*
+ * Cross-profile sweep against 2.1.233.
+ *
+ * Everything above compares the module to a transcription of the analysis
+ * document. Both were produced by reading the same document, so an identical
+ * misreading agrees with itself and passes. This sweep uses a different oracle
+ * entirely: the 2.1.233 profile module, whose bytes are pinned by a frozen
+ * cross-runtime digest and therefore cannot be edited to make a test pass.
+ * Every id present in both catalogues is compared field by field, and the only
+ * capability differences tolerated are the ones declared here.
+ *
+ * The projection is order-aware rather than reconstructive. §5.5 records that
+ * the 2.1.280 additions are inserted mid-array -- `mid_conv_tool_change` lands
+ * immediately after `mid_conv_system`, not at the tail -- so rebuilding the
+ * expected array as "previous entries, then the additions" would fail on
+ * correct data. Instead: the carried-over strings must appear in their previous
+ * relative order, and whatever else is present must be exactly the declared
+ * additions.
+ */
+interface CapabilityDelta {
+  readonly removed: readonly string[];
+  readonly added: readonly string[];
+}
+
+const NO_DELTA: CapabilityDelta = { removed: [], added: [] };
+
+// §5.5, as corrected: three pre-existing models gain `mid_conv_tool_change`,
+// and `claude-opus-5` also gains `thinking_disabled_effort_cap`. `added` is
+// listed in the order the strings occupy in the 2.1.280 array.
+const KNOWN_CAPABILITY_DELTAS: Readonly<Record<string, CapabilityDelta>> = {
+  "claude-opus-4-8": { removed: [], added: ["mid_conv_tool_change"] },
+  "claude-opus-5": {
+    removed: [],
+    added: ["mid_conv_tool_change", "thinking_disabled_effort_cap"],
+  },
+  "claude-fable-5": { removed: [], added: ["mid_conv_tool_change"] },
+};
+
+const previousModels = CLAUDE_CODE_2_1_233_PROFILE.supportedModels;
+const SHARED_MODEL_IDS = MODEL_IDS.filter((id) =>
+  Object.hasOwn(previousModels, id),
+);
+
+describe("2.1.280 catalogue against 2.1.233", () => {
+  it("shares seventeen ids", () => {
+    expect(SHARED_MODEL_IDS).toHaveLength(17);
+  });
+
+  it.each(SHARED_MODEL_IDS)(
+    "%s differs from 2.1.233 only by its declared capability delta",
+    (id) => {
+      const before = previousModels[id];
+      const after = models[id];
+      if (before === undefined || after === undefined) {
+        throw new Error(`${id} is missing from one of the two catalogues`);
+      }
+
+      const delta = KNOWN_CAPABILITY_DELTAS[id] ?? NO_DELTA;
+      const survivors = before.capabilities.filter(
+        (capability) => !delta.removed.includes(capability),
+      );
+
+      // Carried-over strings keep their relative order.
+      expect(
+        after.capabilities.filter((capability) =>
+          survivors.includes(capability),
+        ),
+      ).toEqual(survivors);
+      // Everything else is exactly what was declared.
+      expect(
+        after.capabilities.filter(
+          (capability) => !survivors.includes(capability),
+        ),
+      ).toEqual(delta.added);
+      for (const capability of delta.removed) {
+        expect(after.capabilities).not.toContain(capability);
+      }
+
+      expect(after.family).toEqual(before.family);
+      expect(after.maxOutputTokens).toEqual(before.maxOutputTokens);
+      expect(after.defaultEffort).toEqual(before.defaultEffort);
+      expect(after.context).toEqual(before.context);
+    },
+  );
+
+  it("declares a delta only where one applies", () => {
+    // Guards the sweep against a delta entry that quietly stops applying: a
+    // `removed` capability the 2.1.233 entry never had, or an `added` one it
+    // already carried, would make the projection a no-op and the sweep blind.
+    for (const [id, delta] of Object.entries(KNOWN_CAPABILITY_DELTAS)) {
+      const before = previousModels[id];
+      expect(before).toBeDefined();
+      for (const capability of delta.removed) {
+        expect(before?.capabilities).toContain(capability);
+      }
+      for (const capability of delta.added) {
+        expect(before?.capabilities).not.toContain(capability);
+      }
+    }
   });
 });

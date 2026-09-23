@@ -480,6 +480,57 @@ Facts a reader might be tempted to over-generalise, stated precisely `[DER]`:
   Whether it is a billing multiplier, a planning estimate, or a routing hint is
   not stated anywhere in the extracted code.
 
+### 5.2.1 `family` values, verbatim
+
+> **2026-09-23 — amendment.** §5.1 records that all twenty entries carry a
+> `family` key and that this package models it, but no revision of this document
+> tabulated the values. A profile module cannot be written without them, so the
+> port would have had to take all twenty from the 2.1.233 module plus the model
+> names — inference, which the runbook forbids. They are transcribed here from
+> the bundle instead.
+
+`[BIN]`
+
+```
+claude-3-5-haiku    haiku
+claude-haiku-4-5    haiku
+claude-3-5-sonnet   sonnet
+claude-3-7-sonnet   sonnet
+claude-sonnet-4-0   sonnet
+claude-sonnet-4-5   sonnet
+claude-sonnet-4-6   sonnet
+claude-sonnet-5     sonnet
+claude-opus-4-0     opus
+claude-opus-4-1     opus
+claude-opus-4-5     opus
+claude-opus-4-6     opus
+claude-opus-4-7     opus
+claude-opus-4-8     opus
+claude-opus-5       opus
+claude-opus-5-5     opus
+claude-fable-5      fable
+claude-fable-5-1    fable
+claude-mythos-5     mythos
+claude-mythos-5-1   mythos
+```
+
+Five distinct values, and every model's family is the one its name implies —
+which is exactly why it must be transcribed rather than inferred: a convention
+that holds for twenty entries is not a rule the bundle states anywhere, and
+`family` is a key upstream could repoint for a renamed model without changing
+the name. The seventeen carried-over values agree with the 2.1.233 profile
+module. `family` never reaches the wire in this package; it appears only in
+redacted evidence (`src/contracts.ts`), which bounds the blast radius of an
+error here but does not license a guess.
+
+**Extraction method, so this is reproducible.** Read the carved dump
+`cc-2.1.280.full.js` as latin1 in one string; find every occurrence of the
+literal `id:"claude-`; delimit each catalogue entry by bounding its match with
+the index of the *next* match. Bounding matters: an unbounded window bleeds
+into the following entry and mis-reports `default_effort` for
+`claude-mythos-5`, whose entry is the shortest of the twenty at 447 bytes. The
+cluster bounds are given at the head of §5.
+
 ### 5.3 Context objects, verbatim
 
 `[BIN]`
@@ -585,12 +636,29 @@ and 2.1.280 `[DER]`. The three new models resolve as:
 | `claude-fable-5-1`  | same six                                                                                                  |
 | `claude-mythos-5-1` | same six                                                                                                  |
 
-`claude-opus-5` and `claude-opus-4-8` **do** gain `mid_conv_tool_change`, and
-`claude-opus-5` also gains `thinking_disabled_effort_cap`. Neither string is
-mapped by `deriveCapabilitiesFromCatalogue`, so the package's *derived
-capability object* is unaffected — but see §7.6, where `mid_conv_tool_change`
-turns out to drive a beta header after all. "Unmapped by this package" must not
-be read as "no wire effect in the genuine client".
+**Three** pre-existing models gain `mid_conv_tool_change` — `claude-opus-4-8`,
+`claude-opus-5` and `claude-fable-5` — and `claude-opus-5` also gains
+`thinking_disabled_effort_cap`. Neither string is mapped by
+`deriveCapabilitiesFromCatalogue`, so the package's *derived capability object*
+is unaffected — but see §7.6, where `mid_conv_tool_change` turns out to drive a
+beta header after all. "Unmapped by this package" must not be read as "no wire
+effect in the genuine client".
+
+> **2026-09-23 — correction.** This paragraph previously named only
+> `claude-opus-5` and `claude-opus-4-8` as gaining `mid_conv_tool_change`,
+> contradicting §5.4, which lists `claude-fable-5` among the six holders. The
+> 2.1.233 profile module's `claude-fable-5` entry does not carry the string, so
+> it is a genuine third gainer and §5.4 was right. Restated as three. The six
+> holders decompose as three pre-existing models that gain it here plus the
+> three models that are new in this release.
+
+Note that these additions are **mid-array**, not appended. `claude-opus-4-8`
+takes `mid_conv_tool_change` at position 6 of 9, immediately after
+`mid_conv_system`; `claude-opus-5` takes it at the same relative position and
+`thinking_disabled_effort_cap` after `context_management`. A cross-profile check
+that models a capability delta as "previous array, then the new strings"
+reproduces neither, so such a check must compare the carried-over strings in
+relative order rather than reconstructing the array by concatenation `[DER]`.
 
 ### 5.6 The `aliases` block
 
