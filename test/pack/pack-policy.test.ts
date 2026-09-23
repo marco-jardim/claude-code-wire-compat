@@ -7,6 +7,8 @@ import { dirname, join, resolve } from "node:path";
 
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { firstPackResult } from "../../scripts/lib/pack-json.mjs";
+
 interface PackageManifest {
   name: string;
   version: string;
@@ -74,20 +76,6 @@ function npmCliPath(): string {
   return npmCli;
 }
 
-/**
- * npm 12 changed `npm pack --dry-run --json` from an array of pack results
- * to an object keyed by package name. Accept both so the policy gate does
- * not depend on the contributor's npm major version.
- */
-function firstPackResult(packOutput: string): PackResult | undefined {
-  const parsed: unknown = JSON.parse(packOutput);
-  if (Array.isArray(parsed)) return parsed[0] as PackResult | undefined;
-  if (parsed !== null && typeof parsed === "object") {
-    return Object.values(parsed as Record<string, PackResult>)[0];
-  }
-  return undefined;
-}
-
 describe("published tarball policy", () => {
   beforeAll(() => {
     execFileSync(process.execPath, [npmCliPath(), "run", "build"], {
@@ -106,10 +94,11 @@ describe("published tarball policy", () => {
       [npmCliPath(), "pack", "--dry-run", "--json", "--ignore-scripts"],
       { cwd: repositoryRoot, encoding: "utf8" },
     );
-    const packResult = firstPackResult(packOutput);
-    expect(packResult).toBeDefined();
+    const packResult = firstPackResult(packOutput) as PackResult | undefined;
     if (packResult === undefined) {
-      throw new Error("npm pack --dry-run --json returned no pack result");
+      throw new Error(
+        `npm pack --dry-run --json returned no pack result: ${packOutput.slice(0, 200)}`,
+      );
     }
 
     const declaredEntries = manifest.files.map((entry) =>
@@ -162,10 +151,11 @@ describe("published tarball policy", () => {
       [npmCliPath(), "pack", "--dry-run", "--json", "--ignore-scripts"],
       { cwd: repositoryRoot, encoding: "utf8" },
     );
-    const packResult = firstPackResult(packOutput);
-    expect(packResult).toBeDefined();
+    const packResult = firstPackResult(packOutput) as PackResult | undefined;
     if (packResult === undefined) {
-      throw new Error("npm pack --dry-run --json returned no pack result");
+      throw new Error(
+        `npm pack --dry-run --json returned no pack result: ${packOutput.slice(0, 200)}`,
+      );
     }
 
     const packageSlug = manifest.name.replace(/^@/u, "").replace(/\//gu, "-");
