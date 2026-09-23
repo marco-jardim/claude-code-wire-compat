@@ -321,7 +321,7 @@ function containsString(value: unknown, target: string): boolean {
 
 /**
  * Every pinned profile singleton, and nothing else. The set is not enumerated
- * in prose here: the literal below is three lines away and cannot go stale,
+ * in prose here: the literal below IS the enumeration and cannot go stale,
  * whereas a count in a comment goes stale on the next port -- which is exactly
  * what happened to the text this replaced. Which profile a caller gets when it
  * passes none is `DEFAULT_PROFILE` below and is deliberately not restated
