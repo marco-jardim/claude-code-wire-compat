@@ -42,19 +42,55 @@ different build timestamp. Extract every scalar from the same platform's
 build; do not mix values from two platforms' bundles.
 
 Extract the tarball. Inside is a single large executable produced by the Bun
-compiler. That executable embeds the entire application as one contiguous run
-of printable text — the JavaScript bundle — surrounded by machine code and
-compressed resources.
+compiler, embedding the application as printable text surrounded by machine
+code and compressed resources.
+
+**The embedded text is not always one contiguous run.** Two shapes have been
+observed, and the carving step must detect which one it is looking at rather
+than assume:
+
+- **Single-bundle** (2.1.195, 2.1.233): the whole application is one
+  contiguous printable run of tens of megabytes, and the next longest
+  candidate is orders of magnitude smaller.
+- **Multi-module bytecode** (2.1.280 and later): the build is
+  `// @bun @bytecode`, and the application is split across roughly a thousand
+  separate printable runs, each an ES module carrying the Claude Code banner
+  and ending in an `export{…};` statement, separated by `NUL`.
 
 To carve the bundle out:
 
 1. Read the executable as bytes.
 2. Scan for maximal runs of printable ASCII (roughly byte values `0x09`,
    `0x0a`, `0x0d`, and `0x20`–`0x7e`).
-3. Keep the single longest run. On recent releases it is tens of megabytes,
-   while the next longest candidate is orders of magnitude smaller, so the
-   winner is unambiguous.
-4. Write that run to a `.js` file.
+3. **Measure the distribution before choosing.** Compare the longest run
+   against the sum of all runs at or above a few kilobytes. If the longest run
+   is most of that sum, the build is single-bundle; if it is a small fraction,
+   the build is multi-module.
+4. Concatenate every run at or above the threshold, in ascending offset order,
+   into one `.js` file. For a single-bundle build this is equivalent to
+   keeping the longest run. For a multi-module build it is the only way to
+   recover the whole application.
+5. Cross-check the carve with a second threshold. Run the extractor on both
+   dumps; the reports must be byte-identical. If they differ, the threshold is
+   cutting through a module the extractor needs.
+
+Concatenating modules is safe **for this extractor specifically**: it is a
+regex-and-scanner tool and never parses the dump as a single JavaScript
+program, so duplicate declarations and repeated top-level `export{}`
+statements across concatenated modules cannot produce a syntax error. Do not
+generalise that guarantee to any other tool.
+
+Keeping only the longest run on a multi-module build fails in the most
+dangerous way available: it still produces a plausible `.js` file, the
+extractor still exits 0, and the report it yields is simply missing entries.
+On 2.1.280 that rule recovered 4,015,347 of 36,151,512 relevant bytes — about
+11% — including none of the model catalogue.
+
+Concatenation has one cost: it widens the extractor's search space, so
+unrelated data embedded elsewhere in the binary can leak into the report. On
+2.1.280 a second, non-CLI model list produced three spurious catalogue
+entries. Treat every extracted entry as a candidate to be confirmed against
+the bundle, not as a transcription.
 
 Do not hardcode byte offsets. The offset of the bundle, its length, and the
 surrounding padding all change on every build — including rebuilds of the same

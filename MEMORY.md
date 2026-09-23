@@ -6,6 +6,47 @@ Append-only log of non-obvious maintenance decisions and their reasoning, so
 future work does not re-litigate or accidentally reverse them. Newest entries
 first. Keep entries dated, factual, and in consumer-neutral language.
 
+## 2026-09-22 — Upstream binaries are no longer one bundle; carving must concatenate modules
+
+Context: the runbook's Step 0 told the reader to scan the platform executable
+for maximal printable-ASCII runs and keep **the single longest one**. That was
+correct for every release this package has ported: 2.1.195 and 2.1.233 embed the
+whole application as one contiguous multi-megabyte run, with the runner-up
+orders of magnitude smaller.
+
+2.1.280 broke that assumption. It is a `// @bun @bytecode` build whose
+JavaScript is embedded as roughly 1,100 separate printable runs — each an ES
+module carrying the Claude Code banner and ending in `export{…};`, separated by
+`NUL`. The longest single run is 4,015,347 bytes out of 36,151,512 relevant
+bytes. Applying the old rule recovers about 11% of the application, and none of
+the model catalogue.
+
+Decision: **Step 0 now concatenates every printable run at or above a threshold,
+in ascending offset order, and requires a second carve at a different threshold
+to produce a byte-identical extractor report.** For a single-bundle build the
+new rule degenerates to the old one, so it is not a special case for one
+release.
+
+Why this is recorded rather than left as a runbook edit: the old rule failed
+_silently_. It still produced a syntactically plausible `.js` file, the
+extractor still exited 0, and the report was simply short of entries. A future
+maintainer who finds the concatenation step verbose and "simplifies" it back to
+the longest run would reintroduce a failure mode with no error message. The two
+threshold carves are the guard, not decoration.
+
+Concatenation is safe for `scripts/extract-upstream-profile.mjs` specifically
+because it is a regex-and-scanner tool and never parses the dump as one
+JavaScript program; duplicate declarations and repeated top-level `export{}`
+statements across modules cannot produce a syntax error. That guarantee is
+tool-specific and must not be generalised.
+
+Accepted cost: a wider search space lets unrelated embedded data reach the
+extractor. On 2.1.280 a second, non-CLI model list (the claude.ai application
+list, whose entries carry `display_name` and `provider_ids`) contributed three
+spurious dated identifiers to the `models` report. Extracted entries are
+candidates to confirm against the bundle, never transcriptions to copy. The
+detail is in `docs/protocol/versions/claude-code-2.1.280-analysis.md`.
+
 ## 2026-08-16 — The external drift verifier is retired; the plugin is no longer the protocol oracle
 
 Context: `npm run drift:check` (`scripts/verify-drift.mjs`, plus the
