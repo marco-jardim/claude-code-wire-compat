@@ -182,6 +182,23 @@ function parseDigests(output, runtime) {
   return digests;
 }
 
+/**
+ * npm 12 changed `npm pack --json` from an array of pack results to an
+ * object keyed by package name. Accept both so the cross-runtime digest
+ * gate does not depend on the contributor's npm major version.
+ *
+ * @param {string} packOutput raw stdout of `npm pack --json`
+ * @returns {{filename?: string} | undefined} the first reported pack result
+ */
+function firstPackResult(packOutput) {
+  const parsed = JSON.parse(packOutput);
+  if (Array.isArray(parsed)) return parsed[0];
+  if (parsed !== null && typeof parsed === "object") {
+    return Object.values(parsed)[0];
+  }
+  return undefined;
+}
+
 if (!existsSync(temporaryRoot)) {
   throw new Error(`OS temporary directory does not exist: ${temporaryRoot}`);
 }
@@ -197,7 +214,7 @@ try {
     );
   }
 
-  const [packResult] = JSON.parse(
+  const packResult = firstPackResult(
     npm(["pack", "--json", "--ignore-scripts"], {
       cwd: repositoryRoot,
     }),
