@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
+  CLAUDE_CODE_2_1_280_PROFILE,
   buildClaudeCodeRequest,
   parseBuiltClaudeCodeRequest,
 } from "../../src/index.js";
@@ -40,6 +41,41 @@ const FIXTURES: readonly FixtureCase[] = [
     name: "outgoing-canary-context-hint-off-2.1.233.json",
     profile: CLAUDE_CODE_2_1_233_PROFILE,
   },
+  // The port plan also listed a caller-supplied-display case and a haiku case
+  // as optional edge fixtures. The 2.1.233 fixture set these mirror had
+  // neither, so neither was created.
+  {
+    name: "outgoing-foreground-2.1.280.json",
+    profile: CLAUDE_CODE_2_1_280_PROFILE,
+  },
+  {
+    name: "outgoing-canary-context-hint-off-2.1.280.json",
+    profile: CLAUDE_CODE_2_1_280_PROFILE,
+  },
+  {
+    name: "outgoing-default-path-2.1.280.json",
+    profile: CLAUDE_CODE_2_1_280_PROFILE,
+  },
+];
+
+// Transcribed from the 2.1.280 analysis document's default-path derivation,
+// NOT captured from the builder. The separator is a bare comma, taken from the
+// committed golden fixtures.
+const DEFAULT_PATH_BETAS: readonly string[] = [
+  "claude-code-20250219",
+  "oauth-2025-04-20",
+  "interleaved-thinking-2025-05-14",
+  "thinking-token-count-2026-05-13",
+  "context-management-2025-06-27",
+  "prompt-caching-scope-2026-01-05",
+  "mid-conversation-system-2026-04-07",
+  "per-turn-control-2026-07-01",
+  "mid-conversation-tool-changes-2026-07-01",
+  "mid-conversation-system-clear-at-2026-08-21",
+  "effort-2025-11-24",
+  "thinking-binding-controls-2026-08-01",
+  "thinking-display-updates-2026-08-18",
+  "cache-diagnosis-2026-04-07",
 ];
 
 function logicalHeaders(headers: readonly (readonly [string, string])[]) {
@@ -91,6 +127,31 @@ describe("fixture-backed differential conformance", () => {
       logicalHeaders(reference.headers),
     );
     expect(parseRequestBody(built.body)).toEqual(reference.body);
+  });
+
+  it("claude-opus-5-5 default path: header equals the 14-identifier literal and thinking carries display updates", async () => {
+    const reference = referenceAdapter("outgoing-default-path-2.1.280.json");
+    const built = await expectEvidenceSafe(
+      syntheticInput(reference),
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
+    const betaHeader = built.headers.find(
+      ([headerName]) => headerName.toLowerCase() === "anthropic-beta",
+    )?.[1];
+    expect(betaHeader).toBeDefined();
+    const header = betaHeader ?? "";
+    expect(header).toBe(DEFAULT_PATH_BETAS.join(","));
+    expect(header.split(",")).toEqual(DEFAULT_PATH_BETAS);
+    expect(header).not.toContain("redact-thinking-2026-02-12");
+    expect(parseRequestBody(built.body)["thinking"]).toEqual({
+      type: "adaptive",
+      display: "updates",
+    });
+    const typeIndex = built.body.indexOf('"type":"adaptive"');
+    const displayIndex = built.body.indexOf('"display":"updates"');
+    expect(typeIndex).not.toBe(-1);
+    expect(displayIndex).not.toBe(-1);
+    expect(typeIndex).toBeLessThan(displayIndex);
   });
 
   it("conforms with tools, explicit and adaptive thinking, and permitted effort", async () => {
