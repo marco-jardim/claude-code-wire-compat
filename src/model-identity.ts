@@ -21,17 +21,28 @@ function dottedToDashedVersion(model: string): string {
   return model.replace(/(\d)\.(\d)/g, "$1-$2");
 }
 
-/** Ports upstream `$_` (binary offset 226639025). */
+/**
+ * Ports upstream `$_` (binary offset 226639025); in the 2.1.280 bundle the
+ * function is `GF` at byte offset 7413751.
+ *
+ * Rung order is load-bearing: each test is a substring test, so a longer id
+ * must precede the shorter id it contains or the shorter rung swallows it.
+ */
 export function normalizeModelId(model: string): string {
   model = dottedToDashedVersion(model.toLowerCase());
+  if (model.includes("claude-fable-5-1")) return "claude-fable-5-1";
   if (model.includes("claude-fable-5")) return "claude-fable-5";
+  if (model.includes("claude-mythos-5-1")) return "claude-mythos-5-1";
   if (model.includes("claude-mythos-5")) return "claude-mythos-5";
+  if (model.includes("claude-opus-5-5")) return "claude-opus-5-5";
+  if (model.includes("claude-opus-5")) return "claude-opus-5";
   if (model.includes("claude-opus-4-8")) return "claude-opus-4-8";
   if (model.includes("claude-opus-4-7")) return "claude-opus-4-7";
   if (model.includes("claude-opus-4-6")) return "claude-opus-4-6";
   if (model.includes("claude-opus-4-5")) return "claude-opus-4-5";
   if (model.includes("claude-opus-4-1")) return "claude-opus-4-1";
   if (/claude-opus-4(?!-\d(?!\d))/.test(model)) return "claude-opus-4-0";
+  if (model.includes("claude-sonnet-5")) return "claude-sonnet-5";
   if (model.includes("claude-sonnet-4-6")) return "claude-sonnet-4-6";
   if (model.includes("claude-sonnet-4-5")) return "claude-sonnet-4-5";
   if (/claude-sonnet-4(?!-\d(?!\d))/.test(model)) return "claude-sonnet-4-0";

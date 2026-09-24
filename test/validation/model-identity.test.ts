@@ -45,6 +45,19 @@ describe("model identity", () => {
     );
   });
 
+  // Substring-prefix pairs: each shorter id is contained in the longer one, so
+  // a ladder written in the wrong order silently returns the containing id.
+  // The first four assertions fail if the order regresses.
+  it("keeps each five-family id distinct from the id that contains it", () => {
+    expect(normalizeModelId("claude-fable-5-1")).toBe("claude-fable-5-1");
+    expect(normalizeModelId("claude-fable-5")).toBe("claude-fable-5");
+    expect(normalizeModelId("claude-mythos-5-1")).toBe("claude-mythos-5-1");
+    expect(normalizeModelId("claude-mythos-5")).toBe("claude-mythos-5");
+    expect(normalizeModelId("claude-opus-5-5")).toBe("claude-opus-5-5");
+    expect(normalizeModelId("claude-opus-5")).toBe("claude-opus-5");
+    expect(normalizeModelId("claude-sonnet-5")).toBe("claude-sonnet-5");
+  });
+
   it.each([
     ["CLAUDE-OPUS-4-6", "claude-opus-4-6"],
     ["anthropic/claude-opus-4-6", "claude-opus-4-6"],
