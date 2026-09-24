@@ -70,7 +70,12 @@ export interface ResolvedThinking {
    * suppresses `temperature`, matching upstream `nr`.
    */
   readonly requestActive: boolean;
-  /** Whether `tool_choice` of type `tool` must be demoted to `auto`. */
+  /**
+   * Whether a forced `tool_choice` (type `tool` or `any`) must be demoted to
+   * `auto`. Upstream demotes only `tool`; demoting `any` as well is a
+   * deliberate divergence, because the API rejects any forced tool choice
+   * while extended thinking is on (see `MEMORY.md`, 2026-09-24).
+   */
   readonly extendedThinkingActive: boolean;
 }
 
@@ -448,6 +453,8 @@ export function resolveThinking(
 
   // Upstream `Jr = Xn?.type === "enabled" || Xn?.type === "adaptive"
   //             || Xn === void 0 && U4e(u)`.
+  // Upstream uses this to demote `tool_choice` of type `tool`; the
+  // request body also demotes type `any` on it, a documented divergence.
   const extendedThinkingActive =
     emitted?.["type"] === "enabled" ||
     emitted?.["type"] === "adaptive" ||

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ClaudeCodeProtocolProfile } from "../../src/index.js";
 import {
+  CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
   CLAUDE_CODE_2_1_280_PROFILE,
   buildClaudeCodeRequest,
@@ -252,6 +253,149 @@ describe("thinking wire contract (2.1.280)", () => {
     expect(built.body.indexOf('"type":"adaptive"')).toBeLessThan(
       built.body.indexOf('"display":"updates"'),
     );
+  });
+});
+
+/**
+ * Upstream demotes only `tool_choice` of type `tool` under extended thinking
+ * (analysis §6.6). This package deliberately demotes `any` too, on every
+ * profile, because the API rejects any forced tool choice while extended
+ * thinking is on; see `MEMORY.md`, entry dated 2026-09-24.
+ */
+describe("forced tool choice demotion of any (package divergence)", () => {
+  const any = { type: "any" } as const;
+  const anyNoParallel = {
+    type: "any",
+    disable_parallel_tool_use: true,
+  } as const;
+
+  it.each([
+    [
+      "adaptive",
+      CLAUDE_CODE_2_1_280_PROFILE,
+      "claude-opus-4-8",
+      "adaptive",
+      "adaptive",
+    ],
+    [
+      "enabled resolved to adaptive",
+      CLAUDE_CODE_2_1_280_PROFILE,
+      "claude-opus-4-8",
+      "enabled",
+      "adaptive",
+    ],
+    [
+      "enabled",
+      CLAUDE_CODE_2_1_233_PROFILE,
+      "claude-opus-4-0",
+      "enabled",
+      "enabled",
+    ],
+    [
+      "enabled on 2.1.195",
+      CLAUDE_CODE_2_1_195_PROFILE,
+      "claude-opus-4-8",
+      "enabled",
+      "adaptive",
+    ],
+  ] as const)(
+    "demotes any to auto when %s thinking is requested",
+    async (_label, profile, model, requested, emitted) => {
+      for (const toolChoice of [any, anyNoParallel]) {
+        const result = await body(profile, {
+          model,
+          thinking: { type: requested },
+          toolChoice,
+        });
+        expect(result["thinking"]).toMatchObject({ type: emitted });
+        expect(result["tool_choice"]).toEqual({ type: "auto" });
+      }
+    },
+  );
+
+  it("follows a caller capabilities override", async () => {
+    // A capabilities override may only narrow what the model supports (an
+    // unsupported `true` is UNSUPPORTED_CAPABILITY), so both halves use a model
+    // that declares `rejects_disabled_thinking`.
+    const forced = await body(CLAUDE_CODE_2_1_280_PROFILE, {
+      model: "claude-opus-5-5",
+      capabilities: { rejectsDisabledThinking: true },
+      toolChoice: anyNoParallel,
+    });
+    expect(forced).not.toHaveProperty("thinking");
+    expect(forced["tool_choice"]).toEqual({ type: "auto" });
+    const released = await body(CLAUDE_CODE_2_1_280_PROFILE, {
+      model: "claude-opus-5-5",
+      capabilities: { rejectsDisabledThinking: false },
+      toolChoice: anyNoParallel,
+    });
+    expect(released).not.toHaveProperty("thinking");
+    expect(released["tool_choice"]).toEqual(anyNoParallel);
+  });
+
+  it("demotes any and tool to the same bare auto", async () => {
+    const fromAny = await body(CLAUDE_CODE_2_1_280_PROFILE, {
+      model: "claude-opus-5-5",
+      toolChoice: anyNoParallel,
+    });
+    const fromTool = await body(CLAUDE_CODE_2_1_280_PROFILE, {
+      model: "claude-opus-5-5",
+      toolChoice: { type: "tool", name: "probe" },
+    });
+    expect(fromAny["tool_choice"]).toEqual({ type: "auto" });
+    expect(fromTool["tool_choice"]).toEqual(fromAny["tool_choice"]);
+  });
+
+  it("demotes any to auto on a model that rejects disabled thinking", async () => {
+    const omitted = await body(CLAUDE_CODE_2_1_280_PROFILE, {
+      model: "claude-opus-5-5",
+      toolChoice: anyNoParallel,
+    });
+    expect(omitted).not.toHaveProperty("thinking");
+    expect(omitted["tool_choice"]).toEqual({ type: "auto" });
+    const disabled = await body(CLAUDE_CODE_2_1_280_PROFILE, {
+      model: "claude-opus-5-5",
+      thinking: { type: "disabled" },
+      toolChoice: any,
+    });
+    expect(disabled).not.toHaveProperty("thinking");
+    expect(disabled["tool_choice"]).toEqual({ type: "auto" });
+  });
+
+  it("preserves any verbatim when extended thinking is inactive", async () => {
+    const unsupported = await body(CLAUDE_CODE_2_1_233_PROFILE, {
+      model: "claude-3-5-sonnet",
+      thinking: { type: "enabled" },
+      toolChoice: anyNoParallel,
+    });
+    expect(unsupported).not.toHaveProperty("thinking");
+    expect(unsupported["tool_choice"]).toEqual(anyNoParallel);
+    const disabled = await body(CLAUDE_CODE_2_1_280_PROFILE, {
+      model: "claude-opus-4-6",
+      thinking: { type: "disabled" },
+      toolChoice: anyNoParallel,
+    });
+    expect(disabled["thinking"]).toEqual({ type: "disabled" });
+    expect(disabled["tool_choice"]).toEqual(anyNoParallel);
+  });
+
+  it.each([
+    { type: "auto" },
+    { type: "auto", disable_parallel_tool_use: true },
+    { type: "none" },
+  ] as const)("never alters tool choice %o", async (toolChoice) => {
+    const contexts = [
+      { model: "claude-opus-4-8", thinking: { type: "adaptive" } },
+      { model: "claude-opus-5-5" },
+      { model: "claude-opus-4-6", thinking: { type: "disabled" } },
+    ] as const;
+    for (const context of contexts) {
+      const result = await body(CLAUDE_CODE_2_1_280_PROFILE, {
+        ...context,
+        toolChoice,
+      });
+      expect(result["tool_choice"]).toEqual(toolChoice);
+    }
   });
 });
 

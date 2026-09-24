@@ -93,6 +93,15 @@ All notable changes to this project will be documented in this file.
 - **`cacheDiagnosisEnabled` is `true` for the 2.1.280 profile.** The 2.1.233
   profile is deliberately unchanged: whether its `false` was always wrong
   cannot be settled without that release's binary.
+- **`tool_choice` of type `any` is demoted to `{type:"auto"}` while extended
+  thinking is active**, on every profile, alongside the existing `tool`
+  demotion. Upstream demotes only `tool`; this is a deliberate, recorded
+  divergence (2.1.280 analysis §6.6 amendment, `MEMORY.md` 2026-09-24)
+  because the Messages API rejects forced tool use under extended thinking.
+  A caller that previously received an HTTP 400 for `any` under thinking now
+  gets an `auto` request; `disable_parallel_tool_use` on the demoted `any` is
+  dropped, as it already was for `tool`. `auto`/`none`, and `any` with
+  thinking inactive, are unchanged. No sealed fixture or frozen digest moved.
 
 ### Removed
 
