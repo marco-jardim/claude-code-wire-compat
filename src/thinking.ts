@@ -369,6 +369,13 @@ export function isThinkingActive(
  * for the enabled branch — `budget_tokens` FIRST — and `{type, display}` for
  * adaptive. Serialised bodies are compared byte for byte, so the insertion
  * order below must not be rearranged.
+ *
+ * `displayOverride` is the body-side half of beta push site 12b
+ * (`thinkingDisplayOverride` from `composeBetasWithAudit`); it is not
+ * caller-facing, which is why `ThinkingDisplay` stays unwidened. When both it
+ * and a caller display are present the override wins -- a combination the
+ * composition guard makes unreachable, since site 12b requires that the caller
+ * supplied no display.
  */
 export function resolveThinking(
   request: ThinkingRequest | undefined,
@@ -377,6 +384,7 @@ export function resolveThinking(
   betaPolicy: ClaudeCodeBetaPolicy,
   maxTokens: number,
   profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+  displayOverride?: "updates",
 ): ResolvedThinking {
   // Upstream `nr = n.type !== "disabled" && !CLAUDE_CODE_DISABLE_THINKING`.
   const requestActive = request !== undefined && request.type !== "disabled";
@@ -394,6 +402,9 @@ export function resolveThinking(
   if (resolvedType === "adaptive") {
     emitted = { type: "adaptive" };
     if (display !== undefined) emitted["display"] = display;
+    // Assignment, not reconstruction: an existing key keeps its position and a
+    // new one appends last, matching upstream `{...yc, display: "updates"}`.
+    if (displayOverride !== undefined) emitted["display"] = displayOverride;
   } else if (resolvedType === "enabled") {
     // Upstream: `let Tr = wvi(u)` — the model's upper limit minus one —
     // overridden by the caller's budget when supplied, then clamped by
@@ -409,6 +420,9 @@ export function resolveThinking(
     emitted = { budget_tokens: Math.min(maxTokens - 1, requested) };
     emitted["type"] = "enabled";
     if (display !== undefined) emitted["display"] = display;
+    // Same in-place assignment as the adaptive arm: order stays
+    // `budget_tokens, type, display`.
+    if (displayOverride !== undefined) emitted["display"] = displayOverride;
   } else if (resolvedType === "disabled") {
     emitted = { type: "disabled" };
   }

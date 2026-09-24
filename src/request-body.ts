@@ -1745,6 +1745,7 @@ export function buildCanonicalBody(
   rawSystemBlocks: unknown,
   rawMetadata: unknown,
   profile?: ClaudeCodeProtocolProfile,
+  thinkingDisplayOverride?: "updates",
 ): Readonly<Record<string, unknown>> {
   inspectJsonInputs([
     rawInput,
@@ -1851,6 +1852,7 @@ export function buildCanonicalBody(
     effectiveProfile.betaPolicy,
     maxTokens,
     effectiveProfile,
+    thinkingDisplayOverride,
   );
   if (resolved.emitted !== undefined) result["thinking"] = resolved.emitted;
 

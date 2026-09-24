@@ -1641,6 +1641,7 @@ export async function buildClaudeCodeRequest(
       system,
       metadata,
       effectiveProfile,
+      composedBetas.thinkingDisplayOverride,
     );
     const betas = composedBetas.betas;
     const headerPlan = buildOrderedHeaderPlan({

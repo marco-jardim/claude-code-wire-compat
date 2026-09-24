@@ -76,6 +76,7 @@ export interface ComposableBetaRegistry {
   readonly MID_CONVERSATION_SYSTEM_CLEAR_AT?: BetaRegistryEntry;
   readonly EFFORT: BetaRegistryEntry;
   readonly THINKING_BINDING_CONTROLS?: BetaRegistryEntry;
+  readonly THINKING_DISPLAY_UPDATES?: BetaRegistryEntry;
   readonly SPEED: BetaRegistryEntry;
   readonly AFK_MODE: BetaRegistryEntry;
   readonly EXTENDED_CACHE_TTL: BetaRegistryEntry;
@@ -165,6 +166,19 @@ export interface ComposeBetasInput {
 export interface ComposedBetas {
   readonly betas: readonly string[];
   readonly suppressedBetaNames: readonly string[];
+  /**
+   * Present only when push site 12b fired. This is the body-side half of a
+   * beta/body pair: the site pushes the display-updates beta AND decides that
+   * the body's `thinking` object carries `display: "updates"`. The consumer is
+   * the canonical body builder (`buildCanonicalBody`), which hands it to
+   * `resolveThinking`.
+   *
+   * `suppressBetas` cannot unset it. Suppressing the beta identifier removes
+   * the HEADER only; the body keeps `display: "updates"`. That matches the
+   * existing coupled pair where suppressing `effort-2025-11-24` leaves
+   * `output_config.effort` in the body.
+   */
+  readonly thinkingDisplayOverride?: "updates";
 }
 
 /**
@@ -366,6 +380,44 @@ export function composeBetasWithAudit(
     out.push(thinkingBindingControls.header);
   }
 
+  /*
+   * Site 12b. Upstream guards the push with
+   * `(yc?.type === "adaptive" || yc?.type === "enabled") && ac && firstParty
+   *  && !callerSuppliedDisplay && ...` plus the simulate-proxy environment
+   * variable and a per-session latch. The three conjuncts below are the
+   * reachable remainder: `experimental` is upstream's `Fg()` term inside `ac`,
+   * `input.thinkingActive` is the thinking-type test together with the rest of
+   * `ac`, and `!input.thinkingDisplayActive` is the caller-supplied-display
+   * test. First-party is not modelled because this package only builds the
+   * first-party path, the simulate-proxy env var is not modelled because the
+   * package reads no environment, and the per-session latch is always empty in
+   * a stateless package that composes every request as a first request.
+   *
+   * The site is coupled: it pushes the beta, records `display: "updates"` for
+   * the body builder, and removes the previously composed redact-thinking beta
+   * (upstream `qu()`).
+   *
+   * The splice sits INSIDE this block and is deliberately the LAST thing it
+   * does. At this point `out` holds only canonical pushes, because the caller
+   * `additionalBetas` merge runs later. So a caller who explicitly supplies
+   * `redact-thinking-2026-02-12` in `additionalBetas` still gets it, precisely
+   * because the merge's `if (!out.includes(beta))` test now succeeds. Moving
+   * the splice after the merge would silently eat that caller's entry.
+   */
+  const thinkingDisplayUpdates = registry.THINKING_DISPLAY_UPDATES;
+  let thinkingDisplayOverride: "updates" | undefined;
+  if (
+    experimental &&
+    input.thinkingActive &&
+    !input.thinkingDisplayActive &&
+    thinkingDisplayUpdates !== undefined
+  ) {
+    out.push(thinkingDisplayUpdates.header);
+    thinkingDisplayOverride = "updates";
+    const redactIndex = out.indexOf(registry.REDACT_THINKING.header);
+    if (redactIndex !== -1) out.splice(redactIndex, 1);
+  }
+
   if (input.speed === "fast" && !out.includes(registry.SPEED.header)) {
     out.push(registry.SPEED.header);
   }
@@ -408,6 +460,9 @@ export function composeBetasWithAudit(
     return Object.freeze({
       betas: Object.freeze(out),
       suppressedBetaNames: NO_SUPPRESSED_BETAS,
+      ...(thinkingDisplayOverride === undefined
+        ? {}
+        : { thinkingDisplayOverride }),
     });
   }
   const suppressed = new Set(validateAdditionalBetas(input.suppressBetas));
@@ -420,5 +475,10 @@ export function composeBetasWithAudit(
   return Object.freeze({
     betas: Object.freeze(kept),
     suppressedBetaNames: Object.freeze(removed),
+    // The suppression filter above touches only the header list; the body
+    // half of the site-12b pair survives it by design.
+    ...(thinkingDisplayOverride === undefined
+      ? {}
+      : { thinkingDisplayOverride }),
   });
 }
