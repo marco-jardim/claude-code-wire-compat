@@ -12,6 +12,9 @@ const FIXTURE_FILENAMES = [
   "outgoing-canary-context-hint-off.json",
   "outgoing-foreground-2.1.233.json",
   "outgoing-canary-context-hint-off-2.1.233.json",
+  "outgoing-foreground-2.1.280.json",
+  "outgoing-canary-context-hint-off-2.1.280.json",
+  "outgoing-default-path-2.1.280.json",
 ] as const;
 const ALL_FIXTURE_FILENAMES = [
   ...FIXTURE_FILENAMES,
@@ -48,6 +51,18 @@ const FIXTURE_PROVENANCE: Readonly<Record<FixtureFilename, FixtureProvenance>> =
     "outgoing-canary-context-hint-off-2.1.233.json": {
       profileId: "claude-code-2.1.233-sdk-0.112.1",
       cliVersion: "2.1.233",
+    },
+    "outgoing-foreground-2.1.280.json": {
+      profileId: "claude-code-2.1.280-sdk-0.112.1",
+      cliVersion: "2.1.280",
+    },
+    "outgoing-canary-context-hint-off-2.1.280.json": {
+      profileId: "claude-code-2.1.280-sdk-0.112.1",
+      cliVersion: "2.1.280",
+    },
+    "outgoing-default-path-2.1.280.json": {
+      profileId: "claude-code-2.1.280-sdk-0.112.1",
+      cliVersion: "2.1.280",
     },
   };
 const ALLOWED_UUIDS = new Set([
