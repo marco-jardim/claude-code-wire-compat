@@ -227,8 +227,12 @@ describe("thinking wire contract (2.1.233)", () => {
   });
 });
 
-// Display injection and redact-thinking removal on 2.1.280 are covered in
-// `test/validation/thinking-display-updates-2.1.280.test.ts`; not duplicated here.
+// Only the adaptive override is asserted here for 2.1.280. The `display:
+// "updates"` injection and the redact-thinking removal are covered in
+// `test/validation/thinking-display-updates-2.1.280.test.ts`. The 2.1.280
+// enabled-budget clamp, budget default, adaptive-to-enabled coercion and
+// forced tool-choice demotion are covered in the `(2.1.280)` group of
+// `test/validation/max-tokens-clamp.test.ts`.
 describe("thinking wire contract (2.1.280)", () => {
   it("lets an adaptive model override enabled thinking", async () => {
     const built = await buildClaudeCodeRequest(
