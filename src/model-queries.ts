@@ -120,9 +120,24 @@ export function isOpus48Model(model: string): boolean {
   return normalizedOrNull(model) === "claude-opus-4-8";
 }
 
+/** Whether `model` normalizes to `claude-opus-5`. */
+export function isOpus5Model(model: string): boolean {
+  return normalizedOrNull(model) === "claude-opus-5";
+}
+
+/** Whether `model` normalizes to `claude-opus-5-5`. */
+export function isOpus55Model(model: string): boolean {
+  return normalizedOrNull(model) === "claude-opus-5-5";
+}
+
 /** Whether `model` normalizes to `claude-sonnet-4-6`. */
 export function isSonnet46Model(model: string): boolean {
   return normalizedOrNull(model) === "claude-sonnet-4-6";
+}
+
+/** Whether `model` normalizes to `claude-sonnet-5`. */
+export function isSonnet5Model(model: string): boolean {
+  return normalizedOrNull(model) === "claude-sonnet-5";
 }
 
 /** Whether `model` normalizes to `claude-fable-5`. */
@@ -130,9 +145,19 @@ export function isFable5Model(model: string): boolean {
   return normalizedOrNull(model) === "claude-fable-5";
 }
 
+/** Whether `model` normalizes to `claude-fable-5-1`. */
+export function isFable51Model(model: string): boolean {
+  return normalizedOrNull(model) === "claude-fable-5-1";
+}
+
 /** Whether `model` normalizes to `claude-mythos-5`. */
 export function isMythos5Model(model: string): boolean {
   return normalizedOrNull(model) === "claude-mythos-5";
+}
+
+/** Whether `model` normalizes to `claude-mythos-5-1`. */
+export function isMythos51Model(model: string): boolean {
+  return normalizedOrNull(model) === "claude-mythos-5-1";
 }
 
 /**
@@ -223,19 +248,26 @@ export function supportsWebSearch(model: string): boolean {
  * Whether `model` uses adaptive thinking (`{type: "adaptive"}`) instead of a
  * manual `budget_tokens`.
  *
- * The union of the named family predicates, not a catalogue read: this gates
- * the shape of the emitted `thinking` block, and an uncatalogued id must not
- * inherit adaptive thinking from the permissive capability fallback. Ask
- * `modelCapability(model, "adaptive_thinking", profile)` for the catalogue's
- * answer.
+ * The union of the named per-model predicates, not a catalogue read: this
+ * gates the shape of the emitted `thinking` block, and an uncatalogued id must
+ * not inherit adaptive thinking from the permissive capability fallback. The
+ * union covers every id any pinned profile's catalogue marks
+ * `adaptive_thinking` (the 2.1.280 catalogue is the widest). Ask
+ * `modelCapability(model, "adaptive_thinking", profile)` for a specific
+ * profile's answer.
  */
 export function isAdaptiveThinkingModel(model: string): boolean {
   return (
     isOpus46Model(model) ||
     isOpus47Model(model) ||
     isOpus48Model(model) ||
+    isOpus5Model(model) ||
+    isOpus55Model(model) ||
     isSonnet46Model(model) ||
+    isSonnet5Model(model) ||
     isFable5Model(model) ||
-    isMythos5Model(model)
+    isFable51Model(model) ||
+    isMythos5Model(model) ||
+    isMythos51Model(model)
   );
 }

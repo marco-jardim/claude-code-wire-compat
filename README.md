@@ -119,11 +119,11 @@ required](./docs/protocol/versions/README.md):
 - [Claude Code 2.1.159](./docs/protocol/versions/claude-code-2.1.159-analysis.md)
 - [Claude Code 2.1.195](./docs/protocol/versions/claude-code-2.1.195-analysis.md)
 - [Claude Code 2.1.233](./docs/protocol/versions/claude-code-2.1.233-analysis.md)
-  — the release this package's profile pins.
+  — the previous pin; its profile is still exported and selectable.
 - [Claude Code 2.1.280](./docs/protocol/versions/claude-code-2.1.280-analysis.md)
-  — analysed but not yet pinned; records the build-shape change that breaks the
-  old carving rule, nine new betas, three new models, and the first
-  wire-visible `thinking` sub-fields since 2.1.222.
+  — the release this package's default profile pins; records the build-shape
+  change that breaks the old carving rule, nine new betas, three new models,
+  and the first wire-visible `thinking` sub-fields since 2.1.222.
 
 ## Development
 

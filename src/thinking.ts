@@ -406,18 +406,37 @@ export function resolveThinking(
     // new one appends last, matching upstream `{...yc, display: "updates"}`.
     if (displayOverride !== undefined) emitted["display"] = displayOverride;
   } else if (resolvedType === "enabled") {
-    // Upstream: `let Tr = wvi(u)` — the model's upper limit minus one —
-    // overridden by the caller's budget when supplied, then clamped by
-    // `Tr = Math.min(Fi - 1, Tr)` where `Fi` is the emitted `max_tokens`.
+    // Transcribed from the 2.1.280 analysis document:
+    //   let hf = mlo(_e);
+    //   if (r.type === "enabled" && r.budgetTokens !== void 0) hf = r.budgetTokens;
+    //   hf = Math.max(1024, Math.min(Rv - 1, hf));
+    // The default budget is the model's upper limit minus one. The caller's
+    // `budgetTokens` replaces it only when the caller itself declared an
+    // `enabled` request -- the guard reads the caller's raw `type`, not the
+    // resolved one, so an `adaptive` request downgraded to `enabled` on a
+    // model without adaptive thinking ignores its budget. The result is
+    // clamped to the emitted `max_tokens` minus one, and the floor of 1024 is
+    // applied after that clamp, so the floor wins when the two conflict.
+    //
+    // No older analysis document in this repository transcribes this
+    // computation at all, so the floor and the type guard are evidenced for
+    // 2.1.280 only. They are applied to every profile as one shared
+    // behaviour -- the same deliberate choice already made for the model-id
+    // normalizer ladder -- and nothing here asserts whether older clients
+    // had them.
     //
     // This is the one wire-visible consumer of the request-derived bound: on
     // a 2.1.222+ profile a caller asking for a `max_tokens` above the
     // catalogue's upper limit seeds the default budget from THEIR number
     // minus one, not from the catalogue's.
+    const callerBudget =
+      request?.type === "enabled" ? request.budgetTokens : undefined;
     const requested =
-      request?.budgetTokens ??
+      callerBudget ??
       modelOutputTokenLimits(normalizedId, profile, maxTokens).upperLimit - 1;
-    emitted = { budget_tokens: Math.min(maxTokens - 1, requested) };
+    emitted = {
+      budget_tokens: Math.max(1024, Math.min(maxTokens - 1, requested)),
+    };
     emitted["type"] = "enabled";
     if (display !== undefined) emitted["display"] = display;
     // Same in-place assignment as the adaptive arm: order stays

@@ -253,7 +253,7 @@ describe("max_tokens clamp (D16) (2.1.280)", () => {
       thinking: { type: "adaptive" },
     });
     expect(result["thinking"]).toEqual({
-      budget_tokens: 1023,
+      budget_tokens: 1024,
       type: "enabled",
       display: "updates",
     });
