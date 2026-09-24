@@ -106,6 +106,11 @@ async function expectEvidenceSafe(
   const parsed = parseBuiltClaudeCodeRequest(built, profile);
   expect(parsed).toEqual(built);
   expect(built.evidence.profileId).toBe(profile.id);
+  // This pattern is NOT the full family union: `modelFamilyOf` can also return
+  // `mythos` and `unknown`, and the 2.1.280 catalogue does carry mythos models.
+  // No fixture uses one today, so the narrower pattern is a deliberate
+  // tripwire rather than an oversight -- but a future mythos fixture will fail
+  // here with an opaque message, and the pattern must be widened then.
   expect(built.evidence.modelFamily).toMatch(/^(?:haiku|sonnet|opus|fable)$/u);
   expect(built.evidence.betaFeatures).toBeInstanceOf(Array);
   expect(built.evidence.bodyByteLength).toBe(
@@ -140,9 +145,13 @@ describe("fixture-backed differential conformance", () => {
     )?.[1];
     expect(betaHeader).toBeDefined();
     const header = betaHeader ?? "";
-    expect(header).toBe(DEFAULT_PATH_BETAS.join(","));
-    expect(header.split(",")).toEqual(DEFAULT_PATH_BETAS);
+    // The splice check and the element-wise comparison run FIRST, on purpose.
+    // The exact-equality assertion below subsumes both, so if it ran first a
+    // regression that only un-spliced redact-thinking would be reported as a
+    // whole-string mismatch instead of naming the identifier that moved.
     expect(header).not.toContain("redact-thinking-2026-02-12");
+    expect(header.split(",")).toEqual(DEFAULT_PATH_BETAS);
+    expect(header).toBe(DEFAULT_PATH_BETAS.join(","));
     expect(parseRequestBody(built.body)["thinking"]).toEqual({
       type: "adaptive",
       display: "updates",
@@ -154,6 +163,10 @@ describe("fixture-backed differential conformance", () => {
     expect(typeIndex).toBeLessThan(displayIndex);
   });
 
+  // The variant sweeps below are 2.1.195-only. That scoping predates the
+  // 2.1.280 port -- 2.1.233 never got one either -- so it is a known gap
+  // rather than a regression: the fixture replays above cover every pinned
+  // profile, but the per-model catalogue sweep covers only the oldest.
   it("conforms with tools, explicit and adaptive thinking, and permitted effort", async () => {
     const reference = referenceAdapter("outgoing-canary-context-hint-off.json");
     const base = syntheticInput(reference);
