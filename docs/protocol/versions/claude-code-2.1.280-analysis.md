@@ -1375,6 +1375,14 @@ definition:
 | `fast-mode-2026-02-01` (`wAt`)              | **13605400**      | `if(vae&&!Fr.includes(wAt))Fr.push(wAt)`                             |
 | `cache-diagnosis-2026-04-07` (`b0e`)        | **13606358**      | `if(nv&&!Fr.includes(b0e))Fr.push(b0e)`                              |
 
+What `gTe` writes back into `Mi.output_config` after the
+`delete Mi.output_config` at 13602839 is **not transcribed** in this document
+`[UNR]`: only its header side (the `effort` push into `Fr`) is recorded. In
+particular, whether it repopulates an effort from the model's catalogue
+default when the caller supplied none is not established, so the default-path
+derivation makes no claim about the presence or absence of `output_config` in
+the request body.
+
 13587696 < 13602839 < 13604233 < 13604689 < 13605400 < 13606358, so the emitted
 order is `clear_at`, `effort`, `thinking-binding-controls`,
 `thinking-display-updates`, the SPEED slot, and finally `cache-diagnosis` — the

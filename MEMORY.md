@@ -392,3 +392,47 @@ resolutions.
 
 Commits: `9b89d7f` (overrides), `21f1878` (lockfile-only audit fix), merged
 via PR #15 (`2ba35a8`).
+
+## 2026-09-23 — Phase 5.1 QA: three accepted findings on the 2.1.280 fixtures
+
+Context: the adversarial QA review of Phase 5.1 (the claude-code-2.1.280
+golden fixtures) surfaced three behaviours that look like defects but are
+deliberate or inherited. They are recorded here so they are not "fixed" by
+accident.
+
+Decisions:
+
+1. **The manifest assertion in `test/golden-fixtures.test.ts` stays
+   one-directional.** It walks the names sealed in `manifest.fixtures` and
+   asserts each is registered in the test's own filename list; it does not
+   walk that filename list asserting each entry is sealed. So a fixture
+   registered in the test but missing from the manifest passes `npm test`
+   and is caught only by `npm run fixtures:check`, an end-of-wave gate rather
+   than a per-commit one. The gap is kept on purpose: closing it would turn
+   the first commit of every add-then-seal split red, and that split is
+   itself forced by `scripts/seal-golden-fixtures.mjs`, which refuses to run
+   while a fixture is untracked or merely staged. This is a known, accepted
+   asymmetry; making the check bidirectional breaks the fixture-landing
+   procedure.
+2. **`outgoing-default-path-2.1.280.json` carries no `output_config`, and
+   that is faithful within this package.** It is now the sealed canonical
+   default-path evidence, even though the pinned catalogue declares a default
+   effort of `medium` for `claude-opus-5-5`. Here the effort beta header is
+   pushed from the model capability, while the body's `output_config.effort`
+   is emitted only when the caller supplies an `effort` input, the emitted
+   thinking type is adaptive, and no `outputConfig` was supplied; the
+   fixture's input supplies no effort. What is not established is what the
+   genuine client writes back to its request object on that path: the 2.1.280
+   analysis document records the upstream statement that deletes
+   `output_config` and then calls the beta/effort pusher, but transcribes only
+   that pusher's header side. The behaviour is pre-existing and identical on
+   2.1.233; it is an open documentation question, not a defect.
+3. **The one-hour `cache_control` TTL in the sealed bodies does not
+   contradict the derivation.** The 2.1.280 analysis document's
+   fourteen-identifier default-path derivation assumes a five-minute cache
+   TTL and on that basis excludes the extended-cache-ttl beta. The sealed
+   fixture bodies still carry a one-hour TTL on their prompt blocks while
+   omitting that beta, because this package hardcodes the one-hour TTL on
+   those blocks and pushes the beta only from an explicit caller TTL input.
+   The two 2.1.233 fixtures have the identical shape, so this is inherited
+   modelling, not a 2.1.280 delta, and must not be mistaken for drift.
