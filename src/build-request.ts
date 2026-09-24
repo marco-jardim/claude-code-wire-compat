@@ -39,7 +39,7 @@ import {
 } from "./request-body.js";
 import { sha256Hex } from "./sha256.js";
 import { buildCanonicalSystem, IDENTITY_TEXT } from "./system-prompt.js";
-import { isThinkingDisplayActive } from "./thinking.js";
+import { isThinkingActive, isThinkingDisplayActive } from "./thinking.js";
 import { classifySurrogateAt } from "./unicode.js";
 
 const METHOD = "POST";
@@ -1454,6 +1454,7 @@ export async function buildClaudeCodeCountTokensRequest(
           normalizedId: resolvedModel.id,
           capabilities: resolvedModel.capabilities,
           thinkingDisplayActive: false,
+          thinkingActive: false,
         },
         effectiveProfile,
       ),
@@ -1593,13 +1594,12 @@ export async function buildClaudeCodeRequest(
       validated.suppressBillingBlock,
       validated.suppressIdentityBlock,
     );
-    const canonicalBody = buildCanonicalBody(
-      evidenceRequest(validated.source, validated.source.model),
-      effectiveModel,
-      system,
-      metadata,
-      effectiveProfile,
-    );
+    /*
+     * Composition runs BEFORE body construction so that a beta site can hand a
+     * decision to the body emitter. Both calls are pure and neither feeds the
+     * other's arguments today, so the order itself changes no serialised byte;
+     * the swap lands on its own so the packed-consumer digests prove that.
+     */
     const composedBetas = composeBetasWithAudit(
       {
         rawModel: validated.source.model,
@@ -1609,6 +1609,10 @@ export async function buildClaudeCodeRequest(
           validated.source.thinking,
           capabilities,
           effectiveProfile.betaPolicy,
+        ),
+        thinkingActive: isThinkingActive(
+          validated.source.thinking,
+          capabilities,
         ),
         ...(validated.source.cacheControl?.ttl === undefined
           ? {}
@@ -1626,6 +1630,13 @@ export async function buildClaudeCodeRequest(
           ? {}
           : { use1MContextOverride: validated.betaOverrides.use1MContext }),
       },
+      effectiveProfile,
+    );
+    const canonicalBody = buildCanonicalBody(
+      evidenceRequest(validated.source, validated.source.model),
+      effectiveModel,
+      system,
+      metadata,
       effectiveProfile,
     );
     const betas = composedBetas.betas;

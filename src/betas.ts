@@ -43,13 +43,22 @@ interface BetaRegistryEntry {
  * The entries the push sites below require, as a structural contract rather
  * than a reference to one concrete registry.
  *
- * Registry versions have different key sets. Every key here except
- * `NARRATION_SUMMARIES` is present in all of them, so those push sites index
- * directly. `NARRATION_SUMMARIES` is optional because upstream removed it after
- * 2.1.195 (see `src/profiles/beta-registry-2.1.233.ts`): its push site survives
- * and becomes inert when the resolved registry has no entry to push. Making the
- * optionality part of the TYPE is what forces every future registry to be
- * checked against the push sites at compile time instead of at runtime.
+ * Registry versions have different key sets. Every REQUIRED key here is present
+ * in all of them, so those push sites index directly. The optional ones are
+ * optional because they exist in some registry versions and not others, and a
+ * push site whose key is absent becomes inert: it evaluates its gates, finds no
+ * entry, pushes nothing, and the surrounding order closes up with no gap.
+ * Making the optionality part of the TYPE is what forces every future registry
+ * to be checked against the push sites at compile time instead of at runtime.
+ *
+ * `NARRATION_SUMMARIES` is optional in the older direction -- upstream removed
+ * it after 2.1.195 (see `src/profiles/beta-registry-2.1.233.ts`). The four keys
+ * added for 2.1.280 are optional in the newer direction: they are absent from
+ * the 2.1.195 registry, and all but `PER_MESSAGE_EFFORT` are absent from the
+ * 2.1.233 one. `PER_MESSAGE_EFFORT` IS declared by the 2.1.233 registry, so
+ * registry absence does not keep its site inert there; what does is the
+ * catalogue, because no 2.1.233 model declares the backing capability. The two
+ * mechanisms are not interchangeable and both are load-bearing.
  */
 export interface ComposableBetaRegistry {
   readonly CLAUDE_CODE: BetaRegistryEntry;
@@ -62,7 +71,11 @@ export interface ComposableBetaRegistry {
   readonly STRUCTURED_OUTPUTS: BetaRegistryEntry;
   readonly PROMPT_CACHING_SCOPE: BetaRegistryEntry;
   readonly MID_CONVERSATION_SYSTEM: BetaRegistryEntry;
+  readonly PER_MESSAGE_EFFORT?: BetaRegistryEntry;
+  readonly MID_CONV_TOOL_CHANGE?: BetaRegistryEntry;
+  readonly MID_CONVERSATION_SYSTEM_CLEAR_AT?: BetaRegistryEntry;
   readonly EFFORT: BetaRegistryEntry;
+  readonly THINKING_BINDING_CONTROLS?: BetaRegistryEntry;
   readonly SPEED: BetaRegistryEntry;
   readonly AFK_MODE: BetaRegistryEntry;
   readonly EXTENDED_CACHE_TTL: BetaRegistryEntry;
@@ -108,6 +121,17 @@ export interface ComposeBetasInput {
   readonly normalizedId: string;
   readonly capabilities: ClaudeCodeCapabilities;
   readonly thinkingDisplayActive: boolean;
+  /**
+   * Whether a `thinking` object of type `adaptive` or `enabled` will reach the
+   * wire for this request AND the model is interleaved-thinking capable, i.e.
+   * upstream `ac` minus its `Fg()` term. Compute it with `isThinkingActive`
+   * from `./thinking.js`; never re-derive it at a call site.
+   *
+   * Required rather than optional: it is a total function of inputs every call
+   * site already holds, and requiring it is what forces a new call site to
+   * decide rather than silently inherit a default.
+   */
+  readonly thinkingActive: boolean;
   readonly cacheTtl?: "5m" | "1h" | null;
   readonly speed?: "standard" | "fast" | null;
   /**
@@ -252,9 +276,85 @@ export function composeBetasWithAudit(
 
   // No web-search beta: upstream pushes it only for vertex and foundry.
   if (experimental) out.push(registry.PROMPT_CACHING_SCOPE.header);
-  if (supportsMidConversationSystem(input.normalizedId, profile))
+
+  /*
+   * Upstream `jR`. The local boolean below records that this site PUSHED, which
+   * is what sites 11b and 11c gate on -- upstream reads `Ee.includes(jR)`, the
+   * composed array, not the registry. Asking the registry instead would fire
+   * those two sites for a model this one skipped.
+   */
+  const midConversationSystemFired = supportsMidConversationSystem(
+    input.normalizedId,
+    profile,
+  );
+  if (midConversationSystemFired) {
     out.push(registry.MID_CONVERSATION_SYSTEM.header);
+  }
+
+  /*
+   * Site 11a. Upstream `wRt`, which reduces to
+   * `Fg() && mD(provider) && catalogue-declares-per_turn_effort`; the provider
+   * term is first-party here by construction.
+   */
+  const perMessageEffort = registry.PER_MESSAGE_EFFORT;
+  if (
+    experimental &&
+    input.capabilities.perTurnEffort &&
+    perMessageEffort !== undefined
+  ) {
+    out.push(perMessageEffort.header);
+  }
+
+  /*
+   * Site 11b. Upstream `oQt() && Tue(model)`. `Tue` opens with
+   * `if (!Fg() || !kue(e)) return false`, so the experimental gate is upstream's
+   * and not an addition. Step 3 of `Tue` -- which sends the beta for any model
+   * with NO catalogue entry -- is deliberately not ported; see the analysis
+   * document's divergence record.
+   */
+  const midConvToolChange = registry.MID_CONV_TOOL_CHANGE;
+  if (
+    experimental &&
+    midConversationSystemFired &&
+    input.capabilities.midConvToolChange &&
+    midConvToolChange !== undefined
+  ) {
+    out.push(midConvToolChange.header);
+  }
+
+  /*
+   * Site 11c. Upstream `Mo`, whose other three conjuncts are constants on this
+   * package's path: the query source is never one of the two auto modes, the
+   * first-request latch is empty, and the delivery-scope flag defaults to a
+   * value that makes its predicate true.
+   */
+  const midConversationSystemClearAt =
+    registry.MID_CONVERSATION_SYSTEM_CLEAR_AT;
+  if (
+    experimental &&
+    midConversationSystemFired &&
+    midConversationSystemClearAt !== undefined
+  ) {
+    out.push(midConversationSystemClearAt.header);
+  }
+
+  // Site 12.
   if (input.capabilities.effort) out.push(registry.EFFORT.header);
+
+  /*
+   * Site 12a. Upstream `er && Fg()` with the latch write, which on the pinned
+   * first-party path collapses to thinking-active AND experimental.
+   * The coupled body field `thinking.block_binding` is NOT emitted: it needs a
+   * host override this package cannot observe.
+   */
+  const thinkingBindingControls = registry.THINKING_BINDING_CONTROLS;
+  if (
+    experimental &&
+    input.thinkingActive &&
+    thinkingBindingControls !== undefined
+  ) {
+    out.push(thinkingBindingControls.header);
+  }
 
   if (input.speed === "fast" && !out.includes(registry.SPEED.header)) {
     out.push(registry.SPEED.header);
