@@ -117,7 +117,15 @@ All notable changes to this project will be documented in this file.
   since 2.1.233, resolve — a decorated form being a `-latest` suffix, a vendor
   prefix or an unlisted minor version. Bare ids and date-suffixed ids are
   unaffected. The wire `model` field is never affected, because the wire id
-  comes from the marker-stripping helper, not from the normalizer.
+  comes from the marker-stripping helper, not from the normalizer. Because the
+  ladder is shared by every profile, the new rungs also reach the previous pin:
+  under `CLAUDE_CODE_2_1_233_PROFILE`, `claude-mythos-5-1` previously collapsed
+  onto `claude-mythos-5` and now keeps its own id, which adds three beta
+  identifiers to the header (`context-management-2025-06-27`,
+  `mid-conversation-system-2026-04-07` and `effort-2025-11-24`) and changes the
+  emitted thinking object from a budgeted one to an adaptive one. The ids
+  concerned are not in that pin's own model catalogue, so this affects only a
+  caller naming a model that release never shipped.
 
 ## [0.5.0] - 2026-08-16
 

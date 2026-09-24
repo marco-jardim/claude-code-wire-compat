@@ -633,3 +633,46 @@ Decisions:
    have allowed them to disagree in a case upstream has no analogue for,
    which is the kind of divergence that survives every test because nothing
    pins it.
+
+## 2026-09-23 — claude-code-2.1.280: the shared model-id normalizer reaches the previous pin
+
+Context: a global adversarial review of the 2.1.280 port found that the
+behaviour-flag audit entry above understates the port's reach. The model-id
+normalizer, `normalizeModelId` in `src/model-identity.ts`, is one ladder
+shared by every profile, and the port added five rungs to it
+(`claude-fable-5-1`, `claude-mythos-5-1`, `claude-opus-5-5`, `claude-opus-5`
+and `claude-sonnet-5`). Two of those rungs change what the 2.1.233 pin
+resolves for ids its own catalogue never listed.
+
+Decisions:
+
+1. **The behaviour-flag audit entry is corrected for one file.** That entry
+   concluded that the port added no per-version behaviour flag and that every
+   delta was data-driven. That holds for the beta registry, the model
+   catalogue, the profile scalars and the push sites, and it does not hold for
+   the model-id normalizer: its ladder carries no per-version gate, so the
+   rungs added for 2.1.280 also change what `CLAUDE_CODE_2_1_233_PROFILE`
+   resolves for `claude-fable-5-1` and `claude-mythos-5-1`, and for
+   `claude-mythos-5-1` that changes the emitted request. Under the 2.1.233 pin
+   that id previously collapsed onto `claude-mythos-5` and inherited that
+   model's deliberate empty-capability catalogue row. It now keeps its own id,
+   finds no catalogue row, and falls through to the permissive predicate path
+   instead, which adds `context-management-2025-06-27`,
+   `mid-conversation-system-2026-04-07` and `effort-2025-11-24` to the
+   `anthropic-beta` header and turns the emitted thinking object from a
+   budgeted one into an adaptive one. The packed-consumer digests cannot see
+   this, because their probe model, `claude-sonnet-4-5`, is untouched by every
+   new rung. `test/validation/shared-normalizer-ladder.test.ts` now pins the
+   current header and thinking object so the behaviour cannot drift silently.
+2. **The ladder was not gated behind a behaviour flag.** Gating would require
+   asserting that the 2.1.233 client's own ladder lacked those rungs. Neither
+   older analysis document transcribes that client's normalizer at all, so
+   such an assertion would be an inference from silence — the cross-release
+   inference the upstream-tracking runbook forbids. The affected ids are not
+   in the 2.1.233 catalogue, so a caller pinning that profile and naming one is
+   naming a model that release never shipped; the old answer and the new one
+   are both guesses about something this repository cannot know. The
+   deliberate choice is one shared ladder, transcribed from the one binary
+   that was actually read, with the consequence recorded here and pinned by a
+   test. Settling which answer the genuine 2.1.233 client gives needs that
+   release's binary.

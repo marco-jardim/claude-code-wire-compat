@@ -1580,15 +1580,23 @@ reasons are not interchangeable:
 - `per-turn-control-2026-07-01` **is** in the 2.1.233 registry, so registry
   absence does not protect it. What does is the catalogue: no 2.1.233 entry
   declares `per_turn_effort`, and the new site's guard is a catalogue read.
-- `mid-conversation-tool-changes-2026-07-01` is likewise in the 2.1.233 registry
-  and likewise guarded by a catalogue read — but only because the port
-  deliberately implements **step 2 of `Tue` and not step 3** (§13.3). Upstream's
-  step 3 sends the beta for any model with *no* catalogue entry. Porting that
-  would make the package emit this beta for every unrecognised model string,
-  which is precisely the maximally-permissive predicate fallback the 2.1.233
-  profile already rejected when it catalogued `claude-mythos-5` with an empty
-  capability array. The omission is a recorded divergence, not an oversight, and
-  it is what makes this bullet true.
+- `mid-conversation-tool-changes-2026-07-01` is **absent from the 2.1.233
+  registry** — §4.1 row 30 marks it **NEW** for this release, and neither the
+  2.1.233 analysis document's registry table nor
+  `src/profiles/beta-registry-2.1.233.ts` carries it — so the registry lookup
+  alone keeps the site silent. It is additionally guarded by a catalogue read,
+  which no 2.1.233 entry satisfies — but that second guard holds only because
+  the port deliberately implements **step 2 of `Tue` and not step 3** (§13.3).
+  Upstream's step 3 sends the beta for any model with *no* catalogue entry.
+  Porting that would make the package emit this beta for every unrecognised
+  model string, which is precisely the maximally-permissive predicate fallback
+  the 2.1.233 profile already rejected when it catalogued `claude-mythos-5` with
+  an empty capability array. The omission is a recorded divergence, not an
+  oversight, and it is what makes the catalogue guard hold. (An earlier revision
+  of this bullet said the header "is likewise in the 2.1.233 registry"; that
+  claim was withdrawn after checking the ported registry file, which has no such
+  key. The conclusion — inert for 2.1.233 — is unchanged, and now rests on
+  registry absence plus catalogue absence.)
 
 The packed-consumer digest
 `4e06af42310d63549a4fa9af60ff0c9b13e95d7864624c6b7bf94d45ce9a3997` must not move
@@ -2174,7 +2182,7 @@ any one of them without the other two writes bytes no genuine client sends.
 | `context_management` first-party override (§7.1)                | —         | pre-existing divergence, recorded, **not** changed in this port         |
 | `np` / served-capability path in `wRt` (§13.4)                  | —         | **new divergence, recorded not ported.** `gq` (byte 7846777) can return true for a model the static catalogue does not declare, via the remote client-data cache `nNn` (byte 7207706). A package with no remote read cannot reproduce it, and at defaults that cache is empty, so the emitted header is unaffected |
 | `Sw` permissive fallback (§13.3)                                | —         | **new divergence, recorded not ported.** `Sw` (byte 7025785) ends `return mD(sc(e))`, so upstream grants `mid_conversation_system` to any model string it does not recognise. The package derives from the catalogue only, exactly as the 2.1.233 port chose when it catalogued `claude-mythos-5` with an empty capability array |
-| Haiku's `isAgenticQuery` re-push (§7.1)                         | —         | **new divergence, recorded not ported.** `kw` entry 1 is `{beta:ert,when:(e)=>!e.canonical.includes("haiku")}` (byte 7027543), and `cQt` re-pushes `ert` when `isAgenticQuery` (byte 13580256, true for `repl_main_thread`, `agent:`, `sdk`, `hook_agent`). For a haiku model the identifier therefore appears *after* the `kw` run in agentic queries and not at all otherwise. The package's site 1 is unconditional and has no `querySource` input, so it cannot reproduce either the presence rule or the position |
+| Haiku's `isAgenticQuery` re-push (§7.1)                         | —         | **new divergence, recorded not ported.** `kw` entry 1 is `{beta:ert,when:(e)=>!e.canonical.includes("haiku")}` (byte 7027543), and `cQt` re-pushes `ert` when `isAgenticQuery` (byte 13580256, true for `repl_main_thread`, `agent:`, `sdk`, `hook_agent`). For a haiku model the identifier therefore appears *after* the `kw` run in agentic queries and not at all otherwise. The package's site 1 ports the same haiku suppression (`src/betas.ts`, `if (!input.normalizedId.includes("haiku"))`) but has no `querySource` input and no re-push, so it can reproduce neither the presence rule nor the position: a haiku request built by this package omits the identifier entirely |
 | `DEFAULT_PROFILE` switch                                        | behaviour | required (§9.1); isolated one-line commit per the runbook               |
 
 ### 13.1 Prerequisites before the profile lands
@@ -2242,7 +2250,7 @@ asserting it is an interpolation the runbook forbids.
 | `interactive`                | `kw` 5's `!Ce()`; `Ce()` (byte 4364829) = `!launchOptions.isInteractive()` | true  | `[DER]` |
 | `thinkingSummariesShown`     | `kw` 5's `!sQt()`; `sQt()` (byte 7020903) = `Ke().showThinkingSummaries??!1` | false | `[DER]` |
 | `thinkingTokenCountEnabled`  | `kw` 6 exists and `BR` is non-null (byte 6278332)             | true  | `[DER]` |
-| `narrationSummariesEnabled`  | no registry entry; the slot is `hZt=null` (byte 6279537)      | false | `[BIN]` |
+| `narrationSummariesEnabled`  | no registry entry, and the header string appears nowhere in the bundle; which null slot (`kAt`/`hZt`) it was is `[UNR]` (§4.2) | false | `[BIN]` |
 | `structuredOutputsEnabled`   | `kw` 8's `x("tengu_tool_pear",!1)`                            | false | `[DER]` |
 | `afkModeEnabled`             | requires a non-default permission mode or flag `Tpr` (default false); `Nh`, `ve`, `o_r`, `Sl` are `[UNR]` | false | retained |
 | `cacheDiagnosisEnabled`      | `ppr()=Fg()&&FOe()&&Nn()` (§7.6.2)                            | **true** | `[DER]` |
