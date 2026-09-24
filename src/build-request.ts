@@ -350,8 +350,12 @@ const ACCEPTED_PROFILES: ReadonlySet<ClaudeCodeProtocolProfile> = new Set([
 ]);
 
 /**
- * The profile every public entry point resolves to when the caller supplies
- * none. Declared once so that the default is a single, greppable seam: a test
+ * The profile the request-building entry points (`buildClaudeCodeRequest`,
+ * `buildClaudeCodeCountTokensRequest` and `parseBuiltClaudeCodeRequest`)
+ * resolve to when the caller supplies none. It is not a global default: the
+ * model-query and anti-verbosity helpers deliberately keep their own,
+ * separately declared default and are NOT governed by this constant. Declared
+ * once so that the default is a single, greppable seam: a test
  * that means "whatever the default is" reads THIS instead of naming a
  * version, which keeps a default switch to a one-line diff and keeps tests
  * that genuinely mean 2.1.195 honest about saying so.
@@ -1532,8 +1536,9 @@ export async function buildClaudeCodeCountTokensRequest(
 /**
  * Builds one canonical request for the pinned Claude Code wire profile.
  *
- * @param profile - The only accepted value is the exported
- * `CLAUDE_CODE_2_1_195_PROFILE` singleton. Any other object, even a
+ * @param profile - The accepted values are the exported pinned profile
+ * singletons held in `ACCEPTED_PROFILES`; omitting the argument resolves to
+ * `DEFAULT_PROFILE`. Any other object, even a
  * structurally identical clone, is rejected with `ClaudeCodeWireError` code
  * `INVALID_INPUT`. This deliberate fail-closed behaviour prevents callers from
  * substituting an unpinned protocol profile.
@@ -1733,8 +1738,9 @@ export async function buildClaudeCodeRequest(
 /**
  * Validates and clones a previously built request into a deeply frozen value.
  *
- * @param profile - The only accepted value is the exported
- * `CLAUDE_CODE_2_1_195_PROFILE` singleton. Any other object, even a
+ * @param profile - The accepted values are the exported pinned profile
+ * singletons held in `ACCEPTED_PROFILES`; omitting the argument resolves to
+ * `DEFAULT_PROFILE`. Any other object, even a
  * structurally identical clone, is rejected with `ClaudeCodeWireError` code
  * `INVALID_INPUT`. This deliberate fail-closed behaviour prevents callers from
  * substituting an unpinned protocol profile.
