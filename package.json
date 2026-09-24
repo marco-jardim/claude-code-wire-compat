@@ -55,7 +55,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:pack": "node scripts/verify-packed-consumers.mjs",
+    "test:pack": "npm run build && node scripts/verify-packed-consumers.mjs",
     "pack:check": "npm pack --dry-run && publint && attw --pack . --profile esm-only",
     "fixtures:check": "node scripts/seal-golden-fixtures.mjs --check",
     "fixtures:seal": "node scripts/seal-golden-fixtures.mjs --write",
