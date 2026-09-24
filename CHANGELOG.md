@@ -53,6 +53,16 @@ All notable changes to this project will be documented in this file.
   Only code that constructs a complete `ClaudeCodeCapabilities` value, or that
   exhaustively destructures `evidence.capabilityDecisions`, needs updating.
 
+  Persisted artefacts: a `BuiltClaudeCodeRequest` persisted by 0.5.0 or
+  earlier is rejected by `parseBuiltClaudeCodeRequest` with
+  `ClaudeCodeWireError` code `INVALID_INPUT` under every profile, including
+  the previous pin, because its `evidence.capabilityDecisions` lacks the two
+  new keys. The parser requires the decisions record to carry exactly the
+  expected key set and reads both new booleans as mandatory. Re-build those
+  requests, or keep parsing them with 0.5.0. The rollback snippet above
+  restores bytes for new builds; it does not restore parseability of
+  artefacts persisted before this version.
+
 ### Added
 
 - **Claude Code 2.1.280 protocol profile**, extracted from the release binary
@@ -64,6 +74,11 @@ All notable changes to this project will be documented in this file.
     redact-thinking identifier;
   - a 20-model catalogue, adding `claude-opus-5-5`, `claude-fable-5-1` and
     `claude-mythos-5-1`.
+
+- **New exports for 2.1.280**: the profile singleton
+  `CLAUDE_CODE_2_1_280_PROFILE` and its ordered beta registry
+  `BETA_REGISTRY_2_1_280`, both from the package entry point, plus the subpath
+  export `@tormentalabs/claude-code-wire-compat/profiles/claude-code-2.1.280`.
 
 - **A third frozen packed-consumer digest**, pinned across node, bun and
   workerd from the packed tarball:
@@ -79,17 +94,30 @@ All notable changes to this project will be documented in this file.
   profile is deliberately unchanged: whether its `false` was always wrong
   cannot be settled without that release's binary.
 
+### Removed
+
+- **The `drift:check` maintainer script is retired**, and the packed-consumer
+  canary script now builds before it packs. Neither is consumer-facing: the
+  scripts directory is not published in the package.
+
 ### Fixed
 
 - **The packed-consumer pack-policy test accepts npm 12's output shape.**
 
-- **Model-id normalizer**: `claude-fable-5-1` and `claude-mythos-5-1`
-  previously collapsed onto their base ids, which silently suppressed the
-  per-turn-control push site for `claude-fable-5-1`. Both now normalise to
-  their own ids.
+- **Model-id normalizer**: new rungs for `claude-fable-5-1`,
+  `claude-mythos-5-1`, `claude-opus-5-5`, `claude-opus-5` and
+  `claude-sonnet-5`. `claude-fable-5-1` and `claude-mythos-5-1` previously
+  collapsed onto their base ids, which silently suppressed the per-turn-control
+  push site for `claude-fable-5-1`. Both now normalise to their own ids, so
+  `isFable5Model("claude-fable-5-1")` now answers `false` for every caller,
+  pinned or not.
 
-  Not listed as breaking: the affected ids belong to 2.1.280, which had not
-  been released before this version.
+  Compatibility: the `claude-opus-5` and `claude-sonnet-5` rungs also change
+  how decorated forms of those ids, already catalogued in the previous pin
+  since 2.1.233, resolve — a decorated form being a `-latest` suffix, a vendor
+  prefix or an unlisted minor version. Bare ids and date-suffixed ids are
+  unaffected. The wire `model` field is never affected, because the wire id
+  comes from the marker-stripping helper, not from the normalizer.
 
 ## [0.5.0] - 2026-08-16
 
