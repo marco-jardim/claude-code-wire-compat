@@ -276,6 +276,92 @@ export function isThinkingDisplayActive(
 }
 
 /**
+ * The three thinking types the resolver can emit, or `undefined` when no
+ * `thinking` object reaches the wire at all.
+ */
+export type ResolvedThinkingType = "adaptive" | "enabled" | "disabled";
+
+/**
+ * Narrows an unvalidated caller `thinking` value to its `type` literal.
+ *
+ * Deliberately tolerant of unvalidated input for the same reason
+ * `isThinkingDisplayActive` is: beta composition asks this question before
+ * `buildCanonicalBody` has validated the shape. Anything malformed answers
+ * `undefined` here and is rejected later by the body validator.
+ */
+function thinkingRequestType(
+  request: unknown,
+): ThinkingRequest["type"] | undefined {
+  if (request === null || typeof request !== "object") return undefined;
+  const type = (request as Record<string, unknown>)["type"];
+  if (type === "enabled" || type === "adaptive" || type === "disabled") {
+    return type;
+  }
+  return undefined;
+}
+
+/**
+ * Decides WHICH thinking object `resolveThinking` will emit, without building
+ * it.
+ *
+ * Split out of `resolveThinking` so that beta composition and body emission
+ * answer the same question from one place. A second, independently written
+ * copy of this predicate is exactly how a beta header and the body field it
+ * is coupled to drift apart.
+ */
+export function resolveThinkingType(
+  requestType: ThinkingRequest["type"] | undefined,
+  capabilities: ClaudeCodeCapabilities,
+): ResolvedThinkingType | undefined {
+  const requestActive = requestType !== undefined && requestType !== "disabled";
+  if (requestActive && capabilities.thinking) {
+    return capabilities.adaptiveThinking ? "adaptive" : "enabled";
+  }
+  if (
+    requestType === "disabled" &&
+    capabilities.thinking &&
+    !capabilities.rejectsDisabledThinking
+  ) {
+    return "disabled";
+  }
+  return undefined;
+}
+
+/**
+ * Upstream `ac = Kg && Fg() && iQt(model)`, the predicate the 2.1.280 thinking
+ * push sites gate on, with `Fg()` (`experimentalBetasEnabled`) factored OUT.
+ *
+ * Every push site conjoins the experimental gate itself, so folding it in here
+ * would count it twice and make the one site that legitimately does not want it
+ * impossible to express. `Kg`'s environment-disable term is not modelled: this
+ * package reads no environment.
+ *
+ * This is deliberately NOT `ResolvedThinking.requestActive`. That one is true
+ * whenever the caller asked for thinking at all, including for a model whose
+ * capabilities emit no thinking object — which would ship a thinking beta
+ * header for a body that carries no thinking block.
+ *
+ * Upstream `ac` conjoins only the interleaved predicate `iQt`; requiring a
+ * resolved `"adaptive"`/`"enabled"` type additionally requires
+ * `capabilities.thinking`, one conjunct more than upstream. That extra term is
+ * unobservable in practice: `supportsThinking` and `supportsInterleavedThinking`
+ * in `model-capabilities.ts` are the same expression, so no derived capability
+ * set separates them. Only an explicit caller capability override can, and then
+ * the package declines to announce a thinking beta for a request whose body
+ * will carry no thinking object.
+ */
+export function isThinkingActive(
+  request: unknown,
+  capabilities: ClaudeCodeCapabilities,
+): boolean {
+  const type = resolveThinkingType(thinkingRequestType(request), capabilities);
+  return (
+    (type === "adaptive" || type === "enabled") &&
+    capabilities.interleavedThinking
+  );
+}
+
+/**
  * Resolves the caller's thinking request into the object the genuine client
  * would put on the wire.
  *
@@ -283,6 +369,13 @@ export function isThinkingDisplayActive(
  * for the enabled branch — `budget_tokens` FIRST — and `{type, display}` for
  * adaptive. Serialised bodies are compared byte for byte, so the insertion
  * order below must not be rearranged.
+ *
+ * `displayOverride` is the body-side half of beta push site 12b
+ * (`thinkingDisplayOverride` from `composeBetasWithAudit`); it is not
+ * caller-facing, which is why `ThinkingDisplay` stays unwidened. When both it
+ * and a caller display are present the override wins -- a combination the
+ * composition guard makes unreachable, since site 12b requires that the caller
+ * supplied no display.
  */
 export function resolveThinking(
   request: ThinkingRequest | undefined,
@@ -291,6 +384,7 @@ export function resolveThinking(
   betaPolicy: ClaudeCodeBetaPolicy,
   maxTokens: number,
   profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+  displayOverride?: "updates",
 ): ResolvedThinking {
   // Upstream `nr = n.type !== "disabled" && !CLAUDE_CODE_DISABLE_THINKING`.
   const requestActive = request !== undefined && request.type !== "disabled";
@@ -301,33 +395,54 @@ export function resolveThinking(
   );
   const display = displayActive ? request?.display : undefined;
 
+  const resolvedType = resolveThinkingType(request?.type, capabilities);
+
   let emitted: Record<string, unknown> | undefined;
 
-  if (requestActive && capabilities.thinking) {
-    if (capabilities.adaptiveThinking) {
-      emitted = { type: "adaptive" };
-      if (display !== undefined) emitted["display"] = display;
-    } else {
-      // Upstream: `let Tr = wvi(u)` — the model's upper limit minus one —
-      // overridden by the caller's budget when supplied, then clamped by
-      // `Tr = Math.min(Fi - 1, Tr)` where `Fi` is the emitted `max_tokens`.
-      //
-      // This is the one wire-visible consumer of the request-derived bound: on
-      // a 2.1.222+ profile a caller asking for a `max_tokens` above the
-      // catalogue's upper limit seeds the default budget from THEIR number
-      // minus one, not from the catalogue's.
-      const requested =
-        request.budgetTokens ??
-        modelOutputTokenLimits(normalizedId, profile, maxTokens).upperLimit - 1;
-      emitted = { budget_tokens: Math.min(maxTokens - 1, requested) };
-      emitted["type"] = "enabled";
-      if (display !== undefined) emitted["display"] = display;
-    }
-  } else if (
-    request?.type === "disabled" &&
-    capabilities.thinking &&
-    !capabilities.rejectsDisabledThinking
-  ) {
+  if (resolvedType === "adaptive") {
+    emitted = { type: "adaptive" };
+    if (display !== undefined) emitted["display"] = display;
+    // Assignment, not reconstruction: an existing key keeps its position and a
+    // new one appends last, matching upstream `{...yc, display: "updates"}`.
+    if (displayOverride !== undefined) emitted["display"] = displayOverride;
+  } else if (resolvedType === "enabled") {
+    // Transcribed from the 2.1.280 analysis document:
+    //   let hf = mlo(_e);
+    //   if (r.type === "enabled" && r.budgetTokens !== void 0) hf = r.budgetTokens;
+    //   hf = Math.max(1024, Math.min(Rv - 1, hf));
+    // The default budget is the model's upper limit minus one. The caller's
+    // `budgetTokens` replaces it only when the caller itself declared an
+    // `enabled` request -- the guard reads the caller's raw `type`, not the
+    // resolved one, so an `adaptive` request downgraded to `enabled` on a
+    // model without adaptive thinking ignores its budget. The result is
+    // clamped to the emitted `max_tokens` minus one, and the floor of 1024 is
+    // applied after that clamp, so the floor wins when the two conflict.
+    //
+    // No older analysis document in this repository transcribes this
+    // computation at all, so the floor and the type guard are evidenced for
+    // 2.1.280 only. They are applied to every profile as one shared
+    // behaviour -- the same deliberate choice already made for the model-id
+    // normalizer ladder -- and nothing here asserts whether older clients
+    // had them.
+    //
+    // This is the one wire-visible consumer of the request-derived bound: on
+    // a 2.1.222+ profile a caller asking for a `max_tokens` above the
+    // catalogue's upper limit seeds the default budget from THEIR number
+    // minus one, not from the catalogue's.
+    const callerBudget =
+      request?.type === "enabled" ? request.budgetTokens : undefined;
+    const requested =
+      callerBudget ??
+      modelOutputTokenLimits(normalizedId, profile, maxTokens).upperLimit - 1;
+    emitted = {
+      budget_tokens: Math.max(1024, Math.min(maxTokens - 1, requested)),
+    };
+    emitted["type"] = "enabled";
+    if (display !== undefined) emitted["display"] = display;
+    // Same in-place assignment as the adaptive arm: order stays
+    // `budget_tokens, type, display`.
+    if (displayOverride !== undefined) emitted["display"] = displayOverride;
+  } else if (resolvedType === "disabled") {
     emitted = { type: "disabled" };
   }
 

@@ -82,5 +82,7 @@ export {
 } from "./model-queries.js";
 
 export { BETA_REGISTRY_2_1_233 } from "./profiles/beta-registry-2.1.233.js";
+export { BETA_REGISTRY_2_1_280 } from "./profiles/beta-registry-2.1.280.js";
 export { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 export { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
+export { CLAUDE_CODE_2_1_280_PROFILE } from "./profiles/claude-code-2.1.280.js";

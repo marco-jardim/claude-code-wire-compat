@@ -11,6 +11,8 @@ import { fileURLToPath } from "node:url";
 
 import { Miniflare } from "miniflare";
 
+import { firstPackResult } from "./lib/pack-json.mjs";
+
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryRoot = resolve(process.env.TEMP ?? tmpdir());
 const consumerNames = [
@@ -32,16 +34,42 @@ const consumerDirectories = consumerNames.map((name) =>
  * not move for any reason other than a change to that profile's own wire
  * output.
  *
- * The request input is identical across cases on purpose, so the profile is
- * the only variable between their digests. The model is catalogued
- * identically by both profiles, which keeps the comparison about profile
- * scalars and beta composition rather than about catalogue deltas.
+ * The request input (`input` in `consumerSource` below) is frozen, and every
+ * case in `CASE_NAMES` shares it. It is frozen because the literals in
+ * `EXPECTED_DIGESTS` must never move, and every one of them is a digest of a
+ * request built from this exact input: any change to `input` would move all
+ * of them at once and destroy the evidence they carry. The only cross-case
+ * comparison this script makes is `default` against `EXPECTED_DEFAULT_CASE`;
+ * digests of different named profiles are never compared with each other.
  */
-const CASE_NAMES = ["default", "2.1.195", "2.1.233"];
+const CASE_NAMES = ["default", "2.1.195", "2.1.233", "2.1.280"];
+/*
+ * The frozen digests the explicit cases must reproduce. A mismatch means a
+ * code change altered the wire output of a profile that was supposed to be
+ * untouched. The correct response is to find and revert that cause — NEVER
+ * to update a literal here to match the new output.
+ *
+ * `default` is deliberately not pinned to a literal: switching
+ * `DEFAULT_PROFILE` moves it on purpose. It is pinned instead to the case name
+ * it must currently agree with, so a default switch is a deliberate one-line
+ * change to `EXPECTED_DEFAULT_CASE` and is still verified rather than going
+ * unobserved.
+ *
+ * A case listed in `CASE_NAMES` but absent from `EXPECTED_DIGESTS` is
+ * intentionally unpinned; that is how a newly added profile behaves until its
+ * digest is first recorded.
+ */
+const EXPECTED_DIGESTS = {
+  "2.1.195": "6b9609b29463c890544845dd94acf560206b6f8165538faafd8886750037d277",
+  "2.1.233": "4e06af42310d63549a4fa9af60ff0c9b13e95d7864624c6b7bf94d45ce9a3997",
+  "2.1.280": "9a531ed01ddd3440ce5b7f25c6caf5f045a9b4e78d885b5317508e21a22ada90",
+};
+const EXPECTED_DEFAULT_CASE = "2.1.280";
 const consumerSource = `
 import {
   CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
+  CLAUDE_CODE_2_1_280_PROFILE,
   buildClaudeCodeRequest,
 } from "@tormentalabs/claude-code-wire-compat";
 
@@ -63,6 +91,30 @@ const input = {
   },
   clientRequestId: "00000000-0000-4000-8000-000000000002",
 };
+
+// Deep-freeze the shared input before any case runs. ESM is strict mode, so a
+// builder that mutated its input would throw here instead of silently
+// changing what later cases see.
+function deepFreeze(value) {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const child of Object.values(value)) {
+      deepFreeze(child);
+    }
+    Object.freeze(value);
+  }
+  return value;
+}
+deepFreeze(input);
+
+// Which engine actually executed this module. The Bun check comes first
+// because Bun also exposes a process global; the navigator check precedes any
+// process access because workerd has no process global.
+const actualRuntime =
+  typeof Bun !== "undefined"
+    ? "bun"
+    : globalThis.navigator?.userAgent === "Cloudflare-Workers"
+      ? "workerd"
+      : "node";
 
 async function digestFor(profile) {
   const request =
@@ -92,10 +144,12 @@ async function digestFor(profile) {
 }
 
 export const report = {
+  runtime: actualRuntime,
   digests: {
     "default": await digestFor(undefined),
     "2.1.195": await digestFor(CLAUDE_CODE_2_1_195_PROFILE),
     "2.1.233": await digestFor(CLAUDE_CODE_2_1_233_PROFILE),
+    "2.1.280": await digestFor(CLAUDE_CODE_2_1_280_PROFILE),
   },
 };
 `;
@@ -160,9 +214,32 @@ function safeRemove(directory) {
   rmSync(directory, { recursive: true, force: true });
 }
 
+const REPORT_KEYS = ["runtime", "digests"];
+
 function parseDigests(output, runtime) {
   const lines = output.split(/\r?\n/u).filter(Boolean);
   const report = JSON.parse(lines.at(-1));
+  if (report === null || typeof report !== "object") {
+    throw new Error(`${runtime} did not return a report object`);
+  }
+  // Exact top-level shape: the self-reported engine sits beside the digests,
+  // outside the digested payload.
+  if (JSON.stringify(Object.keys(report)) !== JSON.stringify(REPORT_KEYS)) {
+    throw new Error(
+      `${runtime} reported keys ${JSON.stringify(Object.keys(report))}`,
+    );
+  }
+  if (typeof report.runtime !== "string") {
+    throw new Error(`${runtime} did not report which engine executed it`);
+  }
+  // The parent's label is only what it believes it spawned; the consumer's
+  // own report is what proves a distinct engine actually ran.
+  if (report.runtime !== runtime) {
+    throw new Error(
+      `Engine mismatch: expected ${runtime} to execute the consumer, ` +
+        `but the consumer reported ${report.runtime}`,
+    );
+  }
   const digests = report.digests;
   if (digests === null || typeof digests !== "object") {
     throw new Error(`${runtime} did not return digests`);
@@ -179,7 +256,7 @@ function parseDigests(output, runtime) {
       throw new Error(`${runtime} did not return a digest for ${name}`);
     }
   }
-  return digests;
+  return { reportedRuntime: report.runtime, digests };
 }
 
 if (!existsSync(temporaryRoot)) {
@@ -197,7 +274,7 @@ try {
     );
   }
 
-  const [packResult] = JSON.parse(
+  const packResult = firstPackResult(
     npm(["pack", "--json", "--ignore-scripts"], {
       cwd: repositoryRoot,
     }),
@@ -248,17 +325,14 @@ try {
   );
 
   const digests = new Map();
-  digests.set(
-    "node",
-    parseDigests(
-      run(process.execPath, ["run.mjs"], { cwd: nodeDirectory }),
-      "node",
-    ),
-  );
-  digests.set(
-    "bun",
-    parseDigests(run("bun", ["run.mjs"], { cwd: bunDirectory }), "bun"),
-  );
+  const reportedRuntimes = new Map();
+  const record = (runtime, output) => {
+    const parsed = parseDigests(output, runtime);
+    digests.set(runtime, parsed.digests);
+    reportedRuntimes.set(runtime, parsed.reportedRuntime);
+  };
+  record("node", run(process.execPath, ["run.mjs"], { cwd: nodeDirectory }));
+  record("bun", run("bun", ["run.mjs"], { cwd: bunDirectory }));
 
   const mf = new Miniflare({
     modules: true,
@@ -278,7 +352,7 @@ try {
     if (!response.ok) {
       throw new Error(`workerd returned HTTP ${response.status}`);
     }
-    digests.set("workerd", parseDigests(await response.text(), "workerd"));
+    record("workerd", await response.text());
   } finally {
     await mf.dispose();
   }
@@ -292,7 +366,9 @@ try {
       byCase[name],
     ]);
     for (const [runtime, digest] of perRuntime) {
-      console.log(`${name} ${runtime}: ${digest}`);
+      console.log(
+        `${name} ${runtime} (engine reported: ${reportedRuntimes.get(runtime)}): ${digest}`,
+      );
     }
     const distinct = new Set(perRuntime.map(([, digest]) => digest));
     if (distinct.size !== 1) {
@@ -306,6 +382,56 @@ try {
       `Packed consumer digests do not match for: ${mismatched.join(", ")}`,
     );
   }
+
+  // Every case is now known to be identical across runtimes, so the node
+  // digest is a sound single reference for the agreed value of each case.
+  const referenceDigests = digests.get("node");
+  const agreed = new Map(
+    CASE_NAMES.map((name) => [name, referenceDigests[name]]),
+  );
+
+  // Frozen-digest enforcement. Failures are collected, not thrown on the
+  // first, so a reviewer sees whether one profile moved or several did.
+  const frozenFailures = [];
+  for (const [name, expected] of Object.entries(EXPECTED_DIGESTS)) {
+    const observed = agreed.get(name);
+    if (observed !== expected) {
+      frozenFailures.push({ name, expected, observed });
+    }
+  }
+  if (!agreed.has(EXPECTED_DEFAULT_CASE)) {
+    throw new Error(
+      `EXPECTED_DEFAULT_CASE "${EXPECTED_DEFAULT_CASE}" is not in CASE_NAMES ` +
+        `(${CASE_NAMES.join(", ")}); fix this script's configuration.`,
+    );
+  }
+  const expectedDefault = agreed.get(EXPECTED_DEFAULT_CASE);
+  const observedDefault = agreed.get("default");
+  if (observedDefault !== expectedDefault) {
+    frozenFailures.push({
+      name: `default (must equal ${EXPECTED_DEFAULT_CASE})`,
+      expected: expectedDefault,
+      observed: observedDefault,
+    });
+  }
+  if (frozenFailures.length > 0) {
+    const lines = frozenFailures.map(
+      ({ name, expected, observed }) =>
+        `  ${name}: expected ${expected}, observed ${observed}`,
+    );
+    throw new Error(
+      [
+        "Frozen packed consumer digests moved:",
+        ...lines,
+        "Do NOT edit EXPECTED_DIGESTS or EXPECTED_DEFAULT_CASE to make this " +
+          "pass. Find the change that altered the wire bytes and revert it.",
+      ].join("\n"),
+    );
+  }
+  console.log(
+    `Frozen digests matched for: ${Object.keys(EXPECTED_DIGESTS).join(", ")}; ` +
+      `default matches ${EXPECTED_DEFAULT_CASE}.`,
+  );
   console.log("Packed consumer digests are identical.");
 } finally {
   if (tarballPath) {

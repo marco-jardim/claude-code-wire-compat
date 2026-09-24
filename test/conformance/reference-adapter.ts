@@ -14,7 +14,10 @@ export type ReferenceFixtureName =
   | "outgoing-foreground.json"
   | "outgoing-canary-context-hint-off.json"
   | "outgoing-foreground-2.1.233.json"
-  | "outgoing-canary-context-hint-off-2.1.233.json";
+  | "outgoing-canary-context-hint-off-2.1.233.json"
+  | "outgoing-foreground-2.1.280.json"
+  | "outgoing-canary-context-hint-off-2.1.280.json"
+  | "outgoing-default-path-2.1.280.json";
 
 export interface ReferenceFixture {
   readonly url: string;

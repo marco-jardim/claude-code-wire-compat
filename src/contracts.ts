@@ -669,6 +669,10 @@ export interface ClaudeCodeCapabilities {
   readonly contextManagement: boolean;
   readonly temperature: boolean;
   readonly rejectsDisabledThinking: boolean;
+  /** Catalogue string `mid_conv_tool_change`. */
+  readonly midConvToolChange: boolean;
+  /** Catalogue string `per_turn_effort`. */
+  readonly perTurnEffort: boolean;
 }
 
 /** Host-state beta gates pinned for a default first-party environment. */
@@ -1221,8 +1225,9 @@ export interface RedactedRequestEvidence {
 }
 
 /**
- * Records the nine model capability decisions, plus any package-extension beta
- * override the caller supplied.
+ * Records every model capability decision -- the key set is exactly
+ * `keyof ClaudeCodeCapabilities`, so it widens whenever that interface does --
+ * plus any package-extension beta override the caller supplied.
  *
  * The override keys are OPTIONAL and are emitted only when the corresponding
  * member of `betaOverrides` is present, so evidence for a request that omits

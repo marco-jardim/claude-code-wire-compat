@@ -104,7 +104,7 @@ expectTypeOf<
   NonNullable<ClaudeCodeRequestInput["cacheControl"]>["suppressIdentityBlock"]
 >().toEqualTypeOf<boolean | null | undefined>();
 
-// The nine capability keys stay mandatory; the seam key is additive-only.
+// Every capability key stays mandatory; the seam key is additive-only.
 expectTypeOf<ClaudeCodeCapabilityDecisions>().toExtend<
   Readonly<Record<keyof ClaudeCodeCapabilities, boolean>>
 >();
@@ -114,3 +114,25 @@ expectTypeOf<
 expectTypeOf<
   Readonly<Record<keyof ClaudeCodeCapabilities, boolean>>
 >().toExtend<ClaudeCodeCapabilityDecisions>();
+
+/*
+ * The two 2.1.280 catalogue-backed fields are REQUIRED booleans: a shape
+ * carrying only the nine pre-existing keys must not satisfy the interface.
+ */
+expectTypeOf<ClaudeCodeCapabilities>()
+  .toHaveProperty("midConvToolChange")
+  .toEqualTypeOf<boolean>();
+expectTypeOf<ClaudeCodeCapabilities>()
+  .toHaveProperty("perTurnEffort")
+  .toEqualTypeOf<boolean>();
+expectTypeOf<{
+  thinking: boolean;
+  adaptiveThinking: boolean;
+  interleavedThinking: boolean;
+  effort: boolean;
+  maxEffort: boolean;
+  xhighEffort: boolean;
+  contextManagement: boolean;
+  temperature: boolean;
+  rejectsDisabledThinking: boolean;
+}>().not.toExtend<ClaudeCodeCapabilities>();

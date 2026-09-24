@@ -37,6 +37,7 @@ describe("CI policy", () => {
     "npm run test:coverage",
     "npm run build",
     "npm run pack:check",
+    "npm run test:pack",
     "license-checker-rseidelsohn",
     "gitleaks",
   ])("contains quality gate %s", (gate) => {

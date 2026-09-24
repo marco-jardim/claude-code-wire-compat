@@ -64,6 +64,16 @@ const REFERENCE_IDENTIFIERS: ReadonlyMap<string, string> = new Map([
       "the constant to keep the word out of this scan would be obfuscation, " +
       "which is a worse outcome than an allowlist entry that says what it is.",
   ],
+  [
+    "BEDROCK_UNSUPPORTED_BETAS_2_1_280",
+    "Static reference data, not a selectable branch. The 2.1.280 transcription " +
+      "of the same set, taken from upstream `qbr` and identified by its call " +
+      "site rather than by resemblance to the 2.1.233 set: upstream filters it " +
+      "out of the emitted list when the provider is bedrock, and the " +
+      "complement feeds a bedrock-only extra-body-params list. This package is " +
+      "anthropic-only, so the set is exported for documentary value and " +
+      "consumed by NOTHING in `src/`; no provider can select it.",
+  ],
 ]);
 
 /**

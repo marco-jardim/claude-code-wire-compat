@@ -11,8 +11,10 @@ import {
   supportsStructuredOutputs,
 } from "./model-capabilities.js";
 import { BETA_REGISTRY_2_1_233 } from "./profiles/beta-registry-2.1.233.js";
+import { BETA_REGISTRY_2_1_280 } from "./profiles/beta-registry-2.1.280.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 import { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
+import { CLAUDE_CODE_2_1_280_PROFILE } from "./profiles/claude-code-2.1.280.js";
 
 /*
  * Provenance. The emitted order is a port of the genuine client's base beta set
@@ -41,13 +43,22 @@ interface BetaRegistryEntry {
  * The entries the push sites below require, as a structural contract rather
  * than a reference to one concrete registry.
  *
- * Registry versions have different key sets. Every key here except
- * `NARRATION_SUMMARIES` is present in all of them, so those push sites index
- * directly. `NARRATION_SUMMARIES` is optional because upstream removed it after
- * 2.1.195 (see `src/profiles/beta-registry-2.1.233.ts`): its push site survives
- * and becomes inert when the resolved registry has no entry to push. Making the
- * optionality part of the TYPE is what forces every future registry to be
- * checked against the push sites at compile time instead of at runtime.
+ * Registry versions have different key sets. Every REQUIRED key here is present
+ * in all of them, so those push sites index directly. The optional ones are
+ * optional because they exist in some registry versions and not others, and a
+ * push site whose key is absent becomes inert: it evaluates its gates, finds no
+ * entry, pushes nothing, and the surrounding order closes up with no gap.
+ * Making the optionality part of the TYPE is what forces every future registry
+ * to be checked against the push sites at compile time instead of at runtime.
+ *
+ * `NARRATION_SUMMARIES` is optional in the older direction -- upstream removed
+ * it after 2.1.195 (see `src/profiles/beta-registry-2.1.233.ts`). The keys
+ * added for 2.1.280 -- the remaining optional members declared below -- are
+ * optional in the newer direction: they are absent from the 2.1.195 registry,
+ * and all but `PER_MESSAGE_EFFORT` are absent from the 2.1.233 one. `PER_MESSAGE_EFFORT` IS declared by the 2.1.233 registry, so
+ * registry absence does not keep its site inert there; what does is the
+ * catalogue, because no 2.1.233 model declares the backing capability. The two
+ * mechanisms are not interchangeable and both are load-bearing.
  */
 export interface ComposableBetaRegistry {
   readonly CLAUDE_CODE: BetaRegistryEntry;
@@ -60,7 +71,12 @@ export interface ComposableBetaRegistry {
   readonly STRUCTURED_OUTPUTS: BetaRegistryEntry;
   readonly PROMPT_CACHING_SCOPE: BetaRegistryEntry;
   readonly MID_CONVERSATION_SYSTEM: BetaRegistryEntry;
+  readonly PER_MESSAGE_EFFORT?: BetaRegistryEntry;
+  readonly MID_CONV_TOOL_CHANGE?: BetaRegistryEntry;
+  readonly MID_CONVERSATION_SYSTEM_CLEAR_AT?: BetaRegistryEntry;
   readonly EFFORT: BetaRegistryEntry;
+  readonly THINKING_BINDING_CONTROLS?: BetaRegistryEntry;
+  readonly THINKING_DISPLAY_UPDATES?: BetaRegistryEntry;
   readonly SPEED: BetaRegistryEntry;
   readonly AFK_MODE: BetaRegistryEntry;
   readonly EXTENDED_CACHE_TTL: BetaRegistryEntry;
@@ -73,6 +89,7 @@ const PROFILE_BETA_REGISTRIES: ReadonlyMap<string, ComposableBetaRegistry> =
   new Map<string, ComposableBetaRegistry>([
     [CLAUDE_CODE_2_1_195_PROFILE.id, BETA_REGISTRY],
     [CLAUDE_CODE_2_1_233_PROFILE.id, BETA_REGISTRY_2_1_233],
+    [CLAUDE_CODE_2_1_280_PROFILE.id, BETA_REGISTRY_2_1_280],
   ]);
 
 /**
@@ -84,8 +101,17 @@ const PROFILE_BETA_REGISTRIES: ReadonlyMap<string, ComposableBetaRegistry> =
  * give `composeBetas` a second, differently-worded opinion about profile
  * validity. Standalone callers keep the 2.1.195 behaviour they had before
  * profiles were a parameter.
+ *
+ * Exported for tests only, and deliberately NOT re-exported from
+ * `src/index.ts`: the public runtime surface stays closed. That fallback is
+ * precisely why a test needs to reach this function. A profile bound to the
+ * wrong registry, or to none, silently composes against 2.1.195 instead of
+ * failing, and every required key of `ComposableBetaRegistry` currently
+ * carries an identical header in all three registries -- so a mis-binding
+ * changes no emitted byte and no behavioural suite can see it. Asking this
+ * function directly is the only way to observe the binding at all.
  */
-function resolveBetaRegistry(
+export function resolveBetaRegistry(
   profile: ClaudeCodeProtocolProfile,
 ): ComposableBetaRegistry {
   return PROFILE_BETA_REGISTRIES.get(profile.id) ?? BETA_REGISTRY;
@@ -96,6 +122,17 @@ export interface ComposeBetasInput {
   readonly normalizedId: string;
   readonly capabilities: ClaudeCodeCapabilities;
   readonly thinkingDisplayActive: boolean;
+  /**
+   * Whether a `thinking` object of type `adaptive` or `enabled` will reach the
+   * wire for this request AND the model is interleaved-thinking capable, i.e.
+   * upstream `ac` minus its `Fg()` term. Compute it with `isThinkingActive`
+   * from `./thinking.js`; never re-derive it at a call site.
+   *
+   * Required rather than optional: it is a total function of inputs every call
+   * site already holds, and requiring it is what forces a new call site to
+   * decide rather than silently inherit a default.
+   */
+  readonly thinkingActive: boolean;
   readonly cacheTtl?: "5m" | "1h" | null;
   readonly speed?: "standard" | "fast" | null;
   /**
@@ -129,6 +166,19 @@ export interface ComposeBetasInput {
 export interface ComposedBetas {
   readonly betas: readonly string[];
   readonly suppressedBetaNames: readonly string[];
+  /**
+   * Present only when push site 12b fired. This is the body-side half of a
+   * beta/body pair: the site pushes the display-updates beta AND decides that
+   * the body's `thinking` object carries `display: "updates"`. The consumer is
+   * the canonical body builder (`buildCanonicalBody`), which hands it to
+   * `resolveThinking`.
+   *
+   * `suppressBetas` cannot unset it. Suppressing the beta identifier removes
+   * the HEADER only; the body keeps `display: "updates"`. That matches the
+   * existing coupled pair where suppressing `effort-2025-11-24` leaves
+   * `output_config.effort` in the body.
+   */
+  readonly thinkingDisplayOverride?: "updates";
 }
 
 /**
@@ -240,9 +290,150 @@ export function composeBetasWithAudit(
 
   // No web-search beta: upstream pushes it only for vertex and foundry.
   if (experimental) out.push(registry.PROMPT_CACHING_SCOPE.header);
-  if (supportsMidConversationSystem(input.normalizedId, profile))
+
+  /*
+   * Upstream `jR`. The local boolean below records that this site PUSHED, which
+   * is what sites 11b and 11c gate on -- upstream reads `Ee.includes(jR)`, the
+   * composed array, not the registry. Asking the registry instead would fire
+   * those two sites for a model this one skipped.
+   */
+  const midConversationSystemFired = supportsMidConversationSystem(
+    input.normalizedId,
+    profile,
+  );
+  if (midConversationSystemFired) {
     out.push(registry.MID_CONVERSATION_SYSTEM.header);
+  }
+
+  /*
+   * Site 11a. Upstream `wRt`, which reduces to
+   * `Fg() && mD(provider) && catalogue-declares-per_turn_effort`; the provider
+   * term is first-party here by construction.
+   */
+  const perMessageEffort = registry.PER_MESSAGE_EFFORT;
+  if (
+    experimental &&
+    input.capabilities.perTurnEffort &&
+    perMessageEffort !== undefined
+  ) {
+    out.push(perMessageEffort.header);
+  }
+
+  /*
+   * Site 11b. Upstream `oQt() && Tue(model)`. `Tue` opens with
+   * `if (!Fg() || !kue(e)) return false`, so the experimental gate is upstream's
+   * and not an addition. Step 3 of `Tue` -- which sends the beta for any model
+   * with NO catalogue entry -- is deliberately not ported; see the analysis
+   * document's divergence record.
+   */
+  const midConvToolChange = registry.MID_CONV_TOOL_CHANGE;
+  if (
+    experimental &&
+    midConversationSystemFired &&
+    input.capabilities.midConvToolChange &&
+    midConvToolChange !== undefined
+  ) {
+    out.push(midConvToolChange.header);
+  }
+
+  /*
+   * Site 11c. Upstream `Mo`, which is the one site whose experimental gate is
+   * invisible at the statement level -- `Mo` names no `Fg()` at all. The gate is
+   * reached three calls deep instead: `Mee` is `oRt(model) !== "off"`, `oRt`
+   * wraps `fur`, and `fur` opens by returning `"off"` when `Fg()` is false. So
+   * `experimental` is upstream's own conjunct here exactly as it is at 11a and
+   * 11b, and a reader who checks only the `Mo` expression will wrongly conclude
+   * it was invented. It was not.
+   *
+   * `Mo`'s remaining conjuncts are constants for this package. `!l7(querySource)`
+   * holds because `l7` is true only for the two auto-mode query sources. `!Vr`
+   * holds because `Vr` is a per-session latch, and a stateless package composes
+   * every request as a first request. `Mee`'s other terms are fixed on the
+   * first-party path. What is left is `Ee.includes(jR)`, which is precisely the
+   * `midConversationSystemFired` outcome recorded at site 11.
+   */
+  const midConversationSystemClearAt =
+    registry.MID_CONVERSATION_SYSTEM_CLEAR_AT;
+  if (
+    experimental &&
+    midConversationSystemFired &&
+    midConversationSystemClearAt !== undefined
+  ) {
+    out.push(midConversationSystemClearAt.header);
+  }
+
+  // Site 12.
   if (input.capabilities.effort) out.push(registry.EFFORT.header);
+
+  /*
+   * Site 12a. Upstream `er && Fg()` with the latch write, which on the pinned
+   * first-party path collapses to thinking-active AND experimental.
+   * The coupled body field `thinking.block_binding` is NOT emitted: it needs a
+   * host override this package cannot observe.
+   */
+  const thinkingBindingControls = registry.THINKING_BINDING_CONTROLS;
+  if (
+    experimental &&
+    input.thinkingActive &&
+    thinkingBindingControls !== undefined
+  ) {
+    out.push(thinkingBindingControls.header);
+  }
+
+  /*
+   * Site 12b. Upstream guards the push with
+   * `(yc?.type === "adaptive" || yc?.type === "enabled") && ac && firstParty
+   *  && !callerSuppliedDisplay && ...` plus the simulate-proxy environment
+   * variable and a per-session latch. The reachable remainder of that guard is
+   * modelled below: `experimental` is upstream's `Fg()` term inside `ac`,
+   * `input.thinkingActive` is the thinking-type test together with the rest of
+   * `ac`, and `!input.thinkingDisplayActive` is the caller-supplied-display
+   * test. First-party is not modelled because this package only builds the
+   * first-party path, the simulate-proxy env var is not modelled because the
+   * package reads no environment, and the per-session latch is always empty in
+   * a stateless package that composes every request as a first request.
+   *
+   * The branch is additionally reached only when the display-mode resolver
+   * `Gxt` returns its connector-text result; its other results break out
+   * before the push. `!policy.thinkingSummariesShown` is that resolver's
+   * `sQt()` term, mapped onto the profile flag exactly as at the
+   * redact-thinking site above. See the 2.1.280 analysis document, §6.4, for
+   * the resolver itself.
+   *
+   * The resolver's other two diverting branches are already covered by
+   * `!thinkingDisplayActive`. A caller display of `"summarized"` takes the
+   * first branch, and `"omitted"` takes the second whenever the
+   * explicit-display flag is falsy, which is the only state this package can
+   * express -- it models no equivalent of that flag. Under a truthy
+   * explicit-display flag upstream would fall through and overwrite an
+   * explicit `"omitted"` with `"updates"`; that input is unreachable here, and
+   * is recorded rather than modelled.
+   *
+   * The site is coupled: it pushes the beta, records `display: "updates"` for
+   * the body builder, and removes the previously composed redact-thinking beta
+   * (upstream `qu()`).
+   *
+   * The splice sits INSIDE this block and is deliberately the LAST thing it
+   * does. At this point `out` holds only canonical pushes, because the caller
+   * `additionalBetas` merge runs later. So a caller who explicitly supplies
+   * `redact-thinking-2026-02-12` in `additionalBetas` still gets it, precisely
+   * because the merge's `if (!out.includes(beta))` test now succeeds. Moving
+   * the splice after the merge would silently eat that caller's entry.
+   */
+  const thinkingDisplayUpdates = registry.THINKING_DISPLAY_UPDATES;
+  let thinkingDisplayOverride: "updates" | undefined;
+  if (
+    experimental &&
+    input.thinkingActive &&
+    !policy.thinkingSummariesShown &&
+    !input.thinkingDisplayActive &&
+    thinkingDisplayUpdates !== undefined
+  ) {
+    out.push(thinkingDisplayUpdates.header);
+    thinkingDisplayOverride = "updates";
+    const redactIndex = out.indexOf(registry.REDACT_THINKING.header);
+    if (redactIndex !== -1) out.splice(redactIndex, 1);
+  }
 
   if (input.speed === "fast" && !out.includes(registry.SPEED.header)) {
     out.push(registry.SPEED.header);
@@ -286,6 +477,9 @@ export function composeBetasWithAudit(
     return Object.freeze({
       betas: Object.freeze(out),
       suppressedBetaNames: NO_SUPPRESSED_BETAS,
+      ...(thinkingDisplayOverride === undefined
+        ? {}
+        : { thinkingDisplayOverride }),
     });
   }
   const suppressed = new Set(validateAdditionalBetas(input.suppressBetas));
@@ -298,5 +492,10 @@ export function composeBetasWithAudit(
   return Object.freeze({
     betas: Object.freeze(kept),
     suppressedBetaNames: Object.freeze(removed),
+    // The suppression filter above touches only the header list; the body
+    // half of the site-12b pair survives it by design.
+    ...(thinkingDisplayOverride === undefined
+      ? {}
+      : { thinkingDisplayOverride }),
   });
 }

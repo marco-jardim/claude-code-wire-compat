@@ -378,6 +378,8 @@ describeEachProfile("redaction mutation boundaries", (entry) => {
         contextManagement: false,
         temperature: false,
         rejectsDisabledThinking: false,
+        midConvToolChange: false,
+        perTurnEffort: false,
       },
     });
     expect(JSON.stringify(evidence)).not.toContain(TOKEN);

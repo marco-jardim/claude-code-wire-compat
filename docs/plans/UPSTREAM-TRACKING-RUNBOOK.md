@@ -42,19 +42,55 @@ different build timestamp. Extract every scalar from the same platform's
 build; do not mix values from two platforms' bundles.
 
 Extract the tarball. Inside is a single large executable produced by the Bun
-compiler. That executable embeds the entire application as one contiguous run
-of printable text — the JavaScript bundle — surrounded by machine code and
-compressed resources.
+compiler, embedding the application as printable text surrounded by machine
+code and compressed resources.
+
+**The embedded text is not always one contiguous run.** Two shapes have been
+observed, and the carving step must detect which one it is looking at rather
+than assume:
+
+- **Single-bundle** (2.1.195, 2.1.233): the whole application is one
+  contiguous printable run of tens of megabytes, and the next longest
+  candidate is orders of magnitude smaller.
+- **Multi-module bytecode** (2.1.280 and later): the build is
+  `// @bun @bytecode`, and the application is split across roughly a thousand
+  separate printable runs, each an ES module carrying the Claude Code banner
+  and ending in an `export{…};` statement, separated by `NUL`.
 
 To carve the bundle out:
 
 1. Read the executable as bytes.
 2. Scan for maximal runs of printable ASCII (roughly byte values `0x09`,
    `0x0a`, `0x0d`, and `0x20`–`0x7e`).
-3. Keep the single longest run. On recent releases it is tens of megabytes,
-   while the next longest candidate is orders of magnitude smaller, so the
-   winner is unambiguous.
-4. Write that run to a `.js` file.
+3. **Measure the distribution before choosing.** Compare the longest run
+   against the sum of all runs at or above a few kilobytes. If the longest run
+   is most of that sum, the build is single-bundle; if it is a small fraction,
+   the build is multi-module.
+4. Concatenate every run at or above the threshold, in ascending offset order,
+   into one `.js` file. For a single-bundle build this is equivalent to
+   keeping the longest run. For a multi-module build it is the only way to
+   recover the whole application.
+5. Cross-check the carve with a second threshold. Run the extractor on both
+   dumps; the reports must be byte-identical. If they differ, the threshold is
+   cutting through a module the extractor needs.
+
+Concatenating modules is safe **for this extractor specifically**: it is a
+regex-and-scanner tool and never parses the dump as a single JavaScript
+program, so duplicate declarations and repeated top-level `export{}`
+statements across concatenated modules cannot produce a syntax error. Do not
+generalise that guarantee to any other tool.
+
+Keeping only the longest run on a multi-module build fails in the most
+dangerous way available: it still produces a plausible `.js` file, the
+extractor still exits 0, and the report it yields is simply missing entries.
+On 2.1.280 that rule recovered 4,015,347 of 36,151,512 relevant bytes — about
+11% — including none of the model catalogue.
+
+Concatenation has one cost: it widens the extractor's search space, so
+unrelated data embedded elsewhere in the binary can leak into the report. On
+2.1.280 a second, non-CLI model list produced three spurious catalogue
+entries. Treat every extracted entry as a candidate to be confirmed against
+the bundle, not as a transcription.
 
 Do not hardcode byte offsets. The offset of the bundle, its length, and the
 surrounding padding all change on every build — including rebuilds of the same
@@ -120,10 +156,11 @@ Compare the report against the currently pinned release:
 - `src/profiles/claude-code-<current>.ts` — the profile.
 - `src/profiles/beta-registry-<current>.ts` — the beta registry.
 
-At the time of writing, the pinned release files are
-`src/profiles/claude-code-2.1.233.ts` and
-`src/profiles/beta-registry-2.1.233.ts`, with
-`src/profiles/claude-code-2.1.195.ts` retained as the previous pin.
+The currently pinned release is whichever profile `DEFAULT_PROFILE` in
+`src/build-request.ts` names; its data files sit beside it in `src/profiles/`,
+and every profile still accepted is listed in `ACCEPTED_PROFILES` in the same
+module. Locating the pin that way rather than naming a version here keeps this
+instruction from going stale on the next port.
 
 Classify every delta into exactly one of two buckets. The classification
 determines the entire shape of the work.
@@ -208,7 +245,7 @@ bottom.
 | `test/conformance/reference-adapter.ts`         | Teach the independent reference implementation about the new profile.                                                                                                                                                                           |
 | `test/conformance/differential.test.ts`         | Extend the differential run to cover the new profile.                                                                                                                                                                                           |
 | `src/fingerprint.ts`                            | No edit expected. The algorithm is stable; only the version input changes.                                                                                                                                                                      |
-| `test/fingerprint-2.1.233.test.ts`              | Model for the new version's known-answer vectors. Add the equivalent file for the new release. See the note below on computing vectors.                                                                                                         |
+| `test/fingerprint-2.1.280.test.ts`              | Model for the new version's known-answer vectors; the best one to copy, because it embeds the independent generator and the edge probes. Add the equivalent file for the new release. See the note below on computing vectors.                  |
 | `CHANGELOG.md`                                  | On release only.                                                                                                                                                                                                                                |
 | `test/governance/release-policy.test.ts`        | On release only, if the release policy assertions reference the version.                                                                                                                                                                        |
 
@@ -287,3 +324,25 @@ The gap this leaves is narrow and deliberate: continuous integration verifies
 that the extractor behaves correctly on known inputs, and a human verifies that
 its output on a new upstream bundle is correct. The second half is a judgement
 task, which is exactly what Steps 1 through 3 exist to structure.
+
+## Amendments
+
+> **Amendment 2026-09-23 (2.1.280 port).** Three procedural lessons:
+>
+> 1. Mechanism changes that alter the new profile's bytes must land _between_
+>    export and registration (Step 5, item 4) and the packed-consumer canary
+>    (item 5), so the new digest is computed exactly once, on final bytes — and
+>    before the golden fixtures (item 7), so the sealed bytes are correct. A
+>    mechanism change here means a push site or a coupled body field gated on
+>    registry presence — inert on every profile whose registry lacks the entry,
+>    and carrying no `profile.id` comparison. Step 2's rule would otherwise
+>    classify it as a behaviour delta and send it to the end of the order.
+> 2. `npm run fixtures:seal` refuses to run when `CI` is truthy: any value
+>    other than empty, `0`, or `false` (compared after trimming whitespace,
+>    case-insensitively). An unset or empty `CI`, `CI=0`, and `CI=false` are
+>    all treated as not-CI. On a machine that exports a truthy value, clear the
+>    variable for that one invocation only.
+> 3. `docs/plans/baseline-2026-08-05.md` is edited _after_ the seal runs and
+>    committed together with it. The seal refuses a dirty tree outside its own
+>    two write targets, so a new fixture must be committed before it can be
+>    sealed. The fixture-and-seal step is therefore two commits, not one.

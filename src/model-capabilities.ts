@@ -9,20 +9,20 @@ import { profileBehaviors } from "./profile-behaviors.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
 /*
- * Capability derivation, ported from the genuine client's nine capability
- * predicates.
+ * Capability derivation, ported from the genuine client's capability
+ * predicates and, since 2.1.280, from catalogue strings that have no predicate
+ * upstream at all.
  *
  * READ THIS FIRST -- there are two derivation paths and they are not
  * interchangeable:
  *
  *   1. Catalogue path (`deriveCapabilitiesFromCatalogue`), taken for every id
- *      present in the 2.1.195 catalogue. Six of the nine capabilities have a
- *      verbatim upstream string in `ClaudeCodeCatalogueEntry.capabilities`
- *      (`effort`, `max_effort`, `xhigh_effort`, `adaptive_thinking`,
- *      `context_management`, `rejects_disabled_thinking`) and are read from
- *      there. The other three (`thinking`, `interleavedThinking`,
- *      `temperature`) have NO catalogue string in any client version and stay
- *      predicate-derived.
+ *      present in the catalogue. The fields listed in
+ *      `CATALOGUE_BACKED_CAPABILITIES` have a verbatim upstream string in
+ *      `ClaudeCodeCatalogueEntry.capabilities` and are read from there; that
+ *      map is the enumeration, so this comment does not repeat it. The rest
+ *      (`thinking`, `interleavedThinking`, `temperature`) have NO catalogue
+ *      string in any client version and stay predicate-derived.
  *   2. Predicate fallback (`deriveCapabilitiesFromPredicates`), taken for ids
  *      with no catalogue entry -- `claude-mythos-5` (absent by product
  *      decision D-1), ids from a newer client, and anything that escaped
@@ -39,7 +39,7 @@ import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
  * surprising:
  *
  *   On the first-party provider -- the only provider this package targets --
- *   every one of these nine predicates reduces to a pure function of the
+ *   every one of these predicates reduces to a pure function of the
  *   normalized model id.
  *
  * Why. Upstream, each predicate has the shape
@@ -87,7 +87,7 @@ import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
  * `claude-mythos-5` has no catalogue entry by product decision D-1. Upstream
  * special-cases it by name in `Kw`, `Hke`, `Yte` and `Uot`; this port subsumes
  * those clauses into the first-party fallback, which yields an identical
- * result. The explicit D-1 test asserting its full nine-boolean row is the
+ * result. The explicit D-1 test asserting its full capability row is the
  * guard for that equivalence.
  *
  * Model ids reaching these functions have already been normalized by
@@ -337,11 +337,19 @@ export function rejectsDisabledThinking(normalizedId: string): boolean {
 }
 
 /**
- * The six `ClaudeCodeCapabilities` fields the catalogue represents, paired
- * with their verbatim upstream capability string. The three omitted fields --
- * `thinking`, `interleavedThinking`, `temperature` -- have no catalogue
- * string in any client version and are derived from their predicates on both
- * paths.
+ * The `ClaudeCodeCapabilities` fields the catalogue represents, paired with
+ * their verbatim upstream capability string. Whatever is not a key here --
+ * `thinking`, `interleavedThinking` and `temperature` today -- has no
+ * catalogue string in any client version and is derived from its predicate on
+ * both paths. The literal below is the enumeration; no count is restated in
+ * prose, because a count beside the thing it counts goes stale on the next
+ * port.
+ *
+ * `per_turn_timing` is deliberately NOT mapped. It is a real 2.1.280
+ * catalogue string carried by three models, but the beta it would gate,
+ * `timing-2026-09-09`, is environment-gated off on the default path, so a
+ * field here would be a capability nothing reads. Mapping it would invent a
+ * derived value with no emission behind it.
  */
 const CATALOGUE_BACKED_CAPABILITIES = {
   effort: "effort",
@@ -350,12 +358,14 @@ const CATALOGUE_BACKED_CAPABILITIES = {
   adaptiveThinking: "adaptive_thinking",
   contextManagement: "context_management",
   rejectsDisabledThinking: "rejects_disabled_thinking",
+  midConvToolChange: "mid_conv_tool_change",
+  perTurnEffort: "per_turn_effort",
 } as const;
 
 /**
- * Pure catalogue -> capabilities mapping. Reads nothing but `entry` for the
- * six catalogue-backed fields; `normalizedId` is used only for the three
- * fields the catalogue does not represent.
+ * Pure catalogue -> capabilities mapping. Reads nothing but `entry` for every
+ * catalogue-backed field; `normalizedId` is used only for the fields the
+ * catalogue does not represent.
  *
  * This function applies no exceptions and no id special cases. The one cell
  * where the 2.1.195 catalogue disagrees with the wire is corrected by the
@@ -381,6 +391,8 @@ export function deriveCapabilitiesFromCatalogue(
     rejectsDisabledThinking: has(
       CATALOGUE_BACKED_CAPABILITIES.rejectsDisabledThinking,
     ),
+    midConvToolChange: has(CATALOGUE_BACKED_CAPABILITIES.midConvToolChange),
+    perTurnEffort: has(CATALOGUE_BACKED_CAPABILITIES.perTurnEffort),
   });
 }
 
@@ -408,6 +420,30 @@ function deriveCapabilitiesFromPredicates(
     contextManagement: supportsContextManagement(normalizedId),
     temperature: supportsTemperature(normalizedId),
     rejectsDisabledThinking: rejectsDisabledThinking(normalizedId),
+    /*
+     * Both are FALSE here, and this is the one place where the two derivation
+     * paths stop agreeing in kind: the six older catalogue-backed fields above
+     * resolve maximally permissive for an uncatalogued id, these two resolve
+     * restrictive. That asymmetry is deliberate, and the reason differs per
+     * field.
+     *
+     * `perTurnEffort: false` MATCHES upstream. Its lookup consults the static
+     * catalogue and, at default settings, the remote client-data path that
+     * could override it is empty, so an id with no entry yields false there
+     * too.
+     *
+     * `midConvToolChange: false` DIVERGES from upstream, which still sends
+     * `mid-conversation-tool-changes-2026-07-01` for a model it has no
+     * catalogue entry for. The analysis document records that as a divergence
+     * recorded but not ported, for the same reason the package declines the
+     * neighbouring permissive tail: a capability granted to an unknown id is a
+     * guess about a model this package knows nothing about.
+     *
+     * Neither field has an upstream predicate to fall back on -- both exist
+     * only as catalogue strings -- so there is no third option here.
+     */
+    midConvToolChange: false,
+    perTurnEffort: false,
   });
 }
 

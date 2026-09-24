@@ -606,6 +606,7 @@ describe("beta composition mutants", () => {
     normalizedId: "claude-opus-4-8",
     capabilities: capabilities(),
     thinkingDisplayActive: false,
+    thinkingActive: false,
   } as const;
 
   it("returns the exact emergent defaults without optional builder pushes", () => {

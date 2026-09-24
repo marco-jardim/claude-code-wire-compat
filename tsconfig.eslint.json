@@ -3,8 +3,21 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": ".",
-    "types": ["node"]
+    "types": ["node"],
+    // `test/pack/*.test.ts` imports the shared `npm pack --json` parser from
+    // `scripts/lib/`, which is JavaScript because `scripts/` is executed by
+    // node directly. Without `allowJs` that import resolves to no type at
+    // all, and every call through it trips `no-unsafe-call` under typed
+    // linting. `checkJs` stays off: the module's JSDoc supplies the types and
+    // is not itself type-checked. This affects ESLint only — `npm run
+    // typecheck` uses `tsconfig.json` and `tsconfig.types.json`.
+    "allowJs": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts",
+    "vitest.config.ts",
+    "scripts/lib/**/*.mjs"
+  ],
   "exclude": ["coverage", "dist", "node_modules"]
 }

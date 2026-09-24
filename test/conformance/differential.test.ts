@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
+  CLAUDE_CODE_2_1_280_PROFILE,
   buildClaudeCodeRequest,
   parseBuiltClaudeCodeRequest,
 } from "../../src/index.js";
@@ -40,6 +41,41 @@ const FIXTURES: readonly FixtureCase[] = [
     name: "outgoing-canary-context-hint-off-2.1.233.json",
     profile: CLAUDE_CODE_2_1_233_PROFILE,
   },
+  // The port plan also listed a caller-supplied-display case and a haiku case
+  // as optional edge fixtures. The 2.1.233 fixture set these mirror had
+  // neither, so neither was created.
+  {
+    name: "outgoing-foreground-2.1.280.json",
+    profile: CLAUDE_CODE_2_1_280_PROFILE,
+  },
+  {
+    name: "outgoing-canary-context-hint-off-2.1.280.json",
+    profile: CLAUDE_CODE_2_1_280_PROFILE,
+  },
+  {
+    name: "outgoing-default-path-2.1.280.json",
+    profile: CLAUDE_CODE_2_1_280_PROFILE,
+  },
+];
+
+// Transcribed from the 2.1.280 analysis document's default-path derivation,
+// NOT captured from the builder. The separator is a bare comma, taken from the
+// committed golden fixtures.
+const DEFAULT_PATH_BETAS: readonly string[] = [
+  "claude-code-20250219",
+  "oauth-2025-04-20",
+  "interleaved-thinking-2025-05-14",
+  "thinking-token-count-2026-05-13",
+  "context-management-2025-06-27",
+  "prompt-caching-scope-2026-01-05",
+  "mid-conversation-system-2026-04-07",
+  "per-turn-control-2026-07-01",
+  "mid-conversation-tool-changes-2026-07-01",
+  "mid-conversation-system-clear-at-2026-08-21",
+  "effort-2025-11-24",
+  "thinking-binding-controls-2026-08-01",
+  "thinking-display-updates-2026-08-18",
+  "cache-diagnosis-2026-04-07",
 ];
 
 function logicalHeaders(headers: readonly (readonly [string, string])[]) {
@@ -70,6 +106,11 @@ async function expectEvidenceSafe(
   const parsed = parseBuiltClaudeCodeRequest(built, profile);
   expect(parsed).toEqual(built);
   expect(built.evidence.profileId).toBe(profile.id);
+  // This pattern is NOT the full family union: `modelFamilyOf` can also return
+  // `mythos` and `unknown`, and the 2.1.280 catalogue does carry mythos models.
+  // No fixture uses one today, so the narrower pattern is a deliberate
+  // tripwire rather than an oversight -- but a future mythos fixture will fail
+  // here with an opaque message, and the pattern must be widened then.
   expect(built.evidence.modelFamily).toMatch(/^(?:haiku|sonnet|opus|fable)$/u);
   expect(built.evidence.betaFeatures).toBeInstanceOf(Array);
   expect(built.evidence.bodyByteLength).toBe(
@@ -93,6 +134,39 @@ describe("fixture-backed differential conformance", () => {
     expect(parseRequestBody(built.body)).toEqual(reference.body);
   });
 
+  it("claude-opus-5-5 default path: header equals the 14-identifier literal and thinking carries display updates", async () => {
+    const reference = referenceAdapter("outgoing-default-path-2.1.280.json");
+    const built = await expectEvidenceSafe(
+      syntheticInput(reference),
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
+    const betaHeader = built.headers.find(
+      ([headerName]) => headerName.toLowerCase() === "anthropic-beta",
+    )?.[1];
+    expect(betaHeader).toBeDefined();
+    const header = betaHeader ?? "";
+    // The splice check and the element-wise comparison run FIRST, on purpose.
+    // The exact-equality assertion below subsumes both, so if it ran first a
+    // regression that only un-spliced redact-thinking would be reported as a
+    // whole-string mismatch instead of naming the identifier that moved.
+    expect(header).not.toContain("redact-thinking-2026-02-12");
+    expect(header.split(",")).toEqual(DEFAULT_PATH_BETAS);
+    expect(header).toBe(DEFAULT_PATH_BETAS.join(","));
+    expect(parseRequestBody(built.body)["thinking"]).toEqual({
+      type: "adaptive",
+      display: "updates",
+    });
+    const typeIndex = built.body.indexOf('"type":"adaptive"');
+    const displayIndex = built.body.indexOf('"display":"updates"');
+    expect(typeIndex).not.toBe(-1);
+    expect(displayIndex).not.toBe(-1);
+    expect(typeIndex).toBeLessThan(displayIndex);
+  });
+
+  // The variant sweeps below are 2.1.195-only. That scoping predates the
+  // 2.1.280 port -- 2.1.233 never got one either -- so it is a known gap
+  // rather than a regression: the fixture replays above cover every pinned
+  // profile, but the per-model catalogue sweep covers only the oldest.
   it("conforms with tools, explicit and adaptive thinking, and permitted effort", async () => {
     const reference = referenceAdapter("outgoing-canary-context-hint-off.json");
     const base = syntheticInput(reference);

@@ -19,6 +19,8 @@ const CAPABILITIES: ClaudeCodeCapabilities = {
   contextManagement: true,
   temperature: false,
   rejectsDisabledThinking: false,
+  midConvToolChange: false,
+  perTurnEffort: false,
 };
 
 const INPUT = {
@@ -26,6 +28,7 @@ const INPUT = {
   normalizedId: "claude-opus-4-8",
   capabilities: CAPABILITIES,
   thinkingDisplayActive: false,
+  thinkingActive: false,
 } as const;
 
 describeEachProfile("composeBetas policy combinations", (entry) => {

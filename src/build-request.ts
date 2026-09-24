@@ -30,6 +30,7 @@ import {
 import { resolveModel } from "./models.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 import { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
+import { CLAUDE_CODE_2_1_280_PROFILE } from "./profiles/claude-code-2.1.280.js";
 import type { NormalizedRequestInput } from "./redaction.js";
 import { buildRedactedEvidence, toSafeErrorDetails } from "./redaction.js";
 import {
@@ -38,7 +39,7 @@ import {
 } from "./request-body.js";
 import { sha256Hex } from "./sha256.js";
 import { buildCanonicalSystem, IDENTITY_TEXT } from "./system-prompt.js";
-import { isThinkingDisplayActive } from "./thinking.js";
+import { isThinkingActive, isThinkingDisplayActive } from "./thinking.js";
 import { classifySurrogateAt } from "./unicode.js";
 
 const METHOD = "POST";
@@ -152,6 +153,8 @@ const CAPABILITY_KEYS = [
   "contextManagement",
   "temperature",
   "rejectsDisabledThinking",
+  "midConvToolChange",
+  "perTurnEffort",
 ] as const;
 const CAPABILITY_KEY_SET = new Set(CAPABILITY_KEYS);
 /** Adds the optional package-extension override keys carried by evidence. */
@@ -319,10 +322,14 @@ function containsString(value: unknown, target: string): boolean {
 }
 
 /**
- * The profiles this package will assemble a request for. Two entries: the
- * 2.1.195 default and the 2.1.233 profile, which callers must pass
- * explicitly. Admitting a profile is exactly this list -- `validateProfile`
- * did not change to accept the second one.
+ * Every pinned profile singleton, and nothing else. The set is not enumerated
+ * in prose here: the literal below IS the enumeration and cannot go stale,
+ * whereas a count in a comment goes stale on the next port -- which is exactly
+ * what happened to the text this replaced. Which profile a caller gets when it
+ * passes none is `DEFAULT_PROFILE` below and is deliberately not restated
+ * here, so that a default switch touches one line rather than two. Admitting a
+ * profile is exactly this list -- `validateProfile` never changed to accept a
+ * new one.
  *
  * Membership is by REFERENCE, deliberately. A structural check would accept a
  * caller-built object that merely looks like a pinned profile, and every wire
@@ -339,11 +346,16 @@ function containsString(value: unknown, target: string): boolean {
 const ACCEPTED_PROFILES: ReadonlySet<ClaudeCodeProtocolProfile> = new Set([
   CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
+  CLAUDE_CODE_2_1_280_PROFILE,
 ]);
 
 /**
- * The profile every public entry point resolves to when the caller supplies
- * none. Declared once so that the default is a single, greppable seam: a test
+ * The profile the request-building entry points (`buildClaudeCodeRequest`,
+ * `buildClaudeCodeCountTokensRequest` and `parseBuiltClaudeCodeRequest`)
+ * resolve to when the caller supplies none. It is not a global default: the
+ * model-query and anti-verbosity helpers deliberately keep their own,
+ * separately declared default and are NOT governed by this constant. Declared
+ * once so that the default is a single, greppable seam: a test
  * that means "whatever the default is" reads THIS instead of naming a
  * version, which keeps a default switch to a one-line diff and keeps tests
  * that genuinely mean 2.1.195 honest about saying so.
@@ -352,7 +364,7 @@ const ACCEPTED_PROFILES: ReadonlySet<ClaudeCodeProtocolProfile> = new Set([
  * from `src/index.ts`: the public runtime surface stays closed.
  */
 export const DEFAULT_PROFILE: ClaudeCodeProtocolProfile =
-  CLAUDE_CODE_2_1_233_PROFILE;
+  CLAUDE_CODE_2_1_280_PROFILE;
 
 function validateProfile(
   profile: ClaudeCodeProtocolProfile,
@@ -950,6 +962,8 @@ function requestedCapabilities(
     temperature: raw?.temperature ?? supported.temperature,
     rejectsDisabledThinking:
       raw?.rejectsDisabledThinking ?? supported.rejectsDisabledThinking,
+    midConvToolChange: raw?.midConvToolChange ?? supported.midConvToolChange,
+    perTurnEffort: raw?.perTurnEffort ?? supported.perTurnEffort,
   };
   for (const key of CAPABILITY_KEYS) {
     if (typeof result[key] !== "boolean") fail("UNSUPPORTED_CAPABILITY");
@@ -1038,7 +1052,7 @@ function parseCapabilityDecisions(
   value: unknown,
 ): ClaudeCodeCapabilityDecisions {
   if (!isRecord(value)) fail();
-  // The nine capability keys are mandatory; the package-extension override keys
+  // Every capability key is mandatory; the package-extension override keys
   // are optional and must survive the round-trip untouched, so they are allowed
   // here but never synthesized.
   assertExactKeys(value, CAPABILITY_DECISION_KEY_SET);
@@ -1064,6 +1078,8 @@ function parseCapabilityDecisions(
     contextManagement: readBoolean("contextManagement"),
     temperature: readBoolean("temperature"),
     rejectsDisabledThinking: readBoolean("rejectsDisabledThinking"),
+    midConvToolChange: readBoolean("midConvToolChange"),
+    perTurnEffort: readBoolean("perTurnEffort"),
   };
 }
 
@@ -1071,7 +1087,7 @@ function parseCapabilityDecisions(
  * Validates evidence against the profile the request was parsed under, not
  * against a hardcoded singleton. `parseBuiltClaudeCodeRequest` already
  * validates `url` against `pinnedProfile.endpoint`; the profile id is the one
- * remaining field where the two pinned profiles differ, so it has to follow
+ * remaining field where pinned profiles differ, so it has to follow
  * the same source or a request built with a non-default profile could never
  * be re-parsed. Still fail-closed: the profile reaching here has already
  * passed `validateProfile`.
@@ -1442,6 +1458,10 @@ export async function buildClaudeCodeCountTokensRequest(
           normalizedId: resolvedModel.id,
           capabilities: resolvedModel.capabilities,
           thinkingDisplayActive: false,
+          // A constant, not a re-derivation: this path carries no thinking
+          // request, so `isThinkingActive(undefined, capabilities)` is false
+          // by construction.
+          thinkingActive: false,
         },
         effectiveProfile,
       ),
@@ -1516,8 +1536,9 @@ export async function buildClaudeCodeCountTokensRequest(
 /**
  * Builds one canonical request for the pinned Claude Code wire profile.
  *
- * @param profile - The only accepted value is the exported
- * `CLAUDE_CODE_2_1_195_PROFILE` singleton. Any other object, even a
+ * @param profile - The accepted values are the exported pinned profile
+ * singletons held in `ACCEPTED_PROFILES`; omitting the argument resolves to
+ * `DEFAULT_PROFILE`. Any other object, even a
  * structurally identical clone, is rejected with `ClaudeCodeWireError` code
  * `INVALID_INPUT`. This deliberate fail-closed behaviour prevents callers from
  * substituting an unpinned protocol profile.
@@ -1581,13 +1602,12 @@ export async function buildClaudeCodeRequest(
       validated.suppressBillingBlock,
       validated.suppressIdentityBlock,
     );
-    const canonicalBody = buildCanonicalBody(
-      evidenceRequest(validated.source, validated.source.model),
-      effectiveModel,
-      system,
-      metadata,
-      effectiveProfile,
-    );
+    /*
+     * Composition runs BEFORE body construction so that a beta site can hand a
+     * decision to the body emitter. Both calls are pure and neither feeds the
+     * other's arguments today, so the order itself changes no serialised byte;
+     * the swap lands on its own so the packed-consumer digests prove that.
+     */
     const composedBetas = composeBetasWithAudit(
       {
         rawModel: validated.source.model,
@@ -1597,6 +1617,10 @@ export async function buildClaudeCodeRequest(
           validated.source.thinking,
           capabilities,
           effectiveProfile.betaPolicy,
+        ),
+        thinkingActive: isThinkingActive(
+          validated.source.thinking,
+          capabilities,
         ),
         ...(validated.source.cacheControl?.ttl === undefined
           ? {}
@@ -1615,6 +1639,14 @@ export async function buildClaudeCodeRequest(
           : { use1MContextOverride: validated.betaOverrides.use1MContext }),
       },
       effectiveProfile,
+    );
+    const canonicalBody = buildCanonicalBody(
+      evidenceRequest(validated.source, validated.source.model),
+      effectiveModel,
+      system,
+      metadata,
+      effectiveProfile,
+      composedBetas.thinkingDisplayOverride,
     );
     const betas = composedBetas.betas;
     const headerPlan = buildOrderedHeaderPlan({
@@ -1706,8 +1738,9 @@ export async function buildClaudeCodeRequest(
 /**
  * Validates and clones a previously built request into a deeply frozen value.
  *
- * @param profile - The only accepted value is the exported
- * `CLAUDE_CODE_2_1_195_PROFILE` singleton. Any other object, even a
+ * @param profile - The accepted values are the exported pinned profile
+ * singletons held in `ACCEPTED_PROFILES`; omitting the argument resolves to
+ * `DEFAULT_PROFILE`. Any other object, even a
  * structurally identical clone, is rejected with `ClaudeCodeWireError` code
  * `INVALID_INPUT`. This deliberate fail-closed behaviour prevents callers from
  * substituting an unpinned protocol profile.

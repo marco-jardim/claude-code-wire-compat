@@ -203,7 +203,7 @@ describe("resolveThinking: enabled branch budget", () => {
     expect(resolved.emitted).toEqual({ budget_tokens: 5000, type: "enabled" });
   });
 
-  it("clamps a caller budget above maxTokens - 1", () => {
+  it("clamps a caller budget above maxTokens - 1, then floors at 1024", () => {
     const resolved = resolveThinking(
       { type: "enabled", budgetTokens: 999999 },
       ENABLED_ID,
@@ -211,16 +211,17 @@ describe("resolveThinking: enabled branch budget", () => {
       BETA_POLICY,
       1000,
     );
-    expect(resolved.emitted).toEqual({ budget_tokens: 999, type: "enabled" });
+    expect(resolved.emitted).toEqual({ budget_tokens: 1024, type: "enabled" });
   });
 
   /*
-   * Degenerate `maxTokens`. `Math.min(maxTokens - 1, requested)` has no floor,
-   * so these are what the code produces, not what it should produce. Pinned
-   * exactly so the refactor cannot quietly introduce a clamp -- introducing
-   * one would be a wire change.
+   * Degenerate `maxTokens`. The 2.1.280 transcription is
+   * `Math.max(1024, Math.min(maxTokens - 1, requested))`: the floor applies
+   * after the clamp, so a tiny or zero `maxTokens` still emits 1024 rather
+   * than 0 or a negative budget. Pinned exactly because either value is a
+   * wire change.
    */
-  it("emits budget_tokens 0 when maxTokens is 1", () => {
+  it("floors budget_tokens at 1024 when maxTokens is 1", () => {
     const resolved = resolveThinking(
       { type: "enabled", budgetTokens: 500 },
       ENABLED_ID,
@@ -228,10 +229,10 @@ describe("resolveThinking: enabled branch budget", () => {
       BETA_POLICY,
       1,
     );
-    expect(resolved.emitted).toEqual({ budget_tokens: 0, type: "enabled" });
+    expect(resolved.emitted).toEqual({ budget_tokens: 1024, type: "enabled" });
   });
 
-  it("emits a NEGATIVE budget_tokens when maxTokens is 0", () => {
+  it("floors budget_tokens at 1024 when maxTokens is 0", () => {
     const resolved = resolveThinking(
       { type: "enabled", budgetTokens: 500 },
       ENABLED_ID,
@@ -239,7 +240,27 @@ describe("resolveThinking: enabled branch budget", () => {
       BETA_POLICY,
       0,
     );
-    expect(resolved.emitted).toEqual({ budget_tokens: -1, type: "enabled" });
+    expect(resolved.emitted).toEqual({ budget_tokens: 1024, type: "enabled" });
+  });
+
+  it("ignores budgetTokens on an adaptive request resolved to enabled", () => {
+    const withBudget = resolveThinking(
+      { type: "adaptive", budgetTokens: 5000 },
+      ENABLED_ID,
+      deriveCapabilities(ENABLED_ID),
+      BETA_POLICY,
+      32000,
+    );
+    const withoutBudget = resolveThinking(
+      { type: "adaptive" },
+      ENABLED_ID,
+      deriveCapabilities(ENABLED_ID),
+      BETA_POLICY,
+      32000,
+    );
+    expect(withBudget.emitted).toMatchObject({ type: "enabled" });
+    expect(withBudget.emitted).not.toMatchObject({ budget_tokens: 5000 });
+    expect(withBudget.emitted).toEqual(withoutBudget.emitted);
   });
 
   it("reports the request active and extended thinking active", () => {

@@ -7,6 +7,8 @@ import { dirname, join, resolve } from "node:path";
 
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { firstPackResult } from "../../scripts/lib/pack-json.mjs";
+
 interface PackageManifest {
   name: string;
   version: string;
@@ -90,10 +92,14 @@ describe("published tarball policy", () => {
     const packOutput = execFileSync(
       process.execPath,
       [npmCliPath(), "pack", "--dry-run", "--json", "--ignore-scripts"],
-      { cwd: repositoryRoot, encoding: "utf8" },
+      { cwd: repositoryRoot, encoding: "utf8", timeout: 30_000 },
     );
-    const [packResult] = JSON.parse(packOutput) as PackResult[];
-    expect(packResult).toBeDefined();
+    const packResult = firstPackResult(packOutput) as PackResult | undefined;
+    if (packResult === undefined) {
+      throw new Error(
+        `npm pack --dry-run --json returned no pack result: ${packOutput.slice(0, 200)}`,
+      );
+    }
 
     const declaredEntries = manifest.files.map((entry) =>
       entry.replace(/\\/gu, "/").replace(/\/$/u, ""),
@@ -134,7 +140,36 @@ describe("published tarball policy", () => {
     const sourcePaths = paths.filter((path) => path.startsWith("src/"));
     expect(sourcePaths.length).toBeGreaterThan(0);
     expect(sourcePaths.filter((path) => !path.endsWith(".ts"))).toEqual([]);
-  });
+    /*
+     * Explicit timeout, well above the vitest default of 5000ms, matching the
+     * reasoning already applied to the 120_000 hook above.
+     *
+     * This case shells out to `npm pack --dry-run --json`, so its wall time is
+     * a subprocess's, not an assertion's. Measured directly it takes about
+     * 1100ms; under contention it has been measured at 5567ms. Crossing the
+     * default there reports a packaging defect that does not exist, and a gate
+     * that fails randomly teaches a maintainer to re-run until green.
+     *
+     * The number is roughly five times the worst contended observation. That
+     * multiple is a chosen margin, not a derivation: it is stated so the next
+     * reader knows the value was picked for headroom rather than measured, and
+     * can change it deliberately. A budget that merely cleared 5567ms would be
+     * tuned to a single observation on one machine.
+     *
+     * Raised per-case rather than globally in `vitest.config.ts`, because the
+     * default is what catches a genuine hang everywhere else.
+     *
+     * What the per-case number does NOT buy, stated so nobody relies on it:
+     * `execFileSync` blocks the thread, and vitest cannot interrupt a
+     * synchronous call -- it compares elapsed time only once control returns.
+     * So on its own this timeout turns a slow subprocess into a clear failure
+     * but would let a genuinely hung `npm pack` hang the whole run. Bounding
+     * that is `execFileSync`'s own `timeout` option, passed at both call sites
+     * in this file, which kills the child and throws instead of blocking
+     * forever. The two numbers are deliberately the same: the point is that
+     * whichever limit trips first, the failure is reported rather than hung.
+     */
+  }, 30_000);
 
   it("derives the tarball filename from package identity", () => {
     const manifest = JSON.parse(
@@ -143,12 +178,23 @@ describe("published tarball policy", () => {
     const packOutput = execFileSync(
       process.execPath,
       [npmCliPath(), "pack", "--dry-run", "--json", "--ignore-scripts"],
-      { cwd: repositoryRoot, encoding: "utf8" },
+      { cwd: repositoryRoot, encoding: "utf8", timeout: 30_000 },
     );
-    const [packResult] = JSON.parse(packOutput) as PackResult[];
-    expect(packResult).toBeDefined();
+    const packResult = firstPackResult(packOutput) as PackResult | undefined;
+    if (packResult === undefined) {
+      throw new Error(
+        `npm pack --dry-run --json returned no pack result: ${packOutput.slice(0, 200)}`,
+      );
+    }
 
     const packageSlug = manifest.name.replace(/^@/u, "").replace(/\//gu, "-");
     expect(packResult.filename).toBe(`${packageSlug}-${manifest.version}.tgz`);
-  });
+    /*
+     * Same subprocess, same exposure, same pair of limits. This case has not
+     * been observed to time out, but it runs the identical `npm pack` call as
+     * the one above; leaving it on the default would keep an identical landmine
+     * armed and let it be rediscovered as a mystery rather than read as a
+     * known property of shelling out.
+     */
+  }, 30_000);
 });

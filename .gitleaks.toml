@@ -13,4 +13,9 @@ paths = [
 regexes = [
   # Public Anthropic `anthropic-beta` protocol flag name, not a credential.
   '''oauth-2025-04-20''',
+  # Likewise. The default `generic-api-key` rule is entropy-driven, so it
+  # matches this identifier wherever a registry listing happens to put it next
+  # to a line the rule reads as a keyword. The value is a protocol constant
+  # transcribed from the client; every occurrence is a beta identifier.
+  '''environments-2025-11-01''',
 ]

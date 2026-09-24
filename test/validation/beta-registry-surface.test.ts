@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   BETA_REGISTRY,
   BETA_REGISTRY_2_1_233,
+  BETA_REGISTRY_2_1_280,
   TOKEN_COUNTING_BETA,
 } from "../../src/index.js";
 
@@ -29,6 +30,7 @@ function entriesOf(
 const registries = [
   ["BETA_REGISTRY", BETA_REGISTRY, 28],
   ["BETA_REGISTRY_2_1_233", BETA_REGISTRY_2_1_233, 31],
+  ["BETA_REGISTRY_2_1_280", BETA_REGISTRY_2_1_280, 40],
 ] as const;
 
 describe("public beta registry surface", () => {
@@ -82,12 +84,15 @@ describe("public beta registry surface", () => {
     },
   );
 
-  it("pins the prompt-caching-scope entry both registries carry", () => {
+  it("pins the prompt-caching-scope entry every registry carries", () => {
     expect(BETA_REGISTRY.PROMPT_CACHING_SCOPE).toEqual({
       featureKey: "prompt_caching_scope",
       header: "prompt-caching-scope-2026-01-05",
     });
     expect(BETA_REGISTRY_2_1_233.PROMPT_CACHING_SCOPE).toEqual(
+      BETA_REGISTRY.PROMPT_CACHING_SCOPE,
+    );
+    expect(BETA_REGISTRY_2_1_280.PROMPT_CACHING_SCOPE).toEqual(
       BETA_REGISTRY.PROMPT_CACHING_SCOPE,
     );
   });
@@ -117,20 +122,20 @@ describe("public beta registry surface", () => {
    * `src/profiles/beta-registry-2.1.233.ts`). Re-adding it would emit a header
    * the genuine client no longer sends.
    */
-  it("keeps narration summaries out of the 2.1.233 registry entirely", () => {
+  it("keeps narration summaries out of every post-2.1.195 registry", () => {
     expect(BETA_REGISTRY.NARRATION_SUMMARIES).toEqual({
       featureKey: "narration_summaries",
       header: "summarize-connector-text-2026-03-13",
     });
 
-    expect(Object.keys(BETA_REGISTRY_2_1_233)).not.toContain(
-      "NARRATION_SUMMARIES",
-    );
-    expect(
-      entriesOf(BETA_REGISTRY_2_1_233).map(([, entry]) => entry.header),
-    ).not.toContain("summarize-connector-text-2026-03-13");
-    expect(
-      entriesOf(BETA_REGISTRY_2_1_233).map(([, entry]) => entry.featureKey),
-    ).not.toContain("narration_summaries");
+    for (const registry of [BETA_REGISTRY_2_1_233, BETA_REGISTRY_2_1_280]) {
+      expect(Object.keys(registry)).not.toContain("NARRATION_SUMMARIES");
+      expect(
+        entriesOf(registry).map(([, entry]) => entry.header),
+      ).not.toContain("summarize-connector-text-2026-03-13");
+      expect(
+        entriesOf(registry).map(([, entry]) => entry.featureKey),
+      ).not.toContain("narration_summaries");
+    }
   });
 });

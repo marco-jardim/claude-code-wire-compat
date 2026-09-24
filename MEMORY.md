@@ -6,6 +6,109 @@ Append-only log of non-obvious maintenance decisions and their reasoning, so
 future work does not re-litigate or accidentally reverse them. Newest entries
 first. Keep entries dated, factual, and in consumer-neutral language.
 
+## 2026-09-23 — The frozen packed-consumer digests are now enforced, not eyeballed
+
+Context: `scripts/verify-packed-consumers.mjs` builds the same request from a
+packed tarball under node, bun and workerd, and prints a SHA-256 digest per
+profile. Its own block comment said each explicit case's digest "must not move
+for any reason other than a change to that profile's own wire output" — but the
+only assertion in the script was that the three runtimes agreed with **each
+other**. A change that moved a profile's digest identically everywhere printed
+the new value and exited 0. The two frozen literals lived in `AGENTS.md`,
+`docs/source-trace.md` and three planning documents, and in no file the machine
+reads, so the freeze was held by a human comparing 64-character hex strings.
+
+Decision: the script now carries an `EXPECTED_DIGESTS` table and fails when a
+pinned case moves. The `default` case is deliberately **not** pinned to a
+literal — switching `DEFAULT_PROFILE` moves it on purpose — but to a case name
+via `EXPECTED_DEFAULT_CASE`, so a default switch becomes a one-line change that
+is still verified rather than an unobserved drift. A case present in
+`CASE_NAMES` but absent from `EXPECTED_DIGESTS` is intentionally unpinned; that
+is how a newly added profile behaves until its digest is first recorded.
+
+When this fires, the fix is to find and revert the change that altered the wire
+bytes. Editing a literal to match the new output defeats the entire point of
+the gate and must never be done.
+
+Related: the gate ran in no CI workflow at all. It now runs in the `bun` job of
+`.github/workflows/ci.yml`, which is the only job that holds node, bun and the
+miniflare/workerd toolchain together, and `test/governance/ci-policy.test.ts`
+lists `npm run test:pack` among its required gates so the step cannot be quietly
+removed.
+
+## 2026-09-23 — `npm pack --json` has two output shapes; accept both, in one place
+
+Context: npm 12 changed `npm pack --json` and `npm pack --dry-run --json` from
+emitting an array of pack results to emitting an object keyed by package name.
+Two gates parse that output — the published-tarball policy test and the
+cross-runtime digest verifier — and both broke on a contributor machine running
+npm 12 while remaining green in CI, which pins node 20/22/24 and their bundled
+npm 10/10/11.
+
+Decision: accept both shapes rather than pinning an npm major. The parser lives
+once, in `scripts/lib/pack-json.mjs`, and both callers import it; two
+independent copies of a parser for an external tool's output is exactly the pair
+that drifts when the shape changes again. It also handles a third shape
+defensively — a non-null object carrying its own `filename` is returned as-is,
+before the keyed-object fallback — because a future npm emitting the single
+result flat would otherwise be silently misread into the value of its first
+property.
+
+Consequence worth knowing: `tsconfig.eslint.json` gained `allowJs` and a
+`scripts/lib/**/*.mjs` include so the TypeScript test file's import of that
+JavaScript module resolves to the types its JSDoc declares. Without it, every
+call through the import trips `no-unsafe-call` under typed linting. `checkJs`
+stays off and `npm run typecheck` is unaffected — it uses `tsconfig.json` and
+`tsconfig.types.json`, not that one. A hand-written `.d.mts` sidecar was tried
+first and rejected: it matches neither glob in `eslint.config.js`, so it
+inherits the type-checked preset with no parser project and crashes `eslint .`
+outright.
+
+The keyed-object branch and the `undefined` fallback are covered by
+`test/pack/pack-json.test.ts` with literal inputs and no subprocess, because
+neither branch runs on any CI machine.
+
+## 2026-09-22 — Upstream binaries are no longer one bundle; carving must concatenate modules
+
+Context: the runbook's Step 0 told the reader to scan the platform executable
+for maximal printable-ASCII runs and keep **the single longest one**. That was
+correct for every release this package has ported: 2.1.195 and 2.1.233 embed the
+whole application as one contiguous multi-megabyte run, with the runner-up
+orders of magnitude smaller.
+
+2.1.280 broke that assumption. It is a `// @bun @bytecode` build whose
+JavaScript is embedded as roughly 1,100 separate printable runs — each an ES
+module carrying the Claude Code banner and ending in `export{…};`, separated by
+`NUL`. The longest single run is 4,015,347 bytes out of 36,151,512 relevant
+bytes. Applying the old rule recovers about 11% of the application, and none of
+the model catalogue.
+
+Decision: **Step 0 now concatenates every printable run at or above a threshold,
+in ascending offset order, and requires a second carve at a different threshold
+to produce a byte-identical extractor report.** For a single-bundle build the
+new rule degenerates to the old one, so it is not a special case for one
+release.
+
+Why this is recorded rather than left as a runbook edit: the old rule failed
+_silently_. It still produced a syntactically plausible `.js` file, the
+extractor still exited 0, and the report was simply short of entries. A future
+maintainer who finds the concatenation step verbose and "simplifies" it back to
+the longest run would reintroduce a failure mode with no error message. The two
+threshold carves are the guard, not decoration.
+
+Concatenation is safe for `scripts/extract-upstream-profile.mjs` specifically
+because it is a regex-and-scanner tool and never parses the dump as one
+JavaScript program; duplicate declarations and repeated top-level `export{}`
+statements across modules cannot produce a syntax error. That guarantee is
+tool-specific and must not be generalised.
+
+Accepted cost: a wider search space lets unrelated embedded data reach the
+extractor. On 2.1.280 a second, non-CLI model list (the claude.ai application
+list, whose entries carry `display_name` and `provider_ids`) contributed three
+spurious dated identifiers to the `models` report. Extracted entries are
+candidates to confirm against the bundle, never transcriptions to copy. The
+detail is in `docs/protocol/versions/claude-code-2.1.280-analysis.md`.
+
 ## 2026-08-16 — The external drift verifier is retired; the plugin is no longer the protocol oracle
 
 Context: `npm run drift:check` (`scripts/verify-drift.mjs`, plus the
@@ -289,3 +392,287 @@ resolutions.
 
 Commits: `9b89d7f` (overrides), `21f1878` (lockfile-only audit fix), merged
 via PR #15 (`2ba35a8`).
+
+## 2026-09-23 — Phase 5.1 QA: three accepted findings on the 2.1.280 fixtures
+
+Context: the adversarial QA review of Phase 5.1 (the claude-code-2.1.280
+golden fixtures) surfaced three behaviours that look like defects but are
+deliberate or inherited. They are recorded here so they are not "fixed" by
+accident.
+
+Decisions:
+
+1. **The manifest assertion in `test/golden-fixtures.test.ts` stays
+   one-directional.** It walks the names sealed in `manifest.fixtures` and
+   asserts each is registered in the test's own filename list; it does not
+   walk that filename list asserting each entry is sealed. So a fixture
+   registered in the test but missing from the manifest passes `npm test`
+   and is caught only by `npm run fixtures:check`, an end-of-wave gate rather
+   than a per-commit one. The gap is kept on purpose: closing it would turn
+   the first commit of every add-then-seal split red, and that split is
+   itself forced by `scripts/seal-golden-fixtures.mjs`, which refuses to run
+   while a fixture is untracked or merely staged. This is a known, accepted
+   asymmetry; making the check bidirectional breaks the fixture-landing
+   procedure.
+2. **`outgoing-default-path-2.1.280.json` carries no `output_config`, and
+   that is faithful within this package.** It is now the sealed canonical
+   default-path evidence, even though the pinned catalogue declares a default
+   effort of `medium` for `claude-opus-5-5`. Here the effort beta header is
+   pushed from the model capability, while the body's `output_config.effort`
+   is emitted only when the caller supplies an `effort` input, the emitted
+   thinking type is adaptive, and no `outputConfig` was supplied; the
+   fixture's input supplies no effort. What is not established is what the
+   genuine client writes back to its request object on that path: the 2.1.280
+   analysis document records the upstream statement that deletes
+   `output_config` and then calls the beta/effort pusher, but transcribes only
+   that pusher's header side. The behaviour is pre-existing and identical on
+   2.1.233; it is an open documentation question, not a defect.
+3. **The one-hour `cache_control` TTL in the sealed bodies does not
+   contradict the derivation.** The 2.1.280 analysis document's
+   fourteen-identifier default-path derivation assumes a five-minute cache
+   TTL and on that basis excludes the extended-cache-ttl beta. The sealed
+   fixture bodies still carry a one-hour TTL on their prompt blocks while
+   omitting that beta, because this package hardcodes the one-hour TTL on
+   those blocks and pushes the beta only from an explicit caller TTL input.
+   The two 2.1.233 fixtures have the identical shape, so this is inherited
+   modelling, not a 2.1.280 delta, and must not be mistaken for drift.
+
+## 2026-09-23 — claude-code-2.1.280 behaviour-flag audit: no new flag
+
+Context: the upstream-tracking runbook schedules the behaviour-flag audit as
+the final step of a port, so that the porter deliberately asks whether any
+delta genuinely requires a `profile.id` comparison instead of finding out
+later that one was added by reflex. This entry records the answer for the
+2.1.280 port so the next porter does not have to argue it again.
+
+Decisions:
+
+1. **`src/profile-behaviors.ts` gained no flag, and none was needed.** Every
+   2.1.280 delta falls into a data category that is not version-gated.
+   Registry data covers the new beta entries and the three auxiliary sets,
+   each chosen per profile through a map keyed on profile id — a lookup, not
+   a branch. Profile scalars and policy booleans, the cache-diagnosis flip
+   among them, are read directly off the profile object. Catalogue strings
+   cover the two new capabilities, which are mapped once in the
+   catalogue-backed table and then derived per model, not per version. The
+   new beta push sites each combine a test that the registry key is present
+   with capability booleans, policy booleans, or a local flag noting that an
+   earlier site fired. When a registry lacks the key, its site is silently
+   inert — the same mechanism that already keeps the narration-summaries site
+   inert on the newer profiles.
+2. **Each existing flag was checked against the 2.1.280 bundle rather than
+   assumed, and the strength of the evidence differs between them.**
+   - The request-derived token ceiling is confirmed. The bundle's
+     output-limit function lifts the upper limit to the caller's own
+     `max_tokens` and reduces the default to fit beneath it, provided that
+     value is at least 4096 — the threshold this package already implements.
+   - The billing chaining segments are confirmed. The bundle's billing-block
+     builder emits both `cc_prev_req` and `cc_prompt_id`, and their validation
+     patterns match the patterns this package declares character for
+     character.
+   - The opus-4-5 effort exception being off was not positively located in
+     the bundle. It rests on the module's modern default and is corroborated
+     only indirectly, by the transcribed 2.1.280 catalogue giving that model
+     no effort capability at all. This one is asserted, not verified; a later
+     porter should re-check it first.
+
+   The module's default deliberately sits on the modern side, so a profile
+   ported from a newer client inherits current behaviour without an edit.
+   Nothing in this audit suggests any flag needs a third frozen behaviour set.
+
+3. **What mechanisms this port added, and why that wave ran between
+   registration and the canary.** Capability derivation widened from six
+   fields to eight. The beta push sequence grew from seventeen sites to
+   twenty-two, plus a removal: the redact-thinking identifier is composed and
+   then spliced back out when the display-updates site fires. The thinking
+   display-updates injection is a single change that surfaces as a beta
+   identifier, a body field, and that removal. The wave sat after
+   registration and before the canary because these are data-driven
+   mechanisms that stay inert for the older registries and catalogues: they
+   had to be final before the canary froze a digest over them and before the
+   fixtures sealed bytes derived from them. Registering first also let every
+   mechanism test drive the real registered profile through the public
+   builder rather than a test double. The cost of this ordering was bounded:
+   between the end of the registration wave and the end of the mechanism wave,
+   a pinned 2.1.280 request emitted an intermediate beta list. That was
+   acceptable because the default profile was untouched, nothing was released,
+   no fixture existed yet, and no test asserted the intermediate list.
+4. **Billing segments the package does not model at all.** While checking
+   the chaining segments, the bundle's billing-block builder was found able to
+   emit a workload segment and a sub-agent segment as well. Both derive from
+   the session or host rather than from the caller, which places them in the
+   same class as the already-recorded omission of the context-hint
+   token-saving field. They are known and deliberately unmodelled; the next
+   porter should not mistake their absence for a regression.
+
+## 2026-09-23 — corrections to the 2.1.280 behaviour-flag audit entry
+
+Context: an adversarial review of the entry above found that one of its
+supporting arguments does not support what it was cited for, and that two of
+its summary sentences are true but incomplete in ways that would mislead a
+reader who skims. `MEMORY.md` is append-only, so the corrections are recorded
+here rather than by editing that entry.
+
+Decisions:
+
+1. **The opus-4-5 corroboration was mis-framed.** The entry above cited the
+   2.1.280 catalogue giving `claude-opus-4-5` no effort capability as
+   indirect corroboration that the opus-4-5 effort exception is off for that
+   profile. That argument does not hold. The catalogue row for that model is
+   byte-identical in the 2.1.195 and 2.1.280 catalogue files — same family,
+   same lone `context_management` capability, same output-token limits — and
+   on 2.1.195 the exception is on. The same omission therefore coexists with
+   both values of the flag, so it cannot be evidence for either. What the
+   omission actually is: the precondition that makes the flag consequential
+   at all. If the catalogue listed the capability, the flag would have
+   nothing to correct. What the flag really claims, per the demarcated
+   exception block in `src/model-capabilities.ts`, is that upstream from
+   2.1.222 onward derives a catalogued model's capabilities from the
+   catalogue array, where the older client derived them from predicate code
+   whose effort predicate does not exclude this model. So the genuine
+   re-check target is whether upstream 2.1.280 derives a catalogued model's
+   effort capability from the catalogue array or from a predicate exclusion
+   list — or whether its predicate now excludes this model, which would make
+   the flag moot. Re-reading the catalogue row answers nothing. The
+   wire-visible stake, which the entry above did not state: the effort
+   capability gates the effort push site in `src/betas.ts`, so this one
+   unverified flag decides whether a 2.1.280 request naming
+   `claude-opus-4-5` carries `effort-2025-11-24` in its beta header, and
+   whether the body carries an `output_config` effort field. No 2.1.280
+   golden fixture exercises that model today — the sealed set uses
+   `claude-sonnet-4-5`, `claude-opus-4-8` and `claude-opus-5-5` — so the
+   differential cannot upgrade the grade until such a fixture exists.
+2. **The lead sentence of the flag discussion overstates.** The entry above
+   opens its flag discussion by saying each existing flag was checked
+   against the bundle rather than assumed, which a skimmer will read as all
+   of them having been located. The accurate form is that two of the three
+   were located in the bundle and the third was searched for and not found.
+   The per-flag bullets that follow are correct; only the lead is too
+   strong.
+3. **The inertness claim is incomplete.** The entry above says a registry
+   lacking a key leaves its push site silently inert, which is true but not
+   the whole mechanism. The per-message-effort key is declared by the
+   previous pin's registry, so registry absence does not keep that site
+   inert there; what keeps it inert is the catalogue not declaring the
+   matching capability string. Both mechanisms are load-bearing and they are
+   not interchangeable — a reader who took the registry-absence sentence as
+   universal would wrongly conclude every new push site is registry-inert on
+   the older profiles. The comment on the composable registry type in
+   `src/betas.ts` already makes this point in code.
+
+## 2026-09-23 — claude-code-2.1.280: seven port decisions
+
+Context: these are decisions taken during the 2.1.280 port that a later
+reader would otherwise have to re-derive from the code or re-litigate from
+scratch. Each is recorded here because it had a plausible alternative that
+was considered and rejected.
+
+Decisions:
+
+1. **The cache-diagnosis policy flag was flipped for the new profile only.**
+   The 2.1.280 profile sets `cacheDiagnosisEnabled` to `true`, because the
+   analysis document's section on that gate resolves all three of its legs
+   to true on a first-party install. The previous pin keeps `false`. Whether
+   that earlier value was always wrong cannot be settled without the earlier
+   release's binary, and inferring one release's value from another's is
+   precisely what the tracking runbook forbids. The older profile was
+   therefore deliberately left alone rather than "corrected" by analogy.
+2. **The thinking-display type widening was proposed and then withdrawn.**
+   An early design would have added the injected wire value to the exported
+   `ThinkingDisplay` union. That was rejected. The exported type stays
+   `"summarized" | "omitted"` and stays caller-facing. The injected value is
+   typed as a bare string literal at internal seams only — an optional
+   override field on the composed-betas result, and an optional trailing
+   parameter of the thinking resolver — and neither seam is exported from
+   `src/index.ts`. Widening the exported type would have silently changed
+   the meaning of a name consumers may already switch on, and it would have
+   invited someone to "fix" the request-body validator into accepting that
+   value as caller input. Upstream never accepts it as caller input: the
+   injection's own guard requires that the caller supplied no display at
+   all. `src/request-body.ts` still rejects it with `INVALID_THINKING`.
+3. **The redact-thinking removal runs before the caller-supplied beta
+   merge.** The removal is the last statement inside the display-updates
+   push site's own block, which puts it ahead of the `additionalBetas`
+   merge. That ordering is load-bearing in the caller's favour: a caller who
+   explicitly supplies the redact-thinking identifier still gets it on the
+   wire, precisely because the canonical copy was already spliced out and
+   the merge's "not already present" test therefore succeeds. Had the
+   removal run after the merge, it would have eaten the caller's own entry.
+4. **Suppressing a beta removes the header and nothing else.** For a coupled
+   beta-and-body pair, `suppressBetas` is header-only by contract: the
+   filter is subtractive over the composed identifier list and touches no
+   body field. Suppressing the display-updates identifier removes the header
+   but leaves the body's display value in place, and it does not bring
+   redact-thinking back. This matches the pair that already existed:
+   suppressing the effort identifier leaves the body's effort field
+   untouched. A caller who wants neither half has the upstream-faithful
+   lever instead — supply a display explicitly, which disarms the injection
+   at its own guard.
+5. **The per-turn timing capability string is deliberately not mapped.** It
+   is a real capability string in the 2.1.280 catalogue and it has a
+   registry entry, but its push site is gated on an environment variable
+   this package does not read. Mapping it to a derived capability would
+   create a capability the package can never act on, so the string is left
+   unmapped, and the omission is recorded here rather than left to look like
+   an oversight.
+6. **Ten catalogue keys are read and discarded.** The ported catalogue
+   models only what a request reads. These keys exist upstream and are
+   knowable without I/O, but no request field derives from them, so carrying
+   them would widen the package's surface with values nothing consumes:
+   `display_name`, `knowledge_cutoff`, `provider_ids`,
+   `eager_input_streaming`, `vertex_region_env_var`, `fallback_3p`,
+   `pricing`, `effort_cost_index`, `image_limits` and `advisor_rank`.
+   Separately, the context object is present only on the models that
+   declare one; a model with no context key simply has none, and that
+   absence is data, not a gap in the port.
+7. **The beta composer takes one thinking signal, not two.** The new
+   thinking push sites differ by exactly one further conjunct — whether the
+   caller supplied a display. Giving the composer a single required
+   `thinkingActive` boolean and letting the display site add that one extra
+   test keeps the sites from drifting apart. Separate input fields would
+   have allowed them to disagree in a case upstream has no analogue for,
+   which is the kind of divergence that survives every test because nothing
+   pins it.
+
+## 2026-09-23 — claude-code-2.1.280: the shared model-id normalizer reaches the previous pin
+
+Context: a global adversarial review of the 2.1.280 port found that the
+behaviour-flag audit entry above understates the port's reach. The model-id
+normalizer, `normalizeModelId` in `src/model-identity.ts`, is one ladder
+shared by every profile, and the port added five rungs to it
+(`claude-fable-5-1`, `claude-mythos-5-1`, `claude-opus-5-5`, `claude-opus-5`
+and `claude-sonnet-5`). Two of those rungs change what the 2.1.233 pin
+resolves for ids its own catalogue never listed.
+
+Decisions:
+
+1. **The behaviour-flag audit entry is corrected for one file.** That entry
+   concluded that the port added no per-version behaviour flag and that every
+   delta was data-driven. That holds for the beta registry, the model
+   catalogue, the profile scalars and the push sites, and it does not hold for
+   the model-id normalizer: its ladder carries no per-version gate, so the
+   rungs added for 2.1.280 also change what `CLAUDE_CODE_2_1_233_PROFILE`
+   resolves for `claude-fable-5-1` and `claude-mythos-5-1`, and for
+   `claude-mythos-5-1` that changes the emitted request. Under the 2.1.233 pin
+   that id previously collapsed onto `claude-mythos-5` and inherited that
+   model's deliberate empty-capability catalogue row. It now keeps its own id,
+   finds no catalogue row, and falls through to the permissive predicate path
+   instead, which adds `context-management-2025-06-27`,
+   `mid-conversation-system-2026-04-07` and `effort-2025-11-24` to the
+   `anthropic-beta` header and turns the emitted thinking object from a
+   budgeted one into an adaptive one. The packed-consumer digests cannot see
+   this, because their probe model, `claude-sonnet-4-5`, is untouched by every
+   new rung. `test/validation/shared-normalizer-ladder.test.ts` now pins the
+   current header and thinking object so the behaviour cannot drift silently.
+2. **The ladder was not gated behind a behaviour flag.** Gating would require
+   asserting that the 2.1.233 client's own ladder lacked those rungs. Neither
+   older analysis document transcribes that client's normalizer at all, so
+   such an assertion would be an inference from silence — the cross-release
+   inference the upstream-tracking runbook forbids. The affected ids are not
+   in the 2.1.233 catalogue, so a caller pinning that profile and naming one is
+   naming a model that release never shipped; the old answer and the new one
+   are both guesses about something this repository cannot know. The
+   deliberate choice is one shared ladder, transcribed from the one binary
+   that was actually read, with the consequence recorded here and pinned by a
+   test. Settling which answer the genuine 2.1.233 client gives needs that
+   release's binary.

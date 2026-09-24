@@ -22,6 +22,7 @@ what a client must send to stay wire-compatible with that release.
 | [claude-code-2.1.159-analysis.md](./claude-code-2.1.159-analysis.md) | `2.1.159`           |
 | [claude-code-2.1.195-analysis.md](./claude-code-2.1.195-analysis.md) | `2.1.195`           |
 | [claude-code-2.1.233-analysis.md](./claude-code-2.1.233-analysis.md) | `2.1.233`           |
+| [claude-code-2.1.280-analysis.md](./claude-code-2.1.280-analysis.md) | `2.1.280`           |
 
 These analyses come in two kinds, and each file's provenance header states which
 it is:

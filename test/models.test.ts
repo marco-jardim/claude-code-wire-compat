@@ -221,7 +221,7 @@ describe("models (Wave 1 RED specification)", () => {
       true,
     ],
   ] as const)(
-    "derives all nine capabilities for %s",
+    "derives every capability for %s",
     async (
       id,
       thinking,
@@ -248,6 +248,16 @@ describe("models (Wave 1 RED specification)", () => {
         contextManagement,
         temperature,
         rejectsDisabledThinking,
+        /*
+         * Not parametrised, because the expectation is the same for every row
+         * and saying so once is stronger than repeating `false` sixteen times:
+         * no entry in the default profile's catalogue declares
+         * `mid_conv_tool_change` or `per_turn_effort`, and the predicate path
+         * an uncatalogued id falls through to derives neither. A row that
+         * needs `true` here belongs to a profile this table does not cover.
+         */
+        midConvToolChange: false,
+        perTurnEffort: false,
       });
     },
   );

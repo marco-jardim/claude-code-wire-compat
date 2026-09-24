@@ -45,10 +45,32 @@ describe("model identity", () => {
     );
   });
 
+  // Substring-prefix pairs: each shorter id is contained in the longer one, so
+  // a ladder written in the wrong order silently returns the containing id.
+  // These bare-id assertions catch an order regression, but they cannot catch
+  // the removal of a rung whose id no other rung matches: the fallback date
+  // strip returns a bare id unchanged, so the assertion still passes. The
+  // decorated cases in the case-insensitivity table below exist to catch that.
+  it("keeps each five-family id distinct from the id that contains it", () => {
+    expect(normalizeModelId("claude-fable-5-1")).toBe("claude-fable-5-1");
+    expect(normalizeModelId("claude-fable-5")).toBe("claude-fable-5");
+    expect(normalizeModelId("claude-mythos-5-1")).toBe("claude-mythos-5-1");
+    expect(normalizeModelId("claude-mythos-5")).toBe("claude-mythos-5");
+    expect(normalizeModelId("claude-opus-5-5")).toBe("claude-opus-5-5");
+    expect(normalizeModelId("claude-opus-5")).toBe("claude-opus-5");
+    expect(normalizeModelId("claude-sonnet-5")).toBe("claude-sonnet-5");
+  });
+
   it.each([
     ["CLAUDE-OPUS-4-6", "claude-opus-4-6"],
     ["anthropic/claude-opus-4-6", "claude-opus-4-6"],
     ["claude-opus-4-6-preview", "claude-opus-4-6"],
+    ["anthropic/claude-opus-5", "claude-opus-5"],
+    ["claude-opus-5-preview", "claude-opus-5"],
+    ["anthropic/claude-sonnet-5", "claude-sonnet-5"],
+    ["claude-opus-5-5-preview", "claude-opus-5-5"],
+    ["claude-fable-5-1-preview", "claude-fable-5-1"],
+    ["claude-mythos-5-1[1m]", "claude-mythos-5-1"],
   ])("matches case-insensitively and without anchors", (input, expected) => {
     expect(normalizeModelId(input)).toBe(expected);
   });
@@ -91,6 +113,7 @@ describe("model identity", () => {
     Object.freeze({
       "claude-code-2.1.195-sdk-0.94.0": false,
       "claude-code-2.1.233-sdk-0.112.1": true,
+      "claude-code-2.1.280-sdk-0.112.1": true,
     });
 
   describeEachProfile("catalogue coupling", (entry) => {
@@ -111,6 +134,8 @@ describe("model identity", () => {
           contextManagement: true,
           temperature: false,
           rejectsDisabledThinking: true,
+          midConvToolChange: false,
+          perTurnEffort: false,
         },
       });
       const catalogued = MYTHOS_CATALOGUED_BY_PROFILE[entry.id];
@@ -180,6 +205,8 @@ describe("model identity", () => {
         contextManagement: true,
         temperature: false,
         rejectsDisabledThinking: true,
+        midConvToolChange: false,
+        perTurnEffort: false,
       },
     });
   });

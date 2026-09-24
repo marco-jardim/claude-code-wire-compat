@@ -1,6 +1,6 @@
 {
   "name": "@tormentalabs/claude-code-wire-compat",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Runtime-neutral Claude Code Messages wire compatibility primitives",
   "type": "module",
   "private": false,
@@ -37,6 +37,10 @@
     "./profiles/claude-code-2.1.233": {
       "types": "./dist/profiles/claude-code-2.1.233.d.ts",
       "import": "./dist/profiles/claude-code-2.1.233.js"
+    },
+    "./profiles/claude-code-2.1.280": {
+      "types": "./dist/profiles/claude-code-2.1.280.d.ts",
+      "import": "./dist/profiles/claude-code-2.1.280.js"
     }
   },
   "types": "./dist/index.d.ts",
@@ -51,7 +55,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:pack": "node scripts/verify-packed-consumers.mjs",
+    "test:pack": "npm run build && node scripts/verify-packed-consumers.mjs",
     "pack:check": "npm pack --dry-run && publint && attw --pack . --profile esm-only",
     "fixtures:check": "node scripts/seal-golden-fixtures.mjs --check",
     "fixtures:seal": "node scripts/seal-golden-fixtures.mjs --write",

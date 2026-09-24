@@ -38,7 +38,7 @@ export function resolveModel(
     id,
     wireId,
     // The catalogue supplies the family here, and -- since T1.1.2 -- also
-    // supplies the six catalogue-backed capabilities. Both now honour THIS
+    // supplies the catalogue-backed capabilities. Both now honour THIS
     // profile: `deriveCapabilities` takes the active profile, so a request
     // built against a non-pinned profile derives from that profile's
     // catalogue rather than from 2.1.195's. Ids with no catalogue entry fall

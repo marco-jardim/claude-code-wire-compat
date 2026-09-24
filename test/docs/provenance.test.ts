@@ -140,6 +140,7 @@ const PORTED_DOCUMENTS: readonly PortedDocument[] = [
 const FIRST_PARTY_PROTOCOL_DOCUMENTS: readonly string[] = [
   "versions/README.md",
   "versions/claude-code-2.1.233-analysis.md",
+  "versions/claude-code-2.1.280-analysis.md",
 ];
 
 const portedDestinations = new Set(
