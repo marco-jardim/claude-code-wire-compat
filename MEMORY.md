@@ -504,3 +504,58 @@ Decisions:
    same class as the already-recorded omission of the context-hint
    token-saving field. They are known and deliberately unmodelled; the next
    porter should not mistake their absence for a regression.
+
+## 2026-09-23 — corrections to the 2.1.280 behaviour-flag audit entry
+
+Context: an adversarial review of the entry above found that one of its
+supporting arguments does not support what it was cited for, and that two of
+its summary sentences are true but incomplete in ways that would mislead a
+reader who skims. `MEMORY.md` is append-only, so the corrections are recorded
+here rather than by editing that entry.
+
+Decisions:
+
+1. **The opus-4-5 corroboration was mis-framed.** The entry above cited the
+   2.1.280 catalogue giving `claude-opus-4-5` no effort capability as
+   indirect corroboration that the opus-4-5 effort exception is off for that
+   profile. That argument does not hold. The catalogue row for that model is
+   byte-identical in the 2.1.195 and 2.1.280 catalogue files — same family,
+   same lone `context_management` capability, same output-token limits — and
+   on 2.1.195 the exception is on. The same omission therefore coexists with
+   both values of the flag, so it cannot be evidence for either. What the
+   omission actually is: the precondition that makes the flag consequential
+   at all. If the catalogue listed the capability, the flag would have
+   nothing to correct. What the flag really claims, per the demarcated
+   exception block in `src/model-capabilities.ts`, is that upstream from
+   2.1.222 onward derives a catalogued model's capabilities from the
+   catalogue array, where the older client derived them from predicate code
+   whose effort predicate does not exclude this model. So the genuine
+   re-check target is whether upstream 2.1.280 derives a catalogued model's
+   effort capability from the catalogue array or from a predicate exclusion
+   list — or whether its predicate now excludes this model, which would make
+   the flag moot. Re-reading the catalogue row answers nothing. The
+   wire-visible stake, which the entry above did not state: the effort
+   capability gates the effort push site in `src/betas.ts`, so this one
+   unverified flag decides whether a 2.1.280 request naming
+   `claude-opus-4-5` carries `effort-2025-11-24` in its beta header, and
+   whether the body carries an `output_config` effort field. No 2.1.280
+   golden fixture exercises that model today — the sealed set uses
+   `claude-sonnet-4-5`, `claude-opus-4-8` and `claude-opus-5-5` — so the
+   differential cannot upgrade the grade until such a fixture exists.
+2. **The lead sentence of the flag discussion overstates.** The entry above
+   opens its flag discussion by saying each existing flag was checked
+   against the bundle rather than assumed, which a skimmer will read as all
+   of them having been located. The accurate form is that two of the three
+   were located in the bundle and the third was searched for and not found.
+   The per-flag bullets that follow are correct; only the lead is too
+   strong.
+3. **The inertness claim is incomplete.** The entry above says a registry
+   lacking a key leaves its push site silently inert, which is true but not
+   the whole mechanism. The per-message-effort key is declared by the
+   previous pin's registry, so registry absence does not keep that site
+   inert there; what keeps it inert is the catalogue not declaring the
+   matching capability string. Both mechanisms are load-bearing and they are
+   not interchangeable — a reader who took the registry-absence sentence as
+   universal would wrongly conclude every new push site is registry-inert on
+   the older profiles. The comment on the composable registry type in
+   `src/betas.ts` already makes this point in code.
