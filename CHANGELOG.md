@@ -2,6 +2,95 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-09-23
+
+### Breaking
+
+- **The default protocol profile is now Claude Code 2.1.280 with SDK
+  0.112.1** (profile id `claude-code-2.1.280-sdk-0.112.1`). A caller that does
+  not pin a profile now emits different bytes: the version strings, beta
+  header, fingerprint and model catalogue all follow the new release.
+
+  Rollback: pin the previous profile singleton explicitly.
+
+  ```ts
+  import {
+    CLAUDE_CODE_2_1_233_PROFILE,
+    buildClaudeCodeCountTokensRequest,
+    buildClaudeCodeRequest,
+    parseBuiltClaudeCodeRequest,
+  } from "@tormentalabs/claude-code-wire-compat";
+
+  const built = await buildClaudeCodeRequest(
+    input,
+    CLAUDE_CODE_2_1_233_PROFILE,
+  );
+  const counted = await buildClaudeCodeCountTokensRequest(
+    countInput,
+    CLAUDE_CODE_2_1_233_PROFILE,
+  );
+  const parsed = parseBuiltClaudeCodeRequest(
+    persisted,
+    CLAUDE_CODE_2_1_233_PROFILE,
+  );
+  ```
+
+  The pin has to be passed on every call to each of the three entry points
+  that read the default seam — `buildClaudeCodeRequest`,
+  `buildClaudeCodeCountTokensRequest` and `parseBuiltClaudeCodeRequest`.
+  Pinning the builders alone is not enough: `parseBuiltClaudeCodeRequest`
+  recomputes the expected headers under the profile it is given, so a
+  `BuiltClaudeCodeRequest` persisted under the old default and parsed unpinned
+  after upgrading is rejected with `ClaudeCodeWireError` code `INVALID_INPUT`.
+
+- **`ClaudeCodeCapabilities` gains two required booleans**,
+  `midConvToolChange` and `perTurnEffort`. Because
+  `ClaudeCodeCapabilityDecisions` is keyed off that type,
+  `evidence.capabilityDecisions` gains the same two required keys.
+
+  Compatibility: callers supplying capabilities on input are unaffected,
+  because `ClaudeCodeRequestInput.capabilities` is a `Partial` of that type.
+  Only code that constructs a complete `ClaudeCodeCapabilities` value, or that
+  exhaustively destructures `evidence.capabilityDecisions`, needs updating.
+
+### Added
+
+- **Claude Code 2.1.280 protocol profile**, extracted from the release binary
+  rather than inferred:
+  - a 40-entry beta registry, nine of whose entries are new to this release;
+  - three auxiliary beta sets;
+  - five new beta push sites plus one coupled removal: when the
+    thinking-display-updates site fires it also removes the previously composed
+    redact-thinking identifier;
+  - a 20-model catalogue, adding `claude-opus-5-5`, `claude-fable-5-1` and
+    `claude-mythos-5-1`.
+
+- **A third frozen packed-consumer digest**, pinned across node, bun and
+  workerd from the packed tarball:
+  `9a531ed01ddd3440ce5b7f25c6caf5f045a9b4e78d885b5317508e21a22ada90`.
+
+- **Fingerprint known-answer vectors for 2.1.280**, computed independently
+  outside this package so they prove the formula rather than the code's
+  consistency with itself.
+
+### Changed
+
+- **`cacheDiagnosisEnabled` is `true` for the 2.1.280 profile.** The 2.1.233
+  profile is deliberately unchanged: whether its `false` was always wrong
+  cannot be settled without that release's binary.
+
+### Fixed
+
+- **The packed-consumer pack-policy test accepts npm 12's output shape.**
+
+- **Model-id normalizer**: `claude-fable-5-1` and `claude-mythos-5-1`
+  previously collapsed onto their base ids, which silently suppressed the
+  per-turn-control push site for `claude-fable-5-1`. Both now normalise to
+  their own ids.
+
+  Not listed as breaking: the affected ids belong to 2.1.280, which had not
+  been released before this version.
+
 ## [0.5.0] - 2026-08-16
 
 ### Added
