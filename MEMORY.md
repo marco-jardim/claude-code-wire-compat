@@ -436,3 +436,71 @@ Decisions:
    those blocks and pushes the beta only from an explicit caller TTL input.
    The two 2.1.233 fixtures have the identical shape, so this is inherited
    modelling, not a 2.1.280 delta, and must not be mistaken for drift.
+
+## 2026-09-23 — claude-code-2.1.280 behaviour-flag audit: no new flag
+
+Context: the upstream-tracking runbook schedules the behaviour-flag audit as
+the final step of a port, so that the porter deliberately asks whether any
+delta genuinely requires a `profile.id` comparison instead of finding out
+later that one was added by reflex. This entry records the answer for the
+2.1.280 port so the next porter does not have to argue it again.
+
+Decisions:
+
+1. **`src/profile-behaviors.ts` gained no flag, and none was needed.** Every
+   2.1.280 delta falls into a data category that is not version-gated.
+   Registry data covers the new beta entries and the three auxiliary sets,
+   each chosen per profile through a map keyed on profile id — a lookup, not
+   a branch. Profile scalars and policy booleans, the cache-diagnosis flip
+   among them, are read directly off the profile object. Catalogue strings
+   cover the two new capabilities, which are mapped once in the
+   catalogue-backed table and then derived per model, not per version. The
+   new beta push sites each combine a test that the registry key is present
+   with capability booleans, policy booleans, or a local flag noting that an
+   earlier site fired. When a registry lacks the key, its site is silently
+   inert — the same mechanism that already keeps the narration-summaries site
+   inert on the newer profiles.
+2. **Each existing flag was checked against the 2.1.280 bundle rather than
+   assumed, and the strength of the evidence differs between them.**
+   - The request-derived token ceiling is confirmed. The bundle's
+     output-limit function lifts the upper limit to the caller's own
+     `max_tokens` and reduces the default to fit beneath it, provided that
+     value is at least 4096 — the threshold this package already implements.
+   - The billing chaining segments are confirmed. The bundle's billing-block
+     builder emits both `cc_prev_req` and `cc_prompt_id`, and their validation
+     patterns match the patterns this package declares character for
+     character.
+   - The opus-4-5 effort exception being off was not positively located in
+     the bundle. It rests on the module's modern default and is corroborated
+     only indirectly, by the transcribed 2.1.280 catalogue giving that model
+     no effort capability at all. This one is asserted, not verified; a later
+     porter should re-check it first.
+
+   The module's default deliberately sits on the modern side, so a profile
+   ported from a newer client inherits current behaviour without an edit.
+   Nothing in this audit suggests any flag needs a third frozen behaviour set.
+
+3. **What mechanisms this port added, and why that wave ran between
+   registration and the canary.** Capability derivation widened from six
+   fields to eight. The beta push sequence grew from seventeen sites to
+   twenty-two, plus a removal: the redact-thinking identifier is composed and
+   then spliced back out when the display-updates site fires. The thinking
+   display-updates injection is a single change that surfaces as a beta
+   identifier, a body field, and that removal. The wave sat after
+   registration and before the canary because these are data-driven
+   mechanisms that stay inert for the older registries and catalogues: they
+   had to be final before the canary froze a digest over them and before the
+   fixtures sealed bytes derived from them. Registering first also let every
+   mechanism test drive the real registered profile through the public
+   builder rather than a test double. The cost of this ordering was bounded:
+   between the end of the registration wave and the end of the mechanism wave,
+   a pinned 2.1.280 request emitted an intermediate beta list. That was
+   acceptable because the default profile was untouched, nothing was released,
+   no fixture existed yet, and no test asserted the intermediate list.
+4. **Billing segments the package does not model at all.** While checking
+   the chaining segments, the bundle's billing-block builder was found able to
+   emit a workload segment and a sub-agent segment as well. Both derive from
+   the session or host rather than from the caller, which places them in the
+   same class as the already-recorded omission of the context-hint
+   token-saving field. They are known and deliberately unmodelled; the next
+   porter should not mistake their absence for a regression.
