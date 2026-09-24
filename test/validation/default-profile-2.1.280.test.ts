@@ -11,6 +11,8 @@ import {
   buildClaudeCodeRequest,
   CLAUDE_CODE_2_1_233_PROFILE,
   CLAUDE_CODE_2_1_280_PROFILE,
+  ClaudeCodeWireError,
+  parseBuiltClaudeCodeRequest,
 } from "../../src/index.js";
 
 /*
@@ -39,24 +41,6 @@ const INPUT: ClaudeCodeRequestInput = {
   clientRequestId: "default-path-request-1",
   thinking: { type: "adaptive" },
 };
-
-/*
- * The 2.1.233 default-path `anthropic-beta` value for INPUT. Captured from the
- * 2.1.233-pinned build (read out of a deliberately failing assertion diff), not
- * derived independently: it is the rollback contract, so what it pins is that
- * the previous singleton's bytes do not move under the default switch.
- */
-const PINNED_2_1_233_BETAS: readonly string[] = [
-  "claude-code-20250219",
-  "oauth-2025-04-20",
-  "interleaved-thinking-2025-05-14",
-  "redact-thinking-2026-02-12",
-  "thinking-token-count-2026-05-13",
-  "context-management-2025-06-27",
-  "prompt-caching-scope-2026-01-05",
-  "mid-conversation-system-2026-04-07",
-  "effort-2025-11-24",
-];
 
 /** Returns the `anthropic-beta` header value, looked up case-insensitively. */
 function betaHeader(built: BuiltClaudeCodeRequest): string {
@@ -105,11 +89,74 @@ describe("DEFAULT_PROFILE is 2.1.280", () => {
   });
 
   it("pinning CLAUDE_CODE_2_1_233_PROFILE still yields the 2.1.233 default-path header", async () => {
+    // The byte-exact 2.1.233 request is pinned elsewhere: by the sealed golden
+    // fixture `outgoing-canary-context-hint-off-2.1.233.json` and by the frozen
+    // 2.1.233 packed-consumer digest. The ordered beta list already has three
+    // other copies in the suite, so this test deliberately asserts only the
+    // rollback's DISCRIMINATING properties -- what separates a 2.1.233
+    // composition from a 2.1.280 one -- instead of restating that list.
+    const only280Betas: readonly string[] = [
+      "per-turn-control-2026-07-01",
+      "mid-conversation-tool-changes-2026-07-01",
+      "mid-conversation-system-clear-at-2026-08-21",
+      "thinking-binding-controls-2026-08-01",
+      "thinking-display-updates-2026-08-18",
+    ];
     const pinned233 = await buildClaudeCodeRequest(
       INPUT,
       CLAUDE_CODE_2_1_233_PROFILE,
     );
-    expect(betaHeader(pinned233)).toBe(PINNED_2_1_233_BETAS.join(","));
+    const header = betaHeader(pinned233);
+    // 2.1.280 composes `redact-thinking` and then splices it out, so its
+    // presence is positive evidence the 2.1.233 composition produced this.
+    expect(header).toContain("redact-thinking-2026-02-12");
+    for (const beta of only280Betas) {
+      expect(header).not.toContain(beta);
+    }
+    const body: unknown = JSON.parse(pinned233.body);
+    expect(body).toHaveProperty("thinking");
+    expect(body).toHaveProperty("thinking.type");
+    expect(body).not.toHaveProperty("thinking.display");
+  });
+
+  /*
+   * The parse half of the default switch. `parseBuiltClaudeCodeRequest`
+   * recomputes the expected headers under the profile it is given, and that
+   * profile defaults to DEFAULT_PROFILE. So a request built under the previous
+   * default and persisted is REJECTED by an unpinned parse after the upgrade.
+   * The remedy for a consumer holding persisted requests is to pass the
+   * previous singleton explicitly on `parse` as well as on `build`.
+   */
+  it("an unpinned parse rejects a request built with CLAUDE_CODE_2_1_233_PROFILE", async () => {
+    const built233 = await buildClaudeCodeRequest(
+      INPUT,
+      CLAUDE_CODE_2_1_233_PROFILE,
+    );
+    expect(() => parseBuiltClaudeCodeRequest(built233)).toThrow(
+      ClaudeCodeWireError,
+    );
+    expect(() => parseBuiltClaudeCodeRequest(built233)).toThrow(
+      expect.objectContaining({ code: "INVALID_INPUT" }),
+    );
+  });
+
+  it("a parse pinned to CLAUDE_CODE_2_1_233_PROFILE round-trips a 2.1.233 request", async () => {
+    // The other half of the rollback contract, and what makes the rejection
+    // above meaningful rather than a claim that parsing is simply broken.
+    const built233 = await buildClaudeCodeRequest(
+      INPUT,
+      CLAUDE_CODE_2_1_233_PROFILE,
+    );
+    const parsed = parseBuiltClaudeCodeRequest(
+      built233,
+      CLAUDE_CODE_2_1_233_PROFILE,
+    );
+    expect(parsed.url).toBe(built233.url);
+    expect(parsed.method).toBe(built233.method);
+    expect(JSON.stringify(parsed.headers)).toBe(
+      JSON.stringify(built233.headers),
+    );
+    expect(parsed.body).toBe(built233.body);
   });
 
   it("DEFAULT_PROFILE is a member of ACCEPTED_PROFILES by identity", async () => {

@@ -195,10 +195,13 @@ describe("default profile: pinned", () => {
    * accident: any change to the default seam fails here until this line is
    * changed alongside it.
    *
-   * The assertion is by identity, not structure. A structurally-equal clone
-   * would produce identical bytes and pass every digest check, yet the builder
-   * and header plan accept profiles by object identity, so a clone as the
-   * default would break acceptance while every byte-level check stayed green.
+   * The assertion is by identity, not structure, because identity is the
+   * contract `ACCEPTED_PROFILES` enforces: the builder and parser accept a
+   * profile only if it is one of the exported singletons. (A clone as the
+   * default would not fail silently -- `validateProfile` runs on the resolved
+   * default too, so every unpinned build would throw.) Asserting identity here
+   * names the default seam explicitly, rather than relying on the collateral
+   * failure of unrelated tests to reveal that the default changed.
    *
    * The only legitimate reason to edit this assertion is a default-profile
    * switch, which is always its own commit.
