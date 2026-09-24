@@ -17,9 +17,11 @@ import { describe } from "vitest";
 import type { ClaudeCodeProtocolProfile } from "../../src/contracts.js";
 import { BETA_REGISTRY } from "../../src/beta-registry.js";
 import { BETA_REGISTRY_2_1_233 } from "../../src/profiles/beta-registry-2.1.233.js";
+import { BETA_REGISTRY_2_1_280 } from "../../src/profiles/beta-registry-2.1.280.js";
 import {
   CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
+  CLAUDE_CODE_2_1_280_PROFILE,
 } from "../../src/index.js";
 
 /** One pinned profile, plus the metadata a parametrised suite asserts on. */
@@ -90,6 +92,7 @@ function entryFor(
 export const PROFILES_UNDER_TEST: readonly ProfileUnderTest[] = Object.freeze([
   entryFor(CLAUDE_CODE_2_1_195_PROFILE, BETA_REGISTRY),
   entryFor(CLAUDE_CODE_2_1_233_PROFILE, BETA_REGISTRY_2_1_233),
+  entryFor(CLAUDE_CODE_2_1_280_PROFILE, BETA_REGISTRY_2_1_280),
 ]);
 
 assertValidProfileRegistry(PROFILES_UNDER_TEST);

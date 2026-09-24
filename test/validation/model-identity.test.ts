@@ -104,6 +104,7 @@ describe("model identity", () => {
     Object.freeze({
       "claude-code-2.1.195-sdk-0.94.0": false,
       "claude-code-2.1.233-sdk-0.112.1": true,
+      "claude-code-2.1.280-sdk-0.112.1": true,
     });
 
   describeEachProfile("catalogue coupling", (entry) => {
