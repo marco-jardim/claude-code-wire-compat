@@ -156,10 +156,11 @@ Compare the report against the currently pinned release:
 - `src/profiles/claude-code-<current>.ts` — the profile.
 - `src/profiles/beta-registry-<current>.ts` — the beta registry.
 
-At the time of writing, the pinned release files are
-`src/profiles/claude-code-2.1.233.ts` and
-`src/profiles/beta-registry-2.1.233.ts`, with
-`src/profiles/claude-code-2.1.195.ts` retained as the previous pin.
+The currently pinned release is whichever profile `DEFAULT_PROFILE` in
+`src/build-request.ts` names; its data files sit beside it in `src/profiles/`,
+and every profile still accepted is listed in `ACCEPTED_PROFILES` in the same
+module. Locating the pin that way rather than naming a version here keeps this
+instruction from going stale on the next port.
 
 Classify every delta into exactly one of two buckets. The classification
 determines the entire shape of the work.
@@ -244,7 +245,7 @@ bottom.
 | `test/conformance/reference-adapter.ts`         | Teach the independent reference implementation about the new profile.                                                                                                                                                                           |
 | `test/conformance/differential.test.ts`         | Extend the differential run to cover the new profile.                                                                                                                                                                                           |
 | `src/fingerprint.ts`                            | No edit expected. The algorithm is stable; only the version input changes.                                                                                                                                                                      |
-| `test/fingerprint-2.1.233.test.ts`              | Model for the new version's known-answer vectors. Add the equivalent file for the new release. See the note below on computing vectors.                                                                                                         |
+| `test/fingerprint-2.1.280.test.ts`              | Model for the new version's known-answer vectors; the best one to copy, because it embeds the independent generator and the edge probes. Add the equivalent file for the new release. See the note below on computing vectors.                  |
 | `CHANGELOG.md`                                  | On release only.                                                                                                                                                                                                                                |
 | `test/governance/release-policy.test.ts`        | On release only, if the release policy assertions reference the version.                                                                                                                                                                        |
 
@@ -331,9 +332,16 @@ task, which is exactly what Steps 1 through 3 exist to structure.
 > 1. Mechanism changes that alter the new profile's bytes must land _between_
 >    export and registration (Step 5, item 4) and the packed-consumer canary
 >    (item 5), so the new digest is computed exactly once, on final bytes — and
->    before the golden fixtures (item 7), so the sealed bytes are correct.
-> 2. `npm run fixtures:seal` refuses to run when `CI` is set. On a machine that
->    exports it, clear the variable for that one invocation only.
+>    before the golden fixtures (item 7), so the sealed bytes are correct. A
+>    mechanism change here means a push site or a coupled body field gated on
+>    registry presence — inert on every profile whose registry lacks the entry,
+>    and carrying no `profile.id` comparison. Step 2's rule would otherwise
+>    classify it as a behaviour delta and send it to the end of the order.
+> 2. `npm run fixtures:seal` refuses to run when `CI` is truthy: any value
+>    other than empty, `0`, or `false` (compared after trimming whitespace,
+>    case-insensitively). An unset or empty `CI`, `CI=0`, and `CI=false` are
+>    all treated as not-CI. On a machine that exports a truthy value, clear the
+>    variable for that one invocation only.
 > 3. `docs/plans/baseline-2026-08-05.md` is edited _after_ the seal runs and
 >    committed together with it. The seal refuses a dirty tree outside its own
 >    two write targets, so a new fixture must be committed before it can be

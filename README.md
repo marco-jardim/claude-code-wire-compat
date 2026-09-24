@@ -18,9 +18,11 @@ The package targets Node.js 20 or newer and is designed to remain portable to Bu
 
 The pinned profiles are exported:
 
-- `CLAUDE_CODE_2_1_280_PROFILE` — Claude Code 2.1.280 with SDK 0.112.1. This is the profile used when `profile` is omitted.
+- `CLAUDE_CODE_2_1_280_PROFILE` — Claude Code 2.1.280 with SDK 0.112.1. This is the profile the request-building entry points use when `profile` is omitted.
 - `CLAUDE_CODE_2_1_233_PROFILE` — the previous pin, Claude Code 2.1.233 with SDK 0.112.1.
 - `CLAUDE_CODE_2_1_195_PROFILE` — the oldest pin, Claude Code 2.1.195 with SDK 0.94.0.
+
+The model-query helpers (`modelCapability`, `isEligibleFor1MContext`) and the anti-verbosity helpers (`antiVerbosityText`, `selectAntiVerbositySection`) keep their own separately declared default and are not governed by that seam; a caller relying on them for a newer model must pass the profile explicitly.
 
 Any of them can be selected explicitly by passing the singleton as the `profile` argument, from the package root or from its own subpath export:
 
