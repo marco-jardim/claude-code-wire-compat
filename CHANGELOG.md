@@ -163,12 +163,11 @@ All notable changes to this project will be documented in this file.
 
 - **`isAdaptiveThinkingModel` covers every catalogue-adaptive id.** It was a
   union of six named predicates and answered `false` for `claude-opus-5`,
-  `claude-opus-5-5`, `claude-sonnet-5`, `claude-fable-5-1` and
-  `claude-mythos-5-1`, while the builder emitted an adaptive `thinking` block
-  for the same model. The omission predates this release: two of those ids are
-  catalogued adaptive in the 2.1.233 pin as well. The union now covers every id
-  any pinned profile's catalogue marks `adaptive_thinking`. No new symbol is
-  exported from the entry point.
+  `claude-opus-5-5` and `claude-sonnet-5`, while the builder emitted an
+  adaptive `thinking` block for the same model. The omission predates this
+  release: two of those ids are catalogued adaptive in the 2.1.233 pin as
+  well. The union now covers every id any pinned profile's catalogue marks
+  `adaptive_thinking`. No new symbol is exported from the entry point.
 
 ## [0.5.0] - 2026-08-16
 
