@@ -732,20 +732,27 @@ Supporting bindings, same bundle `[BIN]`:
 
 | Binding | Offset  | Verbatim / role                                                                                                   |
 | ------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
-| `uS`    | 7413681 | the caller: `function uS(e){e=e.toLowerCase(); let n=O$().canonicalNameMemo, r=n.get(e); if(r!==void 0)return r; let s=GF(e); if(e.length<=256){if(n.size>=256)n.clear(); n.set(e,s)} return s}` |
+| `zY`    | 4734081 | `["us","eu","apac","jp","au","us-gov","global"]`                                                                  |
+| `vwe`   | 5959487 | `g().catalogIdByProviderId.get(e.toLowerCase())`                                                                  |
+| `pC`    | 5963601 | marker (`[1m]`/`[2m]`) strip, provider-path last-segment, region-prefix strip via `/^(?:([a-z-]+)\.)?anthropic\.(claude-.*)$/`, then `G`, then trailer/date classification via `mwr` |
+| `mwr`   | 5964213 | `/^(?:-fast\|-latest)?(?:-v\d{1,3}@\d{8}\|[-@]\d{8})?(?:-v\d{1,3}(?::\d{1,3})?)?$/`                              |
+| `fD`    | 5964369 | `function fD(e){return e!==null&&e.trailer===void 0}`                                                             |
+| `C`     | 5964420 | helper in the `pC`/`den` parse cluster; body not transcribed here, role not asserted                              |
+| `den`   | 5964486 | `$F`'s match predicate: compares a parsed catalogue id against the input; body not transcribed here               |
+| `G`     | 5964912 | parses `/^claude-([a-z]+)-(\d{1,2})(?!\d)(?:-(\d{1,2})(?!\d))?/`                                                  |
+| `uS`    | 7413580 | the caller: `function uS(e){e=e.toLowerCase(); let n=O$().canonicalNameMemo, r=n.get(e); if(r!==void 0)return r; let s=GF(e); if(e.length<=256){if(n.size>=256)n.clear(); n.set(e,s)} return s}` |
 | `QS`    | 7415331 | `function QS(e){return e.replace(/-\d{8}$/,"")}` — strips a trailing date stamp                                  |
 | `$F`    | 7415377 | `function $F(e){let n=[...len().models.map((r)=>r.id),...cv()];for(let r of n){let s=pC(r);if(fD(s)&&den(s,e))return r}return}` |
-| `cv`    | —       | `function cv(){return["claude-3-opus","claude-3-sonnet","claude-3-haiku"]}`                                      |
-| `pC`    | 5963601 | parses `/^claude-([a-z]+)-(\d{1,2})(?!\d)(?:-(\d{1,2})(?!\d))?/`                                                  |
+| `cv`    | 7415502 | `function cv(){return["claude-3-opus","claude-3-sonnet","claude-3-haiku"]}`                                      |
 
 **Name collision — read the right `GF`.** A second `function GF(e){` exists at
 byte 10981430 `[BIN]`. It is an unrelated artifact-path validator. A porter who
 greps the bundle for `function GF(` gets both; the normalizer is the one at
-7413751, reached from `uS` at 7413681. (This belongs with the collisions of
+7413751, reached from `uS` at 7413580. (This belongs with the collisions of
 §1.4.)
 
 **What the package ports.** Only the `includes`/regex rung ladder and the
-`QS(e)` tail. It deliberately does **not** port the three pre-ladder branches:
+`QS(e)` tail. It deliberately does **not** port the pre-ladder branches:
 `vwe` (a provider-id alias lookup), the `zY` loop over `${s}.anthropic.` region
 prefixes, and the `pC`/`fD`/`$F` inference-profile pre-branch. Those are
 bedrock/vertex and gateway concerns outside this package's first-party scope
@@ -755,10 +762,14 @@ ahead of the ladder is the package's own, documented at its definition in
 `src/model-identity.ts`, and has no counterpart in `GF`.
 
 **The divergence this creates** `[DER]`. Upstream reaches the ladder only when
-`fD(pC(e))` is false. Evaluated under the stated assumptions that `fD` is true
-for any id `pC` parses and that `r.base` is the matched prefix — the bodies of
-`fD` and `den` are not transcribed here — a well-formed id whose minor version
-is not in the catalogue takes the pre-branch. Worked example,
+`fD(pC(e))` is false: that is, unless the id is parsed by `pC` with no
+unrecognised trailer. Evaluated under that condition and
+the stated assumption that `r.base` is the matched prefix — the body of `den` is
+not transcribed here — a well-formed id whose minor version is not in the
+catalogue takes the pre-branch. A decorated id such as `claude-opus-5-preview`
+yields `trailer = "-preview"`, so `fD` is false and upstream reaches the ladder
+for it too. The worked example `claude-opus-5-1` carries no suffix, so `fD` is
+true there and the conclusion below is unchanged. Worked example,
 `claude-opus-5-1`:
 
 - **Upstream**: `pC` parses it, `$F` finds no catalogue id (nor `cv()` entry)
@@ -772,6 +783,11 @@ is not in the catalogue takes the pre-branch. Worked example,
 The same holds for `claude-sonnet-5-N`. The class already existed for
 `claude-fable-5-N` and `claude-mythos-5-N` with N other than 1; porting the
 2.1.280 opus-5 and sonnet-5 rungs widened it to the opus and sonnet families.
+The swallowing class is broader and pre-existing, outside the change that
+introduced this section: a two-digit minor such as `claude-opus-4-10` is
+returned unchanged by upstream but collapses to `claude-opus-4-1` in the
+package, because the `includes("claude-opus-4-1")` rung matches it as a
+substring.
 
 **The model string on the wire is unaffected.** The package sends `wireId`,
 which comes from `stripModelMarkers`, not from the normalizer; the divergence
