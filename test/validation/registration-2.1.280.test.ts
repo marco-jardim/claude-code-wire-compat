@@ -189,6 +189,25 @@ describe("default profile: always an accepted profile", () => {
   });
 });
 
+describe("default profile: pinned", () => {
+  /*
+   * This pin exists so that moving the default is a deliberate act, not an
+   * accident: any change to the default seam fails here until this line is
+   * changed alongside it.
+   *
+   * The assertion is by identity, not structure. A structurally-equal clone
+   * would produce identical bytes and pass every digest check, yet the builder
+   * and header plan accept profiles by object identity, so a clone as the
+   * default would break acceptance while every byte-level check stayed green.
+   *
+   * The only legitimate reason to edit this assertion is a default-profile
+   * switch, which is always its own commit.
+   */
+  it("is the pinned profile singleton itself, by identity", () => {
+    expect(DEFAULT_PROFILE).toBe(CLAUDE_CODE_2_1_280_PROFILE);
+  });
+});
+
 /*
  * Beta registry binding.
  *

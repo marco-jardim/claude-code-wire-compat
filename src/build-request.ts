@@ -360,7 +360,7 @@ const ACCEPTED_PROFILES: ReadonlySet<ClaudeCodeProtocolProfile> = new Set([
  * from `src/index.ts`: the public runtime surface stays closed.
  */
 export const DEFAULT_PROFILE: ClaudeCodeProtocolProfile =
-  CLAUDE_CODE_2_1_233_PROFILE;
+  CLAUDE_CODE_2_1_280_PROFILE;
 
 function validateProfile(
   profile: ClaudeCodeProtocolProfile,
