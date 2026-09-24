@@ -120,6 +120,7 @@ these was encountered and discarded during this analysis `[BIN]`:
 | `mD`   | 5966698 — the provider-class predicate (§13.4) | 28366526 — an OAuth client-metadata helper |
 | `sc`   | 5966389 — the provider resolver (§13.4) | a structured-output parser at 4521908, an ajv OR-combiner at 9547936, a completion matcher at 21092492, a git rev-list helper at 23947961, an OIDC authorization-params builder at 28365750, an integer clamp at 30507260, a truncator at 33115262 |
 | `$_`   | 7823336 — the effort-capability predicate (§7.6) | a trust-dialog walker at 7165033, a platform check at 9231441, a highlight.js keyword expander at 16826378, a zod schema builder at 34243536 |
+| `GF`   | 7413751 — the model-id normalizer (§5.7) | an artifact-path validator at 10981430 |
 | `tl`   | 6917885 — `var tl=null`, assigned at 7140575 (§13.4) | at least seventeen unrelated bindings, including `function tl` at 5272066, 8654912, 10205970, 16289639, 17369329, 18865401, 20209229, 20714946, 22122397, 24043594, 25418717, 27527120, 30463266, 37044718, 37512830, 37709666, 38742208, 39599134 |
 | `op`   | 7140575 — the `tl` registration setter, declared at 6917902 (§13.4) | a timeout race at 4264006, a marketplace parser at 5231445, the OTel propagation API at 6172336, a JAVA_TOOL_OPTIONS builder at 9168733, a memory-resync interval at 9877956 |
 | `Yb`   | 10064748 — the advisor-tool remote gate (§7.6) | a suffix scanner at 7362930, a transcript lister at 19162223, a case-insensitive compare at 29307844, a file-path summariser at 34312416 |
@@ -687,6 +688,94 @@ relative order rather than reconstructing the array by concatenation `[DER]`.
 
 These are routing identifiers, not wire model ids, and are out of scope for this
 package (§12).
+
+### 5.7 The model-id normalizer `GF`, and what the package ports of it
+
+`normalizeModelId` in `src/model-identity.ts` is a port of this function. This
+section is its normative evidence.
+
+`[BIN]` byte 7413751, reformatted:
+
+```js
+function GF(e){
+  let n=vwe(e); if(n!==void 0) return n;
+  for(let s of zY) if(s!=="us" && e.startsWith(`${s}.anthropic.`)){ let g=vwe(`us${e.slice(s.length)}`); if(g!==void 0) return g; break }
+  let r=pC(e); if(fD(r)) return $F(r)??QS(r.base);
+  if(e.includes("claude-fable-5-1"))return"claude-fable-5-1";
+  if(e.includes("claude-fable-5"))return"claude-fable-5";
+  if(e.includes("claude-mythos-5-1"))return"claude-mythos-5-1";
+  if(e.includes("claude-mythos-5"))return"claude-mythos-5";
+  if(e.includes("claude-opus-5-5"))return"claude-opus-5-5";
+  if(e.includes("claude-opus-5"))return"claude-opus-5";
+  if(e.includes("claude-opus-4-8"))return"claude-opus-4-8";
+  if(e.includes("claude-opus-4-7"))return"claude-opus-4-7";
+  if(e.includes("claude-opus-4-6"))return"claude-opus-4-6";
+  if(e.includes("claude-opus-4-5"))return"claude-opus-4-5";
+  if(e.includes("claude-opus-4-1"))return"claude-opus-4-1";
+  if(/claude-opus-4(?!-\d(?!\d))/.test(e))return"claude-opus-4-0";
+  if(e.includes("claude-sonnet-5"))return"claude-sonnet-5";
+  if(e.includes("claude-sonnet-4-6"))return"claude-sonnet-4-6";
+  if(e.includes("claude-sonnet-4-5"))return"claude-sonnet-4-5";
+  if(/claude-sonnet-4(?!-\d(?!\d))/.test(e))return"claude-sonnet-4-0";
+  if(e.includes("claude-haiku-4-5"))return"claude-haiku-4-5";
+  if(e.includes("claude-3-7-sonnet"))return"claude-3-7-sonnet";
+  if(e.includes("claude-3-5-sonnet"))return"claude-3-5-sonnet";
+  if(e.includes("claude-3-5-haiku"))return"claude-3-5-haiku";
+  if(e.includes("claude-3-opus"))return"claude-3-opus";
+  if(e.includes("claude-3-sonnet"))return"claude-3-sonnet";
+  if(e.includes("claude-3-haiku"))return"claude-3-haiku";
+  return QS(e)
+}
+```
+
+Supporting bindings, same bundle `[BIN]`:
+
+| Binding | Offset  | Verbatim / role                                                                                                   |
+| ------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
+| `uS`    | 7413681 | the caller: `function uS(e){e=e.toLowerCase(); let n=O$().canonicalNameMemo, r=n.get(e); if(r!==void 0)return r; let s=GF(e); if(e.length<=256){if(n.size>=256)n.clear(); n.set(e,s)} return s}` |
+| `QS`    | 7415331 | `function QS(e){return e.replace(/-\d{8}$/,"")}` — strips a trailing date stamp                                  |
+| `$F`    | 7415377 | `function $F(e){let n=[...len().models.map((r)=>r.id),...cv()];for(let r of n){let s=pC(r);if(fD(s)&&den(s,e))return r}return}` |
+| `cv`    | —       | `function cv(){return["claude-3-opus","claude-3-sonnet","claude-3-haiku"]}`                                      |
+| `pC`    | 5963601 | parses `/^claude-([a-z]+)-(\d{1,2})(?!\d)(?:-(\d{1,2})(?!\d))?/`                                                  |
+
+**Name collision — read the right `GF`.** A second `function GF(e){` exists at
+byte 10981430 `[BIN]`. It is an unrelated artifact-path validator. A porter who
+greps the bundle for `function GF(` gets both; the normalizer is the one at
+7413751, reached from `uS` at 7413681. (This belongs with the collisions of
+§1.4.)
+
+**What the package ports.** Only the `includes`/regex rung ladder and the
+`QS(e)` tail. It deliberately does **not** port the three pre-ladder branches:
+`vwe` (a provider-id alias lookup), the `zY` loop over `${s}.anthropic.` region
+prefixes, and the `pC`/`fD`/`$F` inference-profile pre-branch. Those are
+bedrock/vertex and gateway concerns outside this package's first-party scope
+(§12). This is a pre-existing scope boundary, not a decision made for 2.1.280.
+The lowercasing matches `uS`; the package's dotted-to-dashed version rewrite
+ahead of the ladder is the package's own, documented at its definition in
+`src/model-identity.ts`, and has no counterpart in `GF`.
+
+**The divergence this creates** `[DER]`. Upstream reaches the ladder only when
+`fD(pC(e))` is false. Evaluated under the stated assumptions that `fD` is true
+for any id `pC` parses and that `r.base` is the matched prefix — the bodies of
+`fD` and `den` are not transcribed here — a well-formed id whose minor version
+is not in the catalogue takes the pre-branch. Worked example,
+`claude-opus-5-1`:
+
+- **Upstream**: `pC` parses it, `$F` finds no catalogue id (nor `cv()` entry)
+  that `den` matches, so `GF` returns `QS(r.base)` — `claude-opus-5-1`,
+  unchanged. Capability lookup then misses the catalogue and falls through to
+  the uncatalogued default.
+- **Package**: starts at the ladder, where `claude-opus-5-1` contains
+  `claude-opus-5`, so it returns `claude-opus-5` and resolves *that* model's
+  catalogue capabilities.
+
+The same holds for `claude-sonnet-5-N`. The class already existed for
+`claude-fable-5-N` and `claude-mythos-5-N` with N other than 1; porting the
+2.1.280 opus-5 and sonnet-5 rungs widened it to the opus and sonnet families.
+
+**The model string on the wire is unaffected.** The package sends `wireId`,
+which comes from `stripModelMarkers`, not from the normalizer; the divergence
+is in capability resolution, never in the `model` field itself.
 
 ---
 

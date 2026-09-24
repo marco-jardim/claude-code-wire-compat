@@ -23,7 +23,9 @@ function dottedToDashedVersion(model: string): string {
 
 /**
  * Ports upstream `$_` (binary offset 226639025); in the 2.1.280 bundle the
- * function is `GF` at byte offset 7413751.
+ * function is `GF` at byte offset 7413751. The two offsets are in different
+ * address spaces: the first indexes the 2.1.195 platform binary, the second
+ * the carved 2.1.280 JavaScript bundle, so neither can be found in the other.
  *
  * Rung order is load-bearing: each test is a substring test, so a longer id
  * must precede the shorter id it contains or the shorter rung swallows it.
