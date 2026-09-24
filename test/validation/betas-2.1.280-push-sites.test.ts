@@ -9,7 +9,9 @@ import type {
   ClaudeCodeCapabilities,
   ClaudeCodeProtocolProfile,
 } from "../../src/contracts.js";
+import type { ClaudeCodeRequestInput } from "../../src/index.js";
 import {
+  buildClaudeCodeRequest,
   CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
   CLAUDE_CODE_2_1_280_PROFILE,
@@ -37,6 +39,7 @@ const BINDING = "thinking-binding-controls-2026-08-01";
 const MID_SYSTEM = "mid-conversation-system-2026-04-07";
 const EFFORT = "effort-2025-11-24";
 const CLAUDE_CODE = "claude-code-20250219";
+const SPEED = "fast-mode-2026-02-01";
 
 const FOUR = [PER_TURN, TOOL_CHANGES, CLEAR_AT, BINDING] as const;
 
@@ -124,15 +127,20 @@ function betas280(
 
 describe("2.1.280 push sites 11a-12a", () => {
   describe("positions", () => {
-    const list = betas280(realInput("claude-opus-5-5", PROFILE_280_ON));
+    // Composed inside each test, so a throwing composition fails that test
+    // rather than erroring the whole suite at collection time.
+    const composeDefault = (): readonly string[] =>
+      betas280(realInput("claude-opus-5-5", PROFILE_280_ON));
 
     it("emits per-turn-control immediately after mid-conversation-system", () => {
+      const list = composeDefault();
       expect(at(list, MID_SYSTEM)).not.toBe(-1);
       expect(at(list, PER_TURN)).not.toBe(-1);
       expect(at(list, PER_TURN) - at(list, MID_SYSTEM)).toBe(1);
     });
 
     it("emits mid-conversation-tool-changes then clear-at, in that order, all before effort", () => {
+      const list = composeDefault();
       const order = [MID_SYSTEM, PER_TURN, TOOL_CHANGES, CLEAR_AT, EFFORT];
       const indices = order.map((header) => at(list, header));
       for (const index of indices) expect(index).not.toBe(-1);
@@ -145,9 +153,22 @@ describe("2.1.280 push sites 11a-12a", () => {
     });
 
     it("emits thinking-binding-controls immediately after effort", () => {
+      const list = composeDefault();
       expect(at(list, EFFORT)).not.toBe(-1);
       expect(at(list, BINDING)).not.toBe(-1);
       expect(at(list, BINDING) - at(list, EFFORT)).toBe(1);
+    });
+
+    it("emits thinking-binding-controls before the speed header", () => {
+      // Every other case here omits `speed`, so the speed site never fires and
+      // nothing else would catch these two sites being transposed.
+      const list = betas280({
+        ...realInput("claude-opus-5-5", PROFILE_280_ON),
+        speed: "fast",
+      });
+      expect(at(list, BINDING)).not.toBe(-1);
+      expect(at(list, SPEED)).not.toBe(-1);
+      expect(at(list, SPEED)).toBeGreaterThan(at(list, BINDING));
     });
   });
 
@@ -386,6 +407,52 @@ describe("2.1.280 push sites 11a-12a", () => {
         isThinkingActive({ type: "nonsense" }, CAPABILITIES),
       ).not.toThrow();
       expect(isThinkingActive({ type: "nonsense" }, CAPABILITIES)).toBe(false);
+    });
+  });
+
+  describe("error precedence", () => {
+    /*
+     * This input is invalid on two independent axes: the caller beta list
+     * (rejected inside beta composition) and the thinking request (rejected
+     * during canonical body construction). Each alone yields its own code.
+     * The test exists to pin which validator reports first, because the
+     * composition / body-construction order in the builder is load-bearing
+     * for that answer: composition runs first, so the beta error wins.
+     */
+    it("reports the beta-list error when both the betas and the thinking request are invalid", async () => {
+      const input: ClaudeCodeRequestInput = {
+        accessToken: "error-precedence-token",
+        model: "claude-opus-5-5",
+        maxTokens: 1024,
+        messages: [{ role: "user", content: "hello wire compat" }],
+        runtime: {
+          sessionId: "11111111-1111-4111-8111-111111111111",
+          deviceId: "22222222-2222-4222-8222-222222222222",
+          accountUuid: "33333333-3333-4333-8333-333333333333",
+          runtime: "node",
+          runtimeVersion: "22.0.0",
+          os: "Linux",
+          arch: "x64",
+        },
+        clientRequestId: "error-precedence-request-1",
+        additionalBetas: [""],
+      };
+      const thinking = { type: "nonsense" } as unknown as NonNullable<
+        ClaudeCodeRequestInput["thinking"]
+      >;
+
+      await expect(
+        buildClaudeCodeRequest(
+          { ...input, additionalBetas: ["valid-2026-01-01"], thinking },
+          CLAUDE_CODE_2_1_280_PROFILE,
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_THINKING" });
+      await expect(
+        buildClaudeCodeRequest(
+          { ...input, thinking },
+          CLAUDE_CODE_2_1_280_PROFILE,
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
     });
   });
 });

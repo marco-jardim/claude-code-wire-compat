@@ -323,10 +323,20 @@ export function composeBetasWithAudit(
   }
 
   /*
-   * Site 11c. Upstream `Mo`, whose other three conjuncts are constants on this
-   * package's path: the query source is never one of the two auto modes, the
-   * first-request latch is empty, and the delivery-scope flag defaults to a
-   * value that makes its predicate true.
+   * Site 11c. Upstream `Mo`, which is the one site whose experimental gate is
+   * invisible at the statement level -- `Mo` names no `Fg()` at all. The gate is
+   * reached three calls deep instead: `Mee` is `oRt(model) !== "off"`, `oRt`
+   * wraps `fur`, and `fur` opens by returning `"off"` when `Fg()` is false. So
+   * `experimental` is upstream's own conjunct here exactly as it is at 11a and
+   * 11b, and a reader who checks only the `Mo` expression will wrongly conclude
+   * it was invented. It was not.
+   *
+   * `Mo`'s remaining conjuncts are constants for this package. `!l7(querySource)`
+   * holds because `l7` is true only for the two auto-mode query sources. `!Vr`
+   * holds because `Vr` is a per-session latch, and a stateless package composes
+   * every request as a first request. `Mee`'s other terms are fixed on the
+   * first-party path. What is left is `Ee.includes(jR)`, which is precisely the
+   * `midConversationSystemFired` outcome recorded at site 11.
    */
   const midConversationSystemClearAt =
     registry.MID_CONVERSATION_SYSTEM_CLEAR_AT;

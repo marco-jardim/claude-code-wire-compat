@@ -340,6 +340,15 @@ export function resolveThinkingType(
  * whenever the caller asked for thinking at all, including for a model whose
  * capabilities emit no thinking object — which would ship a thinking beta
  * header for a body that carries no thinking block.
+ *
+ * Upstream `ac` conjoins only the interleaved predicate `iQt`; requiring a
+ * resolved `"adaptive"`/`"enabled"` type additionally requires
+ * `capabilities.thinking`, one conjunct more than upstream. That extra term is
+ * unobservable in practice: `supportsThinking` and `supportsInterleavedThinking`
+ * in `model-capabilities.ts` are the same expression, so no derived capability
+ * set separates them. Only an explicit caller capability override can, and then
+ * the package declines to announce a thinking beta for a request whose body
+ * will carry no thinking object.
  */
 export function isThinkingActive(
   request: unknown,

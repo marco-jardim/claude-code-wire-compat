@@ -22,6 +22,7 @@ function betasFor(
       normalizedId: resolved.id,
       capabilities: resolved.capabilities,
       thinkingDisplayActive: false,
+      thinkingActive: false,
       ...options,
     },
     profile,

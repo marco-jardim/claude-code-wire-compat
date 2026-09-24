@@ -1454,6 +1454,9 @@ export async function buildClaudeCodeCountTokensRequest(
           normalizedId: resolvedModel.id,
           capabilities: resolvedModel.capabilities,
           thinkingDisplayActive: false,
+          // A constant, not a re-derivation: this path carries no thinking
+          // request, so `isThinkingActive(undefined, capabilities)` is false
+          // by construction.
           thinkingActive: false,
         },
         effectiveProfile,
