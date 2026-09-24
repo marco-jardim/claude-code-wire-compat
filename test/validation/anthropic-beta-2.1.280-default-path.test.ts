@@ -121,9 +121,7 @@ describe("2.1.280 claude-opus-5-5 default path", () => {
   });
 
   it("does not carry the one-million-context beta", async () => {
-    // `claude-opus-5-5` is natively a 1M-context model, so the beta that opts a
-    // smaller model into the larger window is not requested. The existing
-    // long-context push site in `src/betas.ts` is gated only on the profile
+    // The long-context push site in `src/betas.ts` is gated only on the profile
     // policy and on `use1MContextOverride ?? /\[1m\]/i.test(rawModel)`; the
     // model string carries no `[1m]` marker, so the site is silent. That is the
     // site's ordinary behaviour, not a branch added for this model.

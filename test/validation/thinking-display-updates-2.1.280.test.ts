@@ -19,7 +19,8 @@ import { deriveCapabilities } from "../../src/model-capabilities.js";
  * `thinking-display-updates-2026-08-18`, sets `display: "updates"` on the body's
  * `thinking` object, and removes the `redact-thinking-2026-02-12` beta that
  * site 5 composed earlier. It fires when experimental betas are enabled,
- * thinking is active, and the caller supplied no `thinking.display`.
+ * thinking is active, thinking summaries are not shown, and the caller
+ * supplied no `thinking.display`.
  *
  * Site 5 (redact-thinking) does NOT read thinking activity: it is gated on
  * experimental betas, the interleaved-thinking capability, the interactive
@@ -208,6 +209,46 @@ describe("2.1.280 thinking-display-updates (site 12b)", () => {
 
       expect(off.betas).not.toContain(UPDATES);
       expect(off.thinkingDisplayOverride).toBeUndefined();
+    });
+  });
+
+  describe("thinking-summaries gate", () => {
+    it("thinkingSummariesShown true suppresses the beta and the body override together", () => {
+      /*
+       * Upstream reaches site 12b only when the display-mode resolver `Gxt`
+       * returns its connector-text result; with no caller display, its `sQt()`
+       * branch diverts first whenever thinking summaries are shown. No shipped
+       * profile sets the flag, so the two compositions below differ ONLY in
+       * `betaPolicy.thinkingSummariesShown`, both with thinking active and no
+       * caller display.
+       */
+      const withSummaries = (
+        thinkingSummariesShown: boolean,
+      ): ClaudeCodeProtocolProfile => ({
+        ...CLAUDE_CODE_2_1_280_PROFILE,
+        betaPolicy: {
+          ...CLAUDE_CODE_2_1_280_PROFILE.betaPolicy,
+          thinkingSummariesShown,
+        },
+      });
+      const hidden = composeBetasWithAudit(
+        unitInput(true),
+        withSummaries(false),
+      );
+      const shown = composeBetasWithAudit(unitInput(true), withSummaries(true));
+
+      expect(hidden.betas).toContain(UPDATES);
+      expect(hidden.thinkingDisplayOverride).toBe("updates");
+
+      // Positive anchor: thinking is active, so site 12a still fires and the
+      // absences below cannot come from an empty composition.
+      expect(shown.betas).toContain(BINDING);
+      expect(shown.betas).not.toContain(UPDATES);
+      expect(shown.thinkingDisplayOverride).toBeUndefined();
+      // Redact-thinking is absent too, but NOT because site 12b removed it:
+      // site 12b did not fire. Site 5 reads the same flag, so it never pushed
+      // redact-thinking in the first place -- both sites go quiet together.
+      expect(shown.betas).not.toContain(REDACT);
     });
   });
 

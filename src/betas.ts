@@ -52,10 +52,10 @@ interface BetaRegistryEntry {
  * to be checked against the push sites at compile time instead of at runtime.
  *
  * `NARRATION_SUMMARIES` is optional in the older direction -- upstream removed
- * it after 2.1.195 (see `src/profiles/beta-registry-2.1.233.ts`). The four keys
- * added for 2.1.280 are optional in the newer direction: they are absent from
- * the 2.1.195 registry, and all but `PER_MESSAGE_EFFORT` are absent from the
- * 2.1.233 one. `PER_MESSAGE_EFFORT` IS declared by the 2.1.233 registry, so
+ * it after 2.1.195 (see `src/profiles/beta-registry-2.1.233.ts`). The keys
+ * added for 2.1.280 -- the remaining optional members declared below -- are
+ * optional in the newer direction: they are absent from the 2.1.195 registry,
+ * and all but `PER_MESSAGE_EFFORT` are absent from the 2.1.233 one. `PER_MESSAGE_EFFORT` IS declared by the 2.1.233 registry, so
  * registry absence does not keep its site inert there; what does is the
  * catalogue, because no 2.1.233 model declares the backing capability. The two
  * mechanisms are not interchangeable and both are load-bearing.
@@ -384,14 +384,30 @@ export function composeBetasWithAudit(
    * Site 12b. Upstream guards the push with
    * `(yc?.type === "adaptive" || yc?.type === "enabled") && ac && firstParty
    *  && !callerSuppliedDisplay && ...` plus the simulate-proxy environment
-   * variable and a per-session latch. The three conjuncts below are the
-   * reachable remainder: `experimental` is upstream's `Fg()` term inside `ac`,
+   * variable and a per-session latch. The reachable remainder of that guard is
+   * modelled below: `experimental` is upstream's `Fg()` term inside `ac`,
    * `input.thinkingActive` is the thinking-type test together with the rest of
    * `ac`, and `!input.thinkingDisplayActive` is the caller-supplied-display
    * test. First-party is not modelled because this package only builds the
    * first-party path, the simulate-proxy env var is not modelled because the
    * package reads no environment, and the per-session latch is always empty in
    * a stateless package that composes every request as a first request.
+   *
+   * The branch is additionally reached only when the display-mode resolver
+   * `Gxt` returns its connector-text result; its other results break out
+   * before the push. `!policy.thinkingSummariesShown` is that resolver's
+   * `sQt()` term, mapped onto the profile flag exactly as at the
+   * redact-thinking site above. See the 2.1.280 analysis document, §6.4, for
+   * the resolver itself.
+   *
+   * The resolver's other two diverting branches are already covered by
+   * `!thinkingDisplayActive`. A caller display of `"summarized"` takes the
+   * first branch, and `"omitted"` takes the second whenever the
+   * explicit-display flag is falsy, which is the only state this package can
+   * express -- it models no equivalent of that flag. Under a truthy
+   * explicit-display flag upstream would fall through and overwrite an
+   * explicit `"omitted"` with `"updates"`; that input is unreachable here, and
+   * is recorded rather than modelled.
    *
    * The site is coupled: it pushes the beta, records `display: "updates"` for
    * the body builder, and removes the previously composed redact-thinking beta
@@ -409,6 +425,7 @@ export function composeBetasWithAudit(
   if (
     experimental &&
     input.thinkingActive &&
+    !policy.thinkingSummariesShown &&
     !input.thinkingDisplayActive &&
     thinkingDisplayUpdates !== undefined
   ) {

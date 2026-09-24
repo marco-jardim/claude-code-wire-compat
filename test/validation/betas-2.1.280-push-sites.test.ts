@@ -40,6 +40,7 @@ const MID_SYSTEM = "mid-conversation-system-2026-04-07";
 const EFFORT = "effort-2025-11-24";
 const CLAUDE_CODE = "claude-code-20250219";
 const SPEED = "fast-mode-2026-02-01";
+const DISPLAY_UPDATES = "thinking-display-updates-2026-08-18";
 
 const FOUR = [PER_TURN, TOOL_CHANGES, CLEAR_AT, BINDING] as const;
 
@@ -170,6 +171,20 @@ describe("2.1.280 push sites 11a-12a", () => {
       expect(at(list, SPEED)).not.toBe(-1);
       expect(at(list, SPEED)).toBeGreaterThan(at(list, BINDING));
     });
+
+    it("emits thinking-display-updates immediately after thinking-binding-controls and before the speed header", () => {
+      // Pins site 12b on both sides in a composition where the speed site
+      // fires: moving the 12b block later in the sequence fails here.
+      const list = betas280({
+        ...realInput("claude-opus-5-5", PROFILE_280_ON),
+        speed: "fast",
+      });
+      expect(at(list, BINDING)).not.toBe(-1);
+      expect(at(list, DISPLAY_UPDATES)).not.toBe(-1);
+      expect(at(list, SPEED)).not.toBe(-1);
+      expect(at(list, DISPLAY_UPDATES) - at(list, BINDING)).toBe(1);
+      expect(at(list, SPEED)).toBeGreaterThan(at(list, DISPLAY_UPDATES));
+    });
   });
 
   describe("catalogue-borne", () => {
@@ -210,11 +225,16 @@ describe("2.1.280 push sites 11a-12a", () => {
         realInput("claude-mythos-5", PROFILE_280_ON, NO_THINKING),
       );
       for (const header of FOUR) expect(list).not.toContain(header);
+      // Positive anchor: the first site excludes only haiku-class ids, so the
+      // claude-code beta fires unconditionally for this model. An empty list
+      // would otherwise satisfy every absence above.
+      expect(list).toContain(CLAUDE_CODE);
 
       const thinking = betas280(realInput("claude-mythos-5", PROFILE_280_ON));
       for (const header of [PER_TURN, TOOL_CHANGES, CLEAR_AT]) {
         expect(thinking).not.toContain(header);
       }
+      expect(thinking).toContain(CLAUDE_CODE);
     });
   });
 
@@ -298,14 +318,23 @@ describe("2.1.280 push sites 11a-12a", () => {
       const profile = withExperimental(CLAUDE_CODE_2_1_195_PROFILE, true);
       const list = composeBetas(FORCED_INPUT, profile);
       for (const header of FOUR) expect(list).not.toContain(header);
+      // Positive anchors, so an empty composition cannot pass: the input's id
+      // is not haiku-class, so the claude-code site fires, and the effort site
+      // is gated only on the forced `effort` capability.
+      expect(list).toContain(CLAUDE_CODE);
+      expect(list).toContain(EFFORT);
     });
 
     it("three of the four are inert for 2.1.233 even with every capability forced, and per-turn-control is not", () => {
       /*
        * The 2.1.233 registry declares `PER_MESSAGE_EFFORT`, so what keeps this
        * site silent on that profile in practice is the catalogue, not the
-       * registry. An explicit caller capability override is an assertion by
-       * the caller and is honoured, exactly as a forced `effort` capability is.
+       * registry. This test drives the internal composition function directly
+       * with the capability forced on. Through the public builder that same
+       * override is refused: `requestedCapabilities` throws
+       * `UNSUPPORTED_CAPABILITY` for any capability the catalogue does not
+       * declare. The only public route to this behaviour is a profile override
+       * whose model catalogue declares the capability.
        */
       const profile = withExperimental(CLAUDE_CODE_2_1_233_PROFILE, true);
       const list = composeBetas(FORCED_INPUT, profile);
@@ -339,6 +368,7 @@ describe("2.1.280 push sites 11a-12a", () => {
         "MID_CONV_TOOL_CHANGE",
         "MID_CONVERSATION_SYSTEM_CLEAR_AT",
         "THINKING_BINDING_CONTROLS",
+        "THINKING_DISPLAY_UPDATES",
       ] as const;
       const defined = (registry: object): Record<string, boolean> =>
         Object.fromEntries(
@@ -353,18 +383,21 @@ describe("2.1.280 push sites 11a-12a", () => {
         MID_CONV_TOOL_CHANGE: false,
         MID_CONVERSATION_SYSTEM_CLEAR_AT: false,
         THINKING_BINDING_CONTROLS: false,
+        THINKING_DISPLAY_UPDATES: false,
       });
       expect(defined(BETA_REGISTRY_2_1_233)).toEqual({
         PER_MESSAGE_EFFORT: true,
         MID_CONV_TOOL_CHANGE: false,
         MID_CONVERSATION_SYSTEM_CLEAR_AT: false,
         THINKING_BINDING_CONTROLS: false,
+        THINKING_DISPLAY_UPDATES: false,
       });
       expect(defined(BETA_REGISTRY_2_1_280)).toEqual({
         PER_MESSAGE_EFFORT: true,
         MID_CONV_TOOL_CHANGE: true,
         MID_CONVERSATION_SYSTEM_CLEAR_AT: true,
         THINKING_BINDING_CONTROLS: true,
+        THINKING_DISPLAY_UPDATES: true,
       });
     });
   });
