@@ -34,10 +34,13 @@ const consumerDirectories = consumerNames.map((name) =>
  * not move for any reason other than a change to that profile's own wire
  * output.
  *
- * The request input is identical across cases on purpose, so the profile is
- * the only variable between their digests. The model is catalogued
- * identically by both profiles, which keeps the comparison about profile
- * scalars and beta composition rather than about catalogue deltas.
+ * The request input (`input` in `consumerSource` below) is frozen, and every
+ * case in `CASE_NAMES` shares it. It is frozen because the literals in
+ * `EXPECTED_DIGESTS` must never move, and every one of them is a digest of a
+ * request built from this exact input: any change to `input` would move all
+ * of them at once and destroy the evidence they carry. The only cross-case
+ * comparison this script makes is `default` against `EXPECTED_DEFAULT_CASE`;
+ * digests of different named profiles are never compared with each other.
  */
 const CASE_NAMES = ["default", "2.1.195", "2.1.233", "2.1.280"];
 /*
@@ -89,6 +92,30 @@ const input = {
   clientRequestId: "00000000-0000-4000-8000-000000000002",
 };
 
+// Deep-freeze the shared input before any case runs. ESM is strict mode, so a
+// builder that mutated its input would throw here instead of silently
+// changing what later cases see.
+function deepFreeze(value) {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const child of Object.values(value)) {
+      deepFreeze(child);
+    }
+    Object.freeze(value);
+  }
+  return value;
+}
+deepFreeze(input);
+
+// Which engine actually executed this module. The Bun check comes first
+// because Bun also exposes a process global; the navigator check precedes any
+// process access because workerd has no process global.
+const actualRuntime =
+  typeof Bun !== "undefined"
+    ? "bun"
+    : globalThis.navigator?.userAgent === "Cloudflare-Workers"
+      ? "workerd"
+      : "node";
+
 async function digestFor(profile) {
   const request =
     profile === undefined
@@ -117,6 +144,7 @@ async function digestFor(profile) {
 }
 
 export const report = {
+  runtime: actualRuntime,
   digests: {
     "default": await digestFor(undefined),
     "2.1.195": await digestFor(CLAUDE_CODE_2_1_195_PROFILE),
@@ -186,9 +214,32 @@ function safeRemove(directory) {
   rmSync(directory, { recursive: true, force: true });
 }
 
+const REPORT_KEYS = ["runtime", "digests"];
+
 function parseDigests(output, runtime) {
   const lines = output.split(/\r?\n/u).filter(Boolean);
   const report = JSON.parse(lines.at(-1));
+  if (report === null || typeof report !== "object") {
+    throw new Error(`${runtime} did not return a report object`);
+  }
+  // Exact top-level shape: the self-reported engine sits beside the digests,
+  // outside the digested payload.
+  if (JSON.stringify(Object.keys(report)) !== JSON.stringify(REPORT_KEYS)) {
+    throw new Error(
+      `${runtime} reported keys ${JSON.stringify(Object.keys(report))}`,
+    );
+  }
+  if (typeof report.runtime !== "string") {
+    throw new Error(`${runtime} did not report which engine executed it`);
+  }
+  // The parent's label is only what it believes it spawned; the consumer's
+  // own report is what proves a distinct engine actually ran.
+  if (report.runtime !== runtime) {
+    throw new Error(
+      `Engine mismatch: expected ${runtime} to execute the consumer, ` +
+        `but the consumer reported ${report.runtime}`,
+    );
+  }
   const digests = report.digests;
   if (digests === null || typeof digests !== "object") {
     throw new Error(`${runtime} did not return digests`);
@@ -205,7 +256,7 @@ function parseDigests(output, runtime) {
       throw new Error(`${runtime} did not return a digest for ${name}`);
     }
   }
-  return digests;
+  return { reportedRuntime: report.runtime, digests };
 }
 
 if (!existsSync(temporaryRoot)) {
@@ -274,17 +325,14 @@ try {
   );
 
   const digests = new Map();
-  digests.set(
-    "node",
-    parseDigests(
-      run(process.execPath, ["run.mjs"], { cwd: nodeDirectory }),
-      "node",
-    ),
-  );
-  digests.set(
-    "bun",
-    parseDigests(run("bun", ["run.mjs"], { cwd: bunDirectory }), "bun"),
-  );
+  const reportedRuntimes = new Map();
+  const record = (runtime, output) => {
+    const parsed = parseDigests(output, runtime);
+    digests.set(runtime, parsed.digests);
+    reportedRuntimes.set(runtime, parsed.reportedRuntime);
+  };
+  record("node", run(process.execPath, ["run.mjs"], { cwd: nodeDirectory }));
+  record("bun", run("bun", ["run.mjs"], { cwd: bunDirectory }));
 
   const mf = new Miniflare({
     modules: true,
@@ -304,7 +352,7 @@ try {
     if (!response.ok) {
       throw new Error(`workerd returned HTTP ${response.status}`);
     }
-    digests.set("workerd", parseDigests(await response.text(), "workerd"));
+    record("workerd", await response.text());
   } finally {
     await mf.dispose();
   }
@@ -318,7 +366,9 @@ try {
       byCase[name],
     ]);
     for (const [runtime, digest] of perRuntime) {
-      console.log(`${name} ${runtime}: ${digest}`);
+      console.log(
+        `${name} ${runtime} (engine reported: ${reportedRuntimes.get(runtime)}): ${digest}`,
+      );
     }
     const distinct = new Set(perRuntime.map(([, digest]) => digest));
     if (distinct.size !== 1) {
