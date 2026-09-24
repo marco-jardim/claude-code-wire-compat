@@ -137,9 +137,10 @@ Upstream applies three separate adjustments to a model's output-token limits, an
 cover only two of them. The third is **modelled**, because it is derived from the request rather
 than from host or remote state: from 2.1.222 onward, a caller's own `max_tokens` of 4096 or more
 raises the model's `upperLimit` to that number and lowers its `default` to fit under it. The
-2.1.233 profile reproduces this; the 2.1.195 profile does not, because 2.1.195 predates the
-behaviour. Its one wire-visible effect is the default thinking budget, which on 2.1.233 is seeded
-from the caller's `max_tokens` minus one when that exceeds the catalogue's upper limit.
+2.1.233 and 2.1.280 profiles reproduce this; the 2.1.195 profile alone does not, because 2.1.195
+predates the behaviour. Its one wire-visible effect is the default thinking budget, which on every
+profile that reproduces the behaviour is seeded from the caller's `max_tokens` minus one when that
+exceeds the catalogue's upper limit.
 
 The rows below are a second kind of divergence: the datum exists in the upstream static catalogue
 and is knowable without I/O, but it does not participate in constructing a `/v1/messages` request.

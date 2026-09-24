@@ -47,8 +47,9 @@ New versions enter the next cycle.
 
 ## Architecture breadcrumbs
 
-- **Profiles are data**: `src/profiles/claude-code-<v>.ts` (scalars +
-  17-model catalogue) and `src/profiles/beta-registry-<v>.ts` (ordered beta
+- **Profiles are data**: `src/profiles/claude-code-<v>.ts` (scalars + model
+  catalogue: 14 models for 2.1.195, 17 for 2.1.233, 20 for 2.1.280, pinned
+  in `test/tooling/profile-matrix.test.ts`) and `src/profiles/beta-registry-<v>.ts` (ordered beta
   registry). Extracted from the binary, never invented.
 - **Behaviour is flags**: `src/profile-behaviors.ts` holds every per-version
   behaviour decision behind named flags with a single demarcated
@@ -63,22 +64,34 @@ New versions enter the next cycle.
   its own `PINNED_PROFILE_IDS` string set because it validates untrusted
   evidence.
 - **Beta composition**: `src/betas.ts` resolves the registry per profile via
-  `PROFILE_BETA_REGISTRIES` (keyed by profile id). The 17-step push order is
-  emergent upstream behaviour and load-bearing — never reorder it. A beta
-  absent from a profile's registry skips its step silently.
+  `PROFILE_BETA_REGISTRIES` (keyed by profile id). The 22-step push order (17
+  base sites plus five optional sites added for 2.1.280) is emergent upstream
+  behaviour and load-bearing — never reorder it. A beta absent from a
+  profile's registry skips its step silently. The thinking-display-updates
+  site is coupled: when it fires it also removes the previously composed
+  redact-thinking identifier, so that site both pushes and removes.
 - **Fingerprint**: salt `59cf53e54c78` + characters 4/7/20 of the first user
   text + version string, SHA-256, first 3 hex chars. Known-answer vectors
   must be computed independently outside this package (a vector produced by
   the code under test only proves self-consistency). Known vectors:
   2.1.195 → `offline cch probe`=`7fe`, `hello wire compat`=`0f6`,
-  `canary probe`=`12f`; 2.1.233 → `365`, `413`, `cea` for the same probes.
+  `canary probe`=`12f`; 2.1.233 → `365`, `413`, `cea` for the same probes;
+  2.1.280 → `offline cch probe`=`30c`, `hello wire compat`=`de6`,
+  `canary probe`=`395`. 2.1.280 additionally carries four vectors that
+  exercise the formula's edges: the pangram
+  `the quick brown fox jumps over the lazy dog`=`958` (the only probe long
+  enough to reach the last sampled index), `hi`=`d7b`, the empty
+  string=`d7b` (both too short to reach any sampled index, so their hashed
+  material is identical), and `"\u{1F642}wire compat probe"`=`76f` (a
+  leading non-BMP character, proving UTF-16 code-unit indexing).
 
 ## Proof obligations (what "green" means)
 
 - `npm run test:pack` — cross-runtime (node/bun/workerd) digests per profile
-  from a packed tarball. The previous pin's digest must never move:
+  from a packed tarball. Every frozen digest must never move:
   2.1.195 = `6b9609b29463c890544845dd94acf560206b6f8165538faafd8886750037d277`,
-  2.1.233 = `4e06af42310d63549a4fa9af60ff0c9b13e95d7864624c6b7bf94d45ce9a3997`.
+  2.1.233 = `4e06af42310d63549a4fa9af60ff0c9b13e95d7864624c6b7bf94d45ce9a3997`,
+  2.1.280 = `9a531ed01ddd3440ce5b7f25c6caf5f045a9b4e78d885b5317508e21a22ada90`.
 - `npm run fixtures:check` — byte seal over `test/fixtures/golden/`.
 - `test/conformance/differential.test.ts` — behavioural replay of fixtures
   through the builder. The seal guards echoed bytes; the differential guards

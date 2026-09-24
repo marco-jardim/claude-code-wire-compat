@@ -559,3 +559,77 @@ Decisions:
    universal would wrongly conclude every new push site is registry-inert on
    the older profiles. The comment on the composable registry type in
    `src/betas.ts` already makes this point in code.
+
+## 2026-09-23 — claude-code-2.1.280: seven port decisions
+
+Context: these are decisions taken during the 2.1.280 port that a later
+reader would otherwise have to re-derive from the code or re-litigate from
+scratch. Each is recorded here because it had a plausible alternative that
+was considered and rejected.
+
+Decisions:
+
+1. **The cache-diagnosis policy flag was flipped for the new profile only.**
+   The 2.1.280 profile sets `cacheDiagnosisEnabled` to `true`, because the
+   analysis document's section on that gate resolves all three of its legs
+   to true on a first-party install. The previous pin keeps `false`. Whether
+   that earlier value was always wrong cannot be settled without the earlier
+   release's binary, and inferring one release's value from another's is
+   precisely what the tracking runbook forbids. The older profile was
+   therefore deliberately left alone rather than "corrected" by analogy.
+2. **The thinking-display type widening was proposed and then withdrawn.**
+   An early design would have added the injected wire value to the exported
+   `ThinkingDisplay` union. That was rejected. The exported type stays
+   `"summarized" | "omitted"` and stays caller-facing. The injected value is
+   typed as a bare string literal at internal seams only — an optional
+   override field on the composed-betas result, and an optional trailing
+   parameter of the thinking resolver — and neither seam is exported from
+   `src/index.ts`. Widening the exported type would have silently changed
+   the meaning of a name consumers may already switch on, and it would have
+   invited someone to "fix" the request-body validator into accepting that
+   value as caller input. Upstream never accepts it as caller input: the
+   injection's own guard requires that the caller supplied no display at
+   all. `src/request-body.ts` still rejects it with `INVALID_THINKING`.
+3. **The redact-thinking removal runs before the caller-supplied beta
+   merge.** The removal is the last statement inside the display-updates
+   push site's own block, which puts it ahead of the `additionalBetas`
+   merge. That ordering is load-bearing in the caller's favour: a caller who
+   explicitly supplies the redact-thinking identifier still gets it on the
+   wire, precisely because the canonical copy was already spliced out and
+   the merge's "not already present" test therefore succeeds. Had the
+   removal run after the merge, it would have eaten the caller's own entry.
+4. **Suppressing a beta removes the header and nothing else.** For a coupled
+   beta-and-body pair, `suppressBetas` is header-only by contract: the
+   filter is subtractive over the composed identifier list and touches no
+   body field. Suppressing the display-updates identifier removes the header
+   but leaves the body's display value in place, and it does not bring
+   redact-thinking back. This matches the pair that already existed:
+   suppressing the effort identifier leaves the body's effort field
+   untouched. A caller who wants neither half has the upstream-faithful
+   lever instead — supply a display explicitly, which disarms the injection
+   at its own guard.
+5. **The per-turn timing capability string is deliberately not mapped.** It
+   is a real capability string in the 2.1.280 catalogue and it has a
+   registry entry, but its push site is gated on an environment variable
+   this package does not read. Mapping it to a derived capability would
+   create a capability the package can never act on, so the string is left
+   unmapped, and the omission is recorded here rather than left to look like
+   an oversight.
+6. **Ten catalogue keys are read and discarded.** The ported catalogue
+   models only what a request reads. These keys exist upstream and are
+   knowable without I/O, but no request field derives from them, so carrying
+   them would widen the package's surface with values nothing consumes:
+   `display_name`, `knowledge_cutoff`, `provider_ids`,
+   `eager_input_streaming`, `vertex_region_env_var`, `fallback_3p`,
+   `pricing`, `effort_cost_index`, `image_limits` and `advisor_rank`.
+   Separately, the context object is present only on the models that
+   declare one; a model with no context key simply has none, and that
+   absence is data, not a gap in the port.
+7. **The beta composer takes one thinking signal, not two.** The new
+   thinking push sites differ by exactly one further conjunct — whether the
+   caller supplied a display. Giving the composer a single required
+   `thinkingActive` boolean and letting the display site add that one extra
+   test keeps the sites from drifting apart. Separate input fields would
+   have allowed them to disagree in a case upstream has no analogue for,
+   which is the kind of divergence that survives every test because nothing
+   pins it.

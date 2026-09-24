@@ -323,3 +323,18 @@ The gap this leaves is narrow and deliberate: continuous integration verifies
 that the extractor behaves correctly on known inputs, and a human verifies that
 its output on a new upstream bundle is correct. The second half is a judgement
 task, which is exactly what Steps 1 through 3 exist to structure.
+
+## Amendments
+
+> **Amendment 2026-09-23 (2.1.280 port).** Three procedural lessons:
+>
+> 1. Mechanism changes that alter the new profile's bytes must land _between_
+>    export and registration (Step 5, item 4) and the packed-consumer canary
+>    (item 5), so the new digest is computed exactly once, on final bytes — and
+>    before the golden fixtures (item 7), so the sealed bytes are correct.
+> 2. `npm run fixtures:seal` refuses to run when `CI` is set. On a machine that
+>    exports it, clear the variable for that one invocation only.
+> 3. `docs/plans/baseline-2026-08-05.md` is edited _after_ the seal runs and
+>    committed together with it. The seal refuses a dirty tree outside its own
+>    two write targets, so a new fixture must be committed before it can be
+>    sealed. The fixture-and-seal step is therefore two commits, not one.

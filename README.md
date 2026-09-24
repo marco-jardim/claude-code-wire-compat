@@ -16,17 +16,21 @@ The package targets Node.js 20 or newer and is designed to remain portable to Bu
 
 ## Protocol profile
 
-Two pinned profiles are exported:
+The pinned profiles are exported:
 
-- `CLAUDE_CODE_2_1_233_PROFILE` — Claude Code 2.1.233 with SDK 0.112.1. This is the profile used when `profile` is omitted.
-- `CLAUDE_CODE_2_1_195_PROFILE` — the previous pin, Claude Code 2.1.195 with SDK 0.94.0.
+- `CLAUDE_CODE_2_1_280_PROFILE` — Claude Code 2.1.280 with SDK 0.112.1. This is the profile used when `profile` is omitted.
+- `CLAUDE_CODE_2_1_233_PROFILE` — the previous pin, Claude Code 2.1.233 with SDK 0.112.1.
+- `CLAUDE_CODE_2_1_195_PROFILE` — the oldest pin, Claude Code 2.1.195 with SDK 0.94.0.
 
-Either can be selected explicitly by passing the singleton as the `profile` argument, from the package root or from its own subpath export:
+Any of them can be selected explicitly by passing the singleton as the `profile` argument, from the package root or from its own subpath export:
 
 ```ts
 import { CLAUDE_CODE_2_1_195_PROFILE } from "@tormentalabs/claude-code-wire-compat/profiles/claude-code-2.1.195";
 import { CLAUDE_CODE_2_1_233_PROFILE } from "@tormentalabs/claude-code-wire-compat/profiles/claude-code-2.1.233";
+import { CLAUDE_CODE_2_1_280_PROFILE } from "@tormentalabs/claude-code-wire-compat/profiles/claude-code-2.1.280";
 ```
+
+Rollback: a consumer who wants the previous default's bytes must pass `CLAUDE_CODE_2_1_233_PROFILE` explicitly on every call to each entry point that reads the default seam — `buildClaudeCodeRequest`, `buildClaudeCodeCountTokensRequest`, and `parseBuiltClaudeCodeRequest`. Pinning the builders alone is not enough: `parseBuiltClaudeCodeRequest` recomputes the expected headers under the profile it is given, so a request built under the old default and parsed unpinned after upgrading is rejected with `ClaudeCodeWireError` code `INVALID_INPUT`.
 
 The fail-closed rule is unchanged: only these exported singletons are accepted. Any other object, even a structurally identical clone, is rejected with `ClaudeCodeWireError` code `INVALID_INPUT`. This prevents callers from substituting an unpinned protocol profile.
 
