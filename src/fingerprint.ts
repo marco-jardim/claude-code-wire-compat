@@ -56,6 +56,11 @@ export async function createBillingFingerprint(
   crypto?: Pick<Crypto, "subtle">,
 ): Promise<string> {
   const cryptoProvider = crypto ?? getDefaultCrypto();
+  // The upstream transcription in the analysis doc writes `||` here; `??` is a
+  // deliberate, safe difference, not a divergence to "fix" in either
+  // direction. A string subscript yields either a one-unit string, which is
+  // always truthy, or `undefined`, so no value makes the two operators
+  // disagree (and no test can tell them apart).
   const material = `${FINGERPRINT_PREFIX}${firstUserText[4] ?? "0"}${firstUserText[7] ?? "0"}${firstUserText[20] ?? "0"}${cliVersion}`;
   const bytes = new TextEncoder().encode(material);
 

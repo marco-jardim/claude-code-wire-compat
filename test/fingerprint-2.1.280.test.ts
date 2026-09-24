@@ -12,6 +12,27 @@
  * 2.1.233). Those previous profiles' vectors use the same probe phrases, and
  * the sets must differ: the CLI version string is part of the hashed
  * material.
+ *
+ * The generator is reproduced below so the provenance claim can be re-checked
+ * without the original file, which lived in a temporary directory. Apart from
+ * the loop that printed its results, this is the whole of what was run, and
+ * it imports nothing from this package:
+ *
+ * ```js
+ * import { createHash } from "node:crypto";
+ *
+ * const SALT = "59cf53e54c78";
+ *
+ * function fingerprint(text, version) {
+ *   const material =
+ *     SALT + (text[4] || "0") + (text[7] || "0") + (text[20] || "0") + version;
+ *   return createHash("sha256").update(material, "utf8").digest("hex").slice(0, 3);
+ * }
+ * ```
+ *
+ * Run against the probe phrases of the two older pinned releases, it
+ * reproduced every one of their recorded answers before any new value here
+ * was trusted.
  */
 
 import { describe, expect, it } from "vitest";
@@ -62,6 +83,11 @@ describe("2.1.280 billing fingerprint", () => {
     ["offline cch probe", "30c"],
     ["hello wire compat", "de6"],
     ["canary probe", "395"],
+    // This is the only vector in the whole suite long enough to reach the
+    // last of the sampled indices; every other row exercises that index's
+    // "0" fallback instead. A change to which index is sampled last would be
+    // caught by this row alone: the QA mutation that shifted that index
+    // failed exactly this row and nothing else.
     ["the quick brown fox jumps over the lazy dog", "958"],
     ["hi", "d7b"],
     ["", "d7b"],
