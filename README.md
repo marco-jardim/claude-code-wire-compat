@@ -96,8 +96,10 @@ Protocol knowledge corpus:
   tool_result pairing in practice.
 - [Code comparison reference](./docs/protocol/code-comparison-reference.md) —
   side-by-side comparison against the genuine client.
-- [Divergence analysis](./docs/protocol/divergence-analysis.md) — every observed
-  divergence from the genuine client.
+- [Divergence analysis](./docs/protocol/divergence-analysis.md) — ported
+  analysis of system-prompt block construction, genuine client versus the
+  earlier plugin. Package-level divergences are recorded in each version
+  analysis's port table and in `MEMORY.md`.
 - [Divergence executive summary](./docs/protocol/divergence-executive-summary.md)
   — the condensed version of that analysis.
 - [Quick reference](./docs/protocol/quick-reference.md) — condensed lookup of
