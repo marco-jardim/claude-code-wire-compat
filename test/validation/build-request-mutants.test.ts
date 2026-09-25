@@ -268,16 +268,33 @@ describe("build-request surviving input-validation mutants", () => {
     await expectBuildError(withField(field, undefined), "INVALID_INPUT");
   });
   it.each([
-    ["trailing high surrogate", "\ud800"],
-    ["top high surrogate followed by a non-low unit", "\udbff\ue000"],
-    ["bottom low surrogate", "\udc00"],
-    ["top low surrogate", "\udfff"],
-  ])("rejects the exact invalid Unicode boundary %s", async (_name, text) => {
-    await expectBuildError(
-      withField("messages", [{ role: "user", content: `a${text}` }]),
-      "INVALID_UNICODE",
-    );
-  });
+    ["trailing high surrogate", "\ud800", 0xd800, 2],
+    [
+      "top high surrogate followed by a non-low unit",
+      "\udbff\ue000",
+      0xdbff,
+      3,
+    ],
+    ["bottom low surrogate", "\udc00", 0xdc00, 2],
+    ["top low surrogate", "\udfff", 0xdfff, 2],
+  ] as const)(
+    "rejects the exact invalid Unicode boundary %s",
+    async (_name, text, codeUnit, textLength) => {
+      // P1.T1 (D4): the rejection now carries safe violation diagnostics.
+      await expectBuildError(
+        withField("messages", [{ role: "user", content: `a${text}` }]),
+        "INVALID_UNICODE",
+        {
+          violationReason: "lone-surrogate",
+          violationPath: "/messages/0/content",
+          violationOffset: 1,
+          violationCodeUnit: codeUnit,
+          violationTextLength: textLength,
+          violationInKey: false,
+        },
+      );
+    },
+  );
 
   // P1.T1: NUL, US and DEL used to sit in the rejection table above; as valid
   // scalars they are body prose now and round-trip verbatim.
@@ -327,9 +344,15 @@ describe("build-request surviving input-validation mutants", () => {
     }
   });
 
-  it.each(["\ud800", "\ud800\u0020", "\udbff\ue000", "\udc00", "\udfff"])(
+  it.each([
+    ["\ud800", 0xd800, 1],
+    ["\ud800\u0020", 0xd800, 2],
+    ["\udbff\ue000", 0xdbff, 2],
+    ["\udc00", 0xdc00, 1],
+    ["\udfff", 0xdfff, 1],
+  ] as const)(
     "rejects transient invalid Unicode %j before later consumers see valid text",
-    async (invalidText) => {
+    async (invalidText, codeUnit, textLength) => {
       let contentDescriptors = 0;
       const message = new Proxy(
         { role: "user", content: "valid later text" },
@@ -352,6 +375,14 @@ describe("build-request surviving input-validation mutants", () => {
       await expectBuildError(
         withField("messages", [message]),
         "INVALID_UNICODE",
+        {
+          violationReason: "lone-surrogate",
+          violationPath: "/messages/0/content",
+          violationOffset: 0,
+          violationCodeUnit: codeUnit,
+          violationTextLength: textLength,
+          violationInKey: false,
+        },
       );
       expect(contentDescriptors).toBe(1);
     },

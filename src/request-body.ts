@@ -30,6 +30,7 @@ import { deriveCapabilities } from "./model-capabilities.js";
 import { stripModelMarkers } from "./model-identity.js";
 import { IDENTITY_TEXT } from "./system-prompt.js";
 import { inspectText, TEXT_POLICY_PROSE } from "./unicode.js";
+import { violationDetails, type ViolationPathSegment } from "./violation.js";
 
 const MAX_DEPTH = 100;
 const MAX_ITEMS = 100_000;
@@ -364,8 +365,9 @@ type ModelResolution = Readonly<{
 
 function fail(
   code: ConstructorParameters<typeof ClaudeCodeWireError>[0],
+  safeDetails: Readonly<Record<string, string | number | boolean>> = {},
 ): never {
-  throw new ClaudeCodeWireError(code);
+  throw new ClaudeCodeWireError(code, safeDetails);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -380,6 +382,8 @@ function inspectString(
   value: string,
   state: InspectionState,
   validateString?: (value: string) => void,
+  path: readonly ViolationPathSegment[] = [],
+  inKey = false,
 ): void {
   state.size += value.length;
   if (state.size > MAX_SIZE) fail("INPUT_TOO_LARGE");
@@ -387,8 +391,12 @@ function inspectString(
 
   // Body prose policy (P1.T1): only a lone surrogate can fail here now, so
   // the historical INVALID_INPUT-for-controls branch is gone by construction.
-  if (inspectText(value, TEXT_POLICY_PROSE) !== null) {
-    fail("INVALID_UNICODE");
+  const violation = inspectText(value, TEXT_POLICY_PROSE);
+  if (violation !== null) {
+    fail(
+      "INVALID_UNICODE",
+      violationDetails(violation, path, value.length, inKey),
+    );
   }
 }
 
@@ -397,11 +405,12 @@ function inspect(
   depth: number,
   state: InspectionState,
   validateString?: (value: string) => void,
+  path: readonly ViolationPathSegment[] = [],
 ): void {
   if (depth > MAX_DEPTH) fail("INPUT_TOO_DEEP");
   if (value === null || typeof value === "boolean") return;
   if (typeof value === "string") {
-    inspectString(value, state, validateString);
+    inspectString(value, state, validateString, path, false);
     return;
   }
   if (typeof value === "number") {
@@ -420,7 +429,7 @@ function inspect(
     if (state.size > MAX_SIZE) fail("INPUT_TOO_LARGE");
     for (let index = 0; index < value.length; index += 1) {
       if (!hasOwn(value, String(index))) fail("INVALID_INPUT");
-      inspect(value[index], depth + 1, state, validateString);
+      inspect(value[index], depth + 1, state, validateString, [...path, index]);
     }
   } else {
     const prototype = Reflect.getPrototypeOf(value);
@@ -431,12 +440,13 @@ function inspect(
       if (typeof key !== "string" || FORBIDDEN_KEYS.has(key)) {
         fail("INVALID_INPUT");
       }
-      inspectString(key, state, validateString);
+      const childPath = [...path, key];
+      inspectString(key, state, validateString, childPath, true);
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor === undefined || !("value" in descriptor)) {
         fail("INVALID_INPUT");
       }
-      inspect(descriptor.value, depth + 1, state, validateString);
+      inspect(descriptor.value, depth + 1, state, validateString, childPath);
     }
   }
   state.active.delete(value);

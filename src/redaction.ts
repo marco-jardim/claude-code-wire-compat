@@ -10,6 +10,11 @@ import type {
 } from "./contracts.js";
 import { ClaudeCodeWireError } from "./contracts.js";
 import { classifySurrogateAt } from "./unicode.js";
+import {
+  isValidViolationCodeUnit,
+  isValidViolationPath,
+  isValidViolationReason,
+} from "./violation.js";
 
 /** Excludes values used only while validating and assembling the request. */
 export type NormalizedRequestInput = Omit<
@@ -395,7 +400,7 @@ export function toSafeErrorDetails(
     "maximumDepth",
     "maximumSize",
   ] as const;
-  const booleanKeys = ["hasSystem", "hasTools"] as const;
+  const booleanKeys = ["hasSystem", "hasTools", "violationInKey"] as const;
 
   for (const key of numericKeys) {
     const descriptor = Object.getOwnPropertyDescriptor(safeDetails, key);
@@ -414,6 +419,49 @@ export function toSafeErrorDetails(
         ? descriptor.value
         : undefined;
     if (typeof detail === "boolean") details[key] = detail;
+  }
+
+  // Violation diagnostics (P1.T1, D4): strings pass only through closed-set
+  // or pattern validators, and numbers only through integer/range guards, so
+  // no caller text, key name or excerpt can ride these fields out of an error.
+  const stringValidators: Readonly<Record<string, (value: string) => boolean>> =
+    {
+      violationReason: isValidViolationReason,
+      violationPath: isValidViolationPath,
+    };
+  for (const [key, validator] of Object.entries(stringValidators)) {
+    const descriptor = Object.getOwnPropertyDescriptor(safeDetails, key);
+    const detail: unknown =
+      descriptor !== undefined && "value" in descriptor
+        ? descriptor.value
+        : undefined;
+    if (typeof detail === "string" && validator(detail)) {
+      details[key] = detail;
+    }
+  }
+  const integerKeys = ["violationOffset", "violationTextLength"] as const;
+  for (const key of integerKeys) {
+    const descriptor = Object.getOwnPropertyDescriptor(safeDetails, key);
+    const detail: unknown =
+      descriptor !== undefined && "value" in descriptor
+        ? descriptor.value
+        : undefined;
+    if (typeof detail === "number" && Number.isInteger(detail) && detail >= 0) {
+      details[key] = detail;
+    }
+  }
+  {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      safeDetails,
+      "violationCodeUnit",
+    );
+    const detail: unknown =
+      descriptor !== undefined && "value" in descriptor
+        ? descriptor.value
+        : undefined;
+    if (typeof detail === "number" && isValidViolationCodeUnit(detail)) {
+      details["violationCodeUnit"] = detail;
+    }
   }
   return Object.freeze(details);
 }

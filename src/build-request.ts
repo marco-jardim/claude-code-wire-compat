@@ -41,6 +41,7 @@ import { sha256Hex } from "./sha256.js";
 import { buildCanonicalSystem, IDENTITY_TEXT } from "./system-prompt.js";
 import { isThinkingActive, isThinkingDisplayActive } from "./thinking.js";
 import { inspectText, TEXT_POLICY_PROSE } from "./unicode.js";
+import { violationDetails, type ViolationPathSegment } from "./violation.js";
 
 const METHOD = "POST";
 const MAX_INPUT_DEPTH = 100;
@@ -200,8 +201,9 @@ type UnknownRecord = Readonly<Record<string, unknown>>;
 
 function fail(
   code: ConstructorParameters<typeof ClaudeCodeWireError>[0] = "INVALID_INPUT",
+  safeDetails: Readonly<Record<string, string | number | boolean>> = {},
 ): never {
-  throw new ClaudeCodeWireError(code);
+  throw new ClaudeCodeWireError(code, safeDetails);
 }
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -254,9 +256,17 @@ function assertExactKeys(
  *   would corrupt the body — and the body hash recorded in evidence — with no
  *   error anywhere.
  */
-function inspectString(value: string): number {
-  if (inspectText(value, TEXT_POLICY_PROSE) !== null) {
-    fail("INVALID_UNICODE");
+function inspectString(
+  value: string,
+  path: readonly ViolationPathSegment[],
+  inKey: boolean,
+): number {
+  const violation = inspectText(value, TEXT_POLICY_PROSE);
+  if (violation !== null) {
+    fail(
+      "INVALID_UNICODE",
+      violationDetails(violation, path, value.length, inKey),
+    );
   }
   return new TextEncoder().encode(value).byteLength;
 }
@@ -265,10 +275,14 @@ function inspectGraph(value: unknown): void {
   const active = new WeakSet();
   let size = 0;
 
-  function visit(current: unknown, depth: number): void {
+  function visit(
+    current: unknown,
+    depth: number,
+    path: readonly ViolationPathSegment[],
+  ): void {
     if (depth > MAX_INPUT_DEPTH) fail("INPUT_TOO_DEEP");
     if (typeof current === "string") {
-      size += inspectString(current);
+      size += inspectString(current, path, false);
     } else if (
       current === null ||
       typeof current === "boolean" ||
@@ -293,15 +307,19 @@ function inspectGraph(value: unknown): void {
       size += keys.length;
       for (const key of keys) {
         if (typeof key !== "string" || FORBIDDEN_KEYS.has(key)) fail();
-        size += inspectString(key);
-        visit(ownValue(current, key), depth + 1);
+        const segment: ViolationPathSegment = /^\d{1,6}$/u.test(key)
+          ? Number(key)
+          : key;
+        const childPath = [...path, segment];
+        size += inspectString(key, childPath, true);
+        visit(ownValue(current, key), depth + 1, childPath);
       }
       active.delete(current);
     }
     if (size > MAX_INPUT_SIZE) fail("INPUT_TOO_LARGE");
   }
 
-  visit(value, 0);
+  visit(value, 0, []);
 }
 
 function containsString(value: unknown, target: string): boolean {

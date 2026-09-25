@@ -7,6 +7,7 @@ import type {
 } from "./contracts.js";
 import { ClaudeCodeWireError } from "./contracts.js";
 import { inspectText, TEXT_POLICY_PROSE } from "./unicode.js";
+import { violationDetails, type ViolationPathSegment } from "./violation.js";
 
 /**
  * The pinned identity text, byte-exact.
@@ -36,15 +37,24 @@ function fail(
     | "INPUT_TOO_DEEP"
     | "INPUT_TOO_LARGE"
     | "CYCLIC_INPUT",
+  safeDetails: Readonly<Record<string, string | number | boolean>> = {},
 ): never {
-  throw new ClaudeCodeWireError(code);
+  throw new ClaudeCodeWireError(code, safeDetails);
 }
 
-function validateText(text: string): void {
+function validateText(
+  text: string,
+  path: readonly ViolationPathSegment[],
+  inKey: boolean,
+): void {
   // Body prose policy (P1.T1): the system field follows the same rule as
   // every other body lane — only lone surrogates are rejected.
-  if (inspectText(text, TEXT_POLICY_PROSE) !== null) {
-    fail("INVALID_UNICODE");
+  const violation = inspectText(text, TEXT_POLICY_PROSE);
+  if (violation !== null) {
+    fail(
+      "INVALID_UNICODE",
+      violationDetails(violation, path, text.length, inKey),
+    );
   }
 }
 
@@ -56,13 +66,17 @@ function validateStructure(value: unknown): void {
   const ancestors = new WeakSet();
   let size = 0;
 
-  function visit(current: unknown, depth: number): void {
+  function visit(
+    current: unknown,
+    depth: number,
+    path: readonly ViolationPathSegment[],
+  ): void {
     if (depth > MAX_INPUT_DEPTH) fail("INPUT_TOO_DEEP");
 
     if (typeof current === "string") {
       size += current.length;
       if (size > MAX_INPUT_SIZE) fail("INPUT_TOO_LARGE");
-      validateText(current);
+      validateText(current, path, false);
       return;
     }
 
@@ -71,17 +85,18 @@ function validateStructure(value: unknown): void {
 
     ancestors.add(current);
     for (const key of Reflect.ownKeys(current)) {
+      const childPath = typeof key === "string" ? [...path, key] : path;
       if (typeof key === "string") {
         size += key.length;
         if (size > MAX_INPUT_SIZE) fail("INPUT_TOO_LARGE");
-        validateText(key);
+        validateText(key, childPath, true);
       }
-      visit(current[key], depth + 1);
+      visit(current[key], depth + 1, childPath);
     }
     ancestors.delete(current);
   }
 
-  visit(value, 0);
+  visit(value, 0, []);
 }
 
 function cloneTextBlock(value: unknown): TextBlock {
