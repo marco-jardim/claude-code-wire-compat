@@ -20,7 +20,9 @@ import {
 import { toSafeErrorDetails } from "../../src/redaction.js";
 import {
   formatViolationPath,
+  isValidViolationCodeUnit,
   isValidViolationPath,
+  isValidViolationReason,
 } from "../../src/violation.js";
 
 const RUNTIME = {
@@ -189,11 +191,47 @@ describe("violation path formatting", () => {
     );
   });
 
+  it("maps non-safe-integer numeric segments to the placeholder", () => {
+    expect(formatViolationPath(["messages", -1, Number.NaN])).toBe(
+      "/messages/*/*",
+    );
+  });
+
+  it("caps overlong paths at 256 characters with the marker", () => {
+    const segments = Array.from({ length: 16 }, () => "metadataOverrides");
+    const path = formatViolationPath(segments);
+    expect(path.length).toBeLessThanOrEqual(256);
+    expect(path).toMatch(/\/\.\.\.$/u);
+    expect(isValidViolationPath(path)).toBe(true);
+  });
+
   it("rejects malformed paths in the redaction validator", () => {
     expect(isValidViolationPath("/messages/0/content")).toBe(true);
+    expect(isValidViolationPath("")).toBe(false);
     expect(isValidViolationPath("messages/0/content")).toBe(false);
     expect(isValidViolationPath("/messages/0/secretKey")).toBe(false);
     expect(isValidViolationPath("/messages/0/.../content")).toBe(false);
+    expect(isValidViolationPath(`/messages/${"0".repeat(7)}`)).toBe(false);
+    expect(isValidViolationPath("/messages/123456/0")).toBe(true);
+  });
+
+  it("validates reasons and code units against their closed sets", () => {
+    expect(isValidViolationReason("lone-surrogate")).toBe(true);
+    expect(isValidViolationReason("control-char")).toBe(true);
+    expect(isValidViolationReason("forbidden-key")).toBe(true);
+    expect(isValidViolationReason("other")).toBe(false);
+
+    expect(isValidViolationCodeUnit(0x00)).toBe(true);
+    expect(isValidViolationCodeUnit(0x1f)).toBe(true);
+    expect(isValidViolationCodeUnit(0x7f)).toBe(true);
+    expect(isValidViolationCodeUnit(0x9f)).toBe(true);
+    expect(isValidViolationCodeUnit(0xd800)).toBe(true);
+    expect(isValidViolationCodeUnit(0xdfff)).toBe(true);
+    expect(isValidViolationCodeUnit(0x20)).toBe(false);
+    expect(isValidViolationCodeUnit(0x61)).toBe(false);
+    expect(isValidViolationCodeUnit(0xe000)).toBe(false);
+    expect(isValidViolationCodeUnit(-1)).toBe(false);
+    expect(isValidViolationCodeUnit(1.5)).toBe(false);
   });
 });
 

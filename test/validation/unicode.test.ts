@@ -2,7 +2,12 @@
 
 import { describe, expect, it } from "vitest";
 
-import { classifySurrogateAt } from "../../src/unicode.js";
+import {
+  classifySurrogateAt,
+  inspectText,
+  TEXT_POLICY_IDENTIFIER,
+  TEXT_POLICY_PROSE,
+} from "../../src/unicode.js";
 
 describe("classifySurrogateAt", () => {
   it.each([
@@ -35,5 +40,49 @@ describe("classifySurrogateAt", () => {
     ["the low surrogate of a pair inspected alone", "\ud800\udc00", 1],
   ])("reports %s as a lone surrogate", (_label, value, index) => {
     expect(classifySurrogateAt(value, index)).toBe("loneSurrogate");
+  });
+});
+
+describe("inspectText", () => {
+  it("accepts every well-formed scalar under TEXT_POLICY_PROSE", () => {
+    expect(inspectText("plain text", TEXT_POLICY_PROSE)).toBeNull();
+    expect(inspectText("tab\tlf\ncr\r", TEXT_POLICY_PROSE)).toBeNull();
+    expect(
+      inspectText("nul esc del nel", TEXT_POLICY_PROSE),
+    ).toBeNull();
+    expect(inspectText("emoji 😀 pair", TEXT_POLICY_PROSE)).toBeNull();
+  });
+
+  it("rejects lone surrogates even under TEXT_POLICY_PROSE", () => {
+    expect(inspectText("broken \ud800 pair", TEXT_POLICY_PROSE)).toEqual({
+      reason: "lone-surrogate",
+      offset: 7,
+      codeUnit: 0xd800,
+    });
+  });
+
+  it("rejects controls but not C1 under TEXT_POLICY_IDENTIFIER", () => {
+    expect(inspectText("bad\u0001text", TEXT_POLICY_IDENTIFIER)).toEqual({
+      reason: "control-char",
+      offset: 3,
+      codeUnit: 0x01,
+    });
+    expect(inspectText("del\u007ftext", TEXT_POLICY_IDENTIFIER)).toEqual({
+      reason: "control-char",
+      offset: 3,
+      codeUnit: 0x7f,
+    });
+    expect(inspectText("nel\u0085text", TEXT_POLICY_IDENTIFIER)).toBeNull();
+    expect(inspectText("tab\tlf\ncr\r", TEXT_POLICY_IDENTIFIER)).toBeNull();
+  });
+
+  it("walks past well-formed pairs without splitting them", () => {
+    expect(
+      inspectText("pair \ud800\udc00 then \ud800", TEXT_POLICY_PROSE),
+    ).toEqual({
+      reason: "lone-surrogate",
+      offset: 13,
+      codeUnit: 0xd800,
+    });
   });
 });
