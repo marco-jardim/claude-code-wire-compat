@@ -40,7 +40,7 @@ import {
 import { sha256Hex } from "./sha256.js";
 import { buildCanonicalSystem, IDENTITY_TEXT } from "./system-prompt.js";
 import { isThinkingActive, isThinkingDisplayActive } from "./thinking.js";
-import { inspectText, TEXT_POLICY_IDENTIFIER } from "./unicode.js";
+import { inspectText, TEXT_POLICY_PROSE } from "./unicode.js";
 
 const METHOD = "POST";
 const MAX_INPUT_DEPTH = 100;
@@ -231,29 +231,31 @@ function assertExactKeys(
 /**
  * Screens one string from the caller's input graph.
  *
- * TAB (0x09), LF (0x0A) and CR (0x0D) are ALLOWED. This function walks the
- * whole input graph, which is overwhelmingly BODY content — message text,
- * system blocks, tool descriptions — where a line break is ordinary prose that
- * `JSON.stringify` escapes on the way out. Rejecting them here made the package
- * unusable for real traffic: no genuine prompt is a single line.
+ * BODY PROSE POLICY (decision P1.T1, 2026-09-25): every well-formed UTF-16
+ * string is accepted. Control characters are valid Unicode scalars;
+ * `JSON.stringify` escapes the C0 range and emits DEL/C1 raw, and
+ * `TextEncoder` encodes every scalar deterministically, so no control
+ * character can desync the body from its hash. Real tool output legitimately
+ * carries ESC (ANSI colour), NUL, FF and DEL, and rejecting those locally
+ * aborted genuine sessions before any network call. The old rule was a
+ * library-local defensive heuristic with no upstream provenance; whether the
+ * remote API rejects any scalar is a remote concern, surfaced as a remote
+ * error, not a local pre-flight abort.
  *
- * The strict rule those three characters used to be caught by is a HEADER rule,
- * and it still lives where it belongs and still applies in full:
- * `assertHeaderText` in `src/headers.ts` rejects every control character,
- * including these three, because a bare LF in a header is request smuggling.
- * `src/metadata.ts` is likewise unchanged: `user_id` and metadata keys are
- * identifiers that travel as JSON inside a header, not prose.
+ * What did NOT move:
  *
- * Every other C0 control (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F) and DEL (0x7F)
- * stay rejected: they have no meaning in prompt text and are a reliable signal
- * of a corrupted or hostile input.
- *
- * LONE SURROGATES stay rejected in every context, deliberately. `TextEncoder`
- * silently replaces them with U+FFFD, so an unpaired surrogate would corrupt
- * the body — and the body hash recorded in evidence — with no error anywhere.
+ * - HEADERS: `assertHeaderText` in `src/headers.ts` still rejects every
+ *   control character, TAB/LF/CR included, because a bare LF in a header is
+ *   request smuggling. `src/metadata.ts` is likewise unchanged: `user_id` and
+ *   metadata keys are identifiers that travel as JSON inside a header, not
+ *   prose, and keep their own strict rule.
+ * - LONE SURROGATES stay rejected in every context, deliberately.
+ *   `TextEncoder` silently replaces them with U+FFFD, so an unpaired surrogate
+ *   would corrupt the body — and the body hash recorded in evidence — with no
+ *   error anywhere.
  */
 function inspectString(value: string): number {
-  if (inspectText(value, TEXT_POLICY_IDENTIFIER) !== null) {
+  if (inspectText(value, TEXT_POLICY_PROSE) !== null) {
     fail("INVALID_UNICODE");
   }
   return new TextEncoder().encode(value).byteLength;

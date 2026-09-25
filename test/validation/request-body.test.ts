@@ -72,13 +72,14 @@ describe("buildCanonicalBody structural validation", () => {
     );
   });
 
-  it("rejects a forbidden control character", () => {
-    expectCode("INVALID_INPUT", () =>
-      build({
-        ...BASE_INPUT,
-        messages: [{ role: "user", content: "invalid\u0001text" }],
-      }),
-    );
+  it("accepts a control character as body prose (P1.T1)", () => {
+    const built = build({
+      ...BASE_INPUT,
+      messages: [{ role: "user", content: "invalid\u0001text" }],
+    });
+    expect(built).toMatchObject({
+      messages: [{ role: "user", content: "invalid\u0001text" }],
+    });
   });
 
   it.each([null, 1n, Symbol("invalid")])(

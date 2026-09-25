@@ -6,6 +6,37 @@ Append-only log of non-obvious maintenance decisions and their reasoning, so
 future work does not re-litigate or accidentally reverse them. Newest entries
 first. Keep entries dated, factual, and in consumer-neutral language.
 
+## 2026-09-25 — Body prose accepts every well-formed UTF-16 string (P1.T1)
+
+Context: the graph screeners rejected C0 control characters except TAB/LF/CR,
+plus DEL, in all body text; the system-field validator additionally rejected
+the C1 range, so U+0085 passed in a message but failed in `system`. The rule
+was a library-local defensive heuristic (see the comment that used to live
+above `inspectString` in `src/build-request.ts`): no captured Claude Code
+behaviour and no observed Anthropic API 400 ties the remote side to it. It
+also produced a confirmed data-fidelity bug: the first real consumer's
+sessions aborted locally with `INVALID_UNICODE` on legitimate tool output
+carrying ESC (ANSI colour), NUL, FF or DEL, before any network call.
+
+Decision (P1.T1): body prose — message text, `tool_result` content,
+`tool_use` input values and keys, tool descriptions, `input_schema` text,
+system text and stop sequences — accepts every well-formed UTF-16 string.
+Only lone surrogates remain rejected, because `TextEncoder` silently replaces
+them with U+FFFD and would desync the body hash. Headers, metadata
+identifiers and runtime identity fields keep their strict rules; the
+fingerprint's UTF-16 index sampling (4/7/20) is untouched. Wire bytes for
+every previously accepted input are unchanged; no fixture was resealed.
+
+Audit note: lanes whose strings land in headers were checked to have their
+own validation independent of the graph walk (`src/headers.ts`,
+`src/metadata.ts` including its nested-string pass, runtime identity), so the
+relaxation exposes no identifier lane.
+
+Whether the remote API rejects any scalar is UNVERIFIED. If a code point is
+later shown to fail remotely, add a narrow rule citing that evidence rather
+than reinstating blanket rejection; neutralizing ANSI/OSC for display is the
+consumer's display-boundary job, not a validation rule.
+
 ## 2026-09-23 — The frozen packed-consumer digests are now enforced, not eyeballed
 
 Context: `scripts/verify-packed-consumers.mjs` builds the same request from a

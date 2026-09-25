@@ -268,9 +268,6 @@ describe("build-request surviving input-validation mutants", () => {
     await expectBuildError(withField(field, undefined), "INVALID_INPUT");
   });
   it.each([
-    ["NUL", "\u0000"],
-    ["unit separator", "\u001f"],
-    ["DEL", "\u007f"],
     ["trailing high surrogate", "\ud800"],
     ["top high surrogate followed by a non-low unit", "\udbff\ue000"],
     ["bottom low surrogate", "\udc00"],
@@ -281,6 +278,20 @@ describe("build-request surviving input-validation mutants", () => {
       "INVALID_UNICODE",
     );
   });
+
+  // P1.T1: NUL, US and DEL used to sit in the rejection table above; as valid
+  // scalars they are body prose now and round-trip verbatim.
+  it.each(["\u0000", "\u001f", "\u007f"])(
+    "accepts the former invalid Unicode boundary %j as body prose",
+    async (text) => {
+      const built = await buildClaudeCodeRequest(
+        withField("messages", [{ role: "user", content: `a${text}` }]),
+      );
+      expect(bodyRecord(built.body)["messages"]).toEqual([
+        { role: "user", content: `a${text}` },
+      ]);
+    },
+  );
 
   it.each(["\u0020", "\u007e", "\ud800\udc00", "\udbff\udfff"])(
     "accepts the exact valid Unicode boundary %j",

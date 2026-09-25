@@ -29,7 +29,7 @@ import type {
 import { deriveCapabilities } from "./model-capabilities.js";
 import { stripModelMarkers } from "./model-identity.js";
 import { IDENTITY_TEXT } from "./system-prompt.js";
-import { inspectText, TEXT_POLICY_IDENTIFIER } from "./unicode.js";
+import { inspectText, TEXT_POLICY_PROSE } from "./unicode.js";
 
 const MAX_DEPTH = 100;
 const MAX_ITEMS = 100_000;
@@ -385,11 +385,10 @@ function inspectString(
   if (state.size > MAX_SIZE) fail("INPUT_TOO_LARGE");
   validateString?.(value);
 
-  const violation = inspectText(value, TEXT_POLICY_IDENTIFIER);
-  if (violation !== null) {
-    fail(
-      violation.reason === "control-char" ? "INVALID_INPUT" : "INVALID_UNICODE",
-    );
+  // Body prose policy (P1.T1): only a lone surrogate can fail here now, so
+  // the historical INVALID_INPUT-for-controls branch is gone by construction.
+  if (inspectText(value, TEXT_POLICY_PROSE) !== null) {
+    fail("INVALID_UNICODE");
   }
 }
 

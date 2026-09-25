@@ -1,30 +1,28 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 /*
- * Characterization: body-prose control-character parity matrix (PRE-relaxation).
+ * Characterization: body-prose control-character parity matrix.
  *
- * Decision P1.T1 (2026-09-25) established that the body-prose control rule is a
- * library-local defensive policy with no upstream provenance, and that a later
- * commit relaxes body prose to accept every well-formed UTF-16 string (only
- * lone surrogates stay rejected). THIS file intentionally records the behavior
- * BEFORE that relaxation, cell by cell, so the policy switch is auditable and
- * every changed expectation is deliberate.
+ * Decision P1.T1 (2026-09-25) established that the body-prose control rule was
+ * a library-local defensive policy with no upstream provenance, and relaxed
+ * body prose to accept every well-formed UTF-16 string (only lone surrogates
+ * stay rejected). This file was born pinning the PRE-relaxation behavior cell
+ * by cell; the policy-switch commit updated every expectation deliberately, so
+ * the diff between the two revisions IS the audit trail of the relaxation.
  *
  * Matrix dimensions:
  *
- * - code points: TAB/LF/CR (allowed today), NUL/ESC/FF/DEL (rejected today),
- *   NEL U+0085 and CSI U+009B (C1: accepted in message lanes, rejected in the
- *   system lane — the divergence this work removes), lone surrogates (rejected
- *   today and forever), and one valid astral pair (always accepted);
+ * - code points: TAB/LF/CR, NUL/ESC/FF/DEL, NEL U+0085 and CSI U+009B (C1 —
+ *   accepted in message lanes but rejected in the system lane before the
+ *   switch; the divergence this work removed), lone surrogates (rejected
+ *   before and forever), and one valid astral pair;
  * - lanes: user text, tool_result content, tool_use input value, tool
  *   description, and the system field;
  * - entries: buildClaudeCodeRequest, buildClaudeCodeCountTokensRequest and
  *   parseBuiltClaudeCodeRequest.
  *
  * All special characters are escape-constructed so this source stays plain
- * ASCII. Expected values below are the CURRENT behavior; any cell that
- * surprised the author carries a comment with the observed value instead of a
- * weakened assertion.
+ * ASCII.
  */
 
 import { describe, expect, it } from "vitest";
@@ -71,44 +69,14 @@ const MATRIX_CHARS: readonly MatrixChar[] = [
   { name: "TAB 0x09", char: "\t", body: "accept", system: "accept" },
   { name: "LF 0x0A", char: "\n", body: "accept", system: "accept" },
   { name: "CR 0x0D", char: "\r", body: "accept", system: "accept" },
-  {
-    name: "NUL 0x00",
-    char: "\u0000",
-    body: "INVALID_UNICODE",
-    system: "INVALID_UNICODE",
-  },
-  {
-    name: "ESC 0x1B",
-    char: "\u001b",
-    body: "INVALID_UNICODE",
-    system: "INVALID_UNICODE",
-  },
-  {
-    name: "FF 0x0C",
-    char: "\u000c",
-    body: "INVALID_UNICODE",
-    system: "INVALID_UNICODE",
-  },
-  {
-    name: "DEL 0x7F",
-    char: "\u007f",
-    body: "INVALID_UNICODE",
-    system: "INVALID_UNICODE",
-  },
-  // The C1 divergence this work removes: accepted in message lanes, rejected
-  // in the system lane by the stricter validateText (0x7F-0x9F).
-  {
-    name: "NEL U+0085",
-    char: "\u0085",
-    body: "accept",
-    system: "INVALID_UNICODE",
-  },
-  {
-    name: "CSI U+009B",
-    char: "\u009b",
-    body: "accept",
-    system: "INVALID_UNICODE",
-  },
+  { name: "NUL 0x00", char: "\u0000", body: "accept", system: "accept" },
+  { name: "ESC 0x1B", char: "\u001b", body: "accept", system: "accept" },
+  { name: "FF 0x0C", char: "\u000c", body: "accept", system: "accept" },
+  { name: "DEL 0x7F", char: "\u007f", body: "accept", system: "accept" },
+  // The pre-switch C1 divergence (accepted in message lanes, rejected in the
+  // system lane) is gone: both are plain body prose now.
+  { name: "NEL U+0085", char: "\u0085", body: "accept", system: "accept" },
+  { name: "CSI U+009B", char: "\u009b", body: "accept", system: "accept" },
   {
     name: "lone high surrogate 0xD800",
     char: "\ud800",
@@ -298,11 +266,32 @@ describe("body-prose parity matrix (current behavior, pre-relaxation)", () => {
     }
   });
 
-  it("pins the C1 divergence explicitly: U+0085 accepted in a message, rejected in system", async () => {
-    const built = await buildClaudeCodeRequest(laneInput("userText", "\u0085"));
-    expect(built.body.length).toBeGreaterThan(0);
-    expect(await buildFailureCode({ ...BASE, system: [wrap("\u0085")] })).toBe(
-      "INVALID_UNICODE",
+  it("pins the C1 unification explicitly: U+0085 accepted in a message and in system", async () => {
+    const fromMessage = await buildClaudeCodeRequest(
+      laneInput("userText", "\u0085"),
+    );
+    expect(fromMessage.body.length).toBeGreaterThan(0);
+    const fromSystem = await buildClaudeCodeRequest({
+      ...BASE,
+      system: [wrap("\u0085")],
+    });
+    expect(fromSystem.body.length).toBeGreaterThan(0);
+  });
+
+  it("round-trips ESC in tool_result through build and parse with a consistent digest", async () => {
+    const built = await buildClaudeCodeRequest(
+      laneInput("toolResult", "\u001b"),
+    );
+    const parsed = parseBuiltClaudeCodeRequest(built);
+    expect(parsed.body).toBe(built.body);
+
+    const { createHash } = await import("node:crypto");
+    const independent = createHash("sha256")
+      .update(Buffer.from(built.body, "utf8"))
+      .digest("hex");
+    expect(built.evidence.bodySha256).toBe(independent);
+    expect(built.evidence.bodyByteLength).toBe(
+      Buffer.byteLength(built.body, "utf8"),
     );
   });
 });

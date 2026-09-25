@@ -105,8 +105,14 @@ describe("security/core-adversarial (Wave 1 RED specification)", () => {
     );
   });
 
-  // NUL is meaningless in every position and stays rejected everywhere.
-  it("rejects NUL injection across string-bearing positions", async () => {
+  /*
+   * P1.T1 split: NUL is body prose in message text, system blocks and tool
+   * names (valid scalar; JSON/TextEncoder encode it deterministically), but
+   * it stays rejected in every position that reaches a header, an identity
+   * field or a metadata identifier — those lanes keep their own strict rules
+   * independent of the graph screen.
+   */
+  it("rejects NUL injection in header, identity and metadata positions", async () => {
     const injection = "\u0000";
     const build = await loadWave2Function<BuildRequest>(
       "build-request",
@@ -114,18 +120,6 @@ describe("security/core-adversarial (Wave 1 RED specification)", () => {
     );
     const hostileValues: readonly Record<string, unknown>[] = [
       { ...baseInput(), accessToken: `token${injection}` },
-      { ...baseInput(), model: `claude-sonnet-4-5${injection}` },
-      {
-        ...baseInput(),
-        messages: [{ role: "user", content: `text${injection}` }],
-      },
-      { ...baseInput(), system: [`system${injection}`] },
-      {
-        ...baseInput(),
-        tools: [
-          { name: `tool${injection}`, description: "x", input_schema: {} },
-        ],
-      },
       { ...baseInput(), metadata: { value: `metadata${injection}` } },
       {
         ...baseInput(),
@@ -137,6 +131,35 @@ describe("security/core-adversarial (Wave 1 RED specification)", () => {
     ];
     for (const hostile of hostileValues)
       await expect(build(hostile)).rejects.toThrow();
+  });
+
+  it("accepts NUL as body prose in message, system, tool-name and model positions", async () => {
+    const injection = "\u0000";
+    const build = await loadWave2Function<BuildRequest>(
+      "build-request",
+      "buildClaudeCodeRequest",
+    );
+    const proseValues: readonly Record<string, unknown>[] = [
+      {
+        ...baseInput(),
+        messages: [{ role: "user", content: `text${injection}` }],
+      },
+      { ...baseInput(), system: [`system${injection}`] },
+      {
+        ...baseInput(),
+        tools: [
+          { name: `tool${injection}`, description: "x", input_schema: {} },
+        ],
+      },
+      // The model id is a body-JSON string leaf, not a header value; an
+      // unknown or malformed id is the remote API's concern, not a local
+      // character policy.
+      { ...baseInput(), model: `claude-sonnet-4-5${injection}` },
+    ];
+    for (const prose of proseValues) {
+      const built = await build(prose);
+      expect(built.body.length).toBeGreaterThan(0);
+    }
   });
 
   /*

@@ -70,16 +70,6 @@ export const TEXT_POLICY_IDENTIFIER: TextPolicy = Object.freeze({
 });
 
 /**
- * The pre-unification system-field rule: IDENTIFIER plus the C1 range. Kept so
- * the refactor can reproduce the historical system behavior byte-for-byte; the
- * body-prose relaxation removes this preset.
- */
-export const TEXT_POLICY_SYSTEM_LEGACY: TextPolicy = Object.freeze({
-  rejectControls: true,
-  rejectC1: true,
-});
-
-/**
  * Screens one string under `policy`, returning the first violation or null.
  *
  * The walk order matches the historical per-module inspectors: at each index

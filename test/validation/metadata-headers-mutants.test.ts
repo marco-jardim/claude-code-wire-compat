@@ -481,13 +481,13 @@ describe("system prompt mutation boundaries", () => {
     });
   });
 
+  // P1.T1: prompt text is body prose — every well-formed scalar is accepted.
   it.each(["\u0000", "\u0001", "\u000b", "\u001f", "\u007f", "\u009f"])(
-    "rejects control code unit %s in prompt text",
+    "accepts control code unit %s in prompt text",
     (text) => {
-      expectWireError(
-        () => buildCanonicalSystem([text], billingBlock, identity),
-        "INVALID_UNICODE",
-      );
+      expect(
+        buildCanonicalSystem([text], billingBlock, identity)[2]?.text,
+      ).toBe(text);
     },
   );
 

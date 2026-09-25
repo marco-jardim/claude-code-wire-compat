@@ -16,7 +16,10 @@
  *
  * - multi-line and tabbed content in messages, system blocks and tool metadata
  *   SURVIVES, unmodified, into the canonical body;
- * - every OTHER C0 control, DEL and lone surrogates are STILL rejected;
+ * - stage 3 (P1.T1, 2026-09-25): body prose was relaxed further — every
+ *   well-formed UTF-16 string is now accepted, control characters included,
+ *   because they are valid scalars that JSON and TextEncoder encode
+ *   deterministically; only LONE SURROGATES are still rejected;
  * - the header rule did NOT move: a control character in any value that lands
  *   in a header is still refused;
  * - metadata identifiers are STILL strict.
@@ -272,35 +275,41 @@ describe("canonical body for multi-line input (golden-equivalent)", () => {
   });
 });
 
-describe("control characters that stay forbidden in the body", () => {
-  const FORBIDDEN: readonly (readonly [string, string])[] = [
+describe("control characters now accepted as body prose (P1.T1)", () => {
+  // Stage 3 of the history pinned at the top of this file: these characters
+  // were rejected by the graph screen until the body-prose relaxation. They
+  // are valid Unicode scalars — real tool output carries ESC (ANSI colour),
+  // NUL, FF and DEL — and both JSON.stringify and TextEncoder encode them
+  // deterministically, so they now flow through every body lane unmodified.
+  const PROSE: readonly (readonly [string, string])[] = [
     ["NUL 0x00", "\u0000"],
     ["SOH 0x01", "\u0001"],
     ["VT 0x0B", "\u000b"],
     ["FF 0x0C", "\u000c"],
     ["US 0x1F", "\u001f"],
     ["DEL 0x7F", "\u007f"],
+    ["NEL U+0085", "\u0085"],
   ];
 
-  it.each(FORBIDDEN)(
-    "still rejects %s in message content",
-    async (_l, char) => {
-      expect(
-        await failureCode({
-          ...BASE,
-          messages: [{ role: "user", content: `before${char}after` }],
-        }),
-      ).toBe("INVALID_UNICODE");
-    },
-  );
+  it.each(PROSE)("accepts %s verbatim in message content", async (_l, char) => {
+    const text = `before${char}after`;
+    const built = await buildClaudeCodeRequest({
+      ...BASE,
+      messages: [{ role: "user", content: text }],
+    });
 
-  it.each(FORBIDDEN)("still rejects %s in a system block", async (_l, char) => {
-    expect(
-      await failureCode({
-        ...BASE,
-        system: [`before${char}after`],
-      }),
-    ).toBe("INVALID_UNICODE");
+    expect(firstUserText(built.body)).toBe(text);
+  });
+
+  it.each(PROSE)("accepts %s verbatim in a system block", async (_l, char) => {
+    const text = `before${char}after`;
+    const built = await buildClaudeCodeRequest({
+      ...BASE,
+      system: [text],
+    });
+
+    const system = parsedBody(built.body)["system"];
+    expect(JSON.stringify(system)).toContain(JSON.stringify(text));
   });
 
   it("still rejects a lone high surrogate", async () => {

@@ -56,21 +56,20 @@ async function expectRejection(input: unknown, code: string): Promise<void> {
 }
 
 describe("additionalBetas injection surface", () => {
-  // The controls that carry no meaning in any position are still stopped by the
-  // input-graph screen, before header assembly, exactly as before.
+  // P1.T1: the input-graph screen no longer rejects control characters, so
+  // these are stopped one layer later, by the beta grammar, which admits only
+  // `[A-Za-z0-9][A-Za-z0-9._-]*`. The seam remains closed; only the error code
+  // moved (same pattern as the CR/LF/TAB cases below).
   it.each([
     ["NUL byte", "evil-beta\u0000"],
     ["DEL", "evil-beta\u007f"],
     ["vertical tab", "evil-beta\u000b"],
-  ])(
-    "rejects %s as INVALID_UNICODE before header assembly",
-    async (_l, beta) => {
-      await expectRejection(
-        { ...BASE, additionalBetas: [beta] },
-        "INVALID_UNICODE",
-      );
-    },
-  );
+  ])("rejects %s as INVALID_INPUT at the beta grammar", async (_l, beta) => {
+    await expectRejection(
+      { ...BASE, additionalBetas: [beta] },
+      "INVALID_INPUT",
+    );
+  });
 
   /*
    * CR, LF and TAB are no longer refused by the input-graph screen, because

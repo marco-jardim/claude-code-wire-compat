@@ -6,7 +6,7 @@ import type {
   TextBlock,
 } from "./contracts.js";
 import { ClaudeCodeWireError } from "./contracts.js";
-import { inspectText, TEXT_POLICY_SYSTEM_LEGACY } from "./unicode.js";
+import { inspectText, TEXT_POLICY_PROSE } from "./unicode.js";
 
 /**
  * The pinned identity text, byte-exact.
@@ -41,7 +41,9 @@ function fail(
 }
 
 function validateText(text: string): void {
-  if (inspectText(text, TEXT_POLICY_SYSTEM_LEGACY) !== null) {
+  // Body prose policy (P1.T1): the system field follows the same rule as
+  // every other body lane — only lone surrogates are rejected.
+  if (inspectText(text, TEXT_POLICY_PROSE) !== null) {
     fail("INVALID_UNICODE");
   }
 }

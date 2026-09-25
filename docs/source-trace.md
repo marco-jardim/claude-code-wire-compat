@@ -706,6 +706,10 @@ blank lines and tabs, on both the messages path and the count-tokens path.
   TAB, LF and CR are ALLOWED. `JSON.stringify` escapes them, so no raw control character reaches the
   wire — this is asserted, not assumed. Every other C0 control (0x00–0x08, 0x0B, 0x0C, 0x0E–0x1F)
   and DEL (0x7F) stay rejected.
+  - **Amendment 2026-09-25 (P1.T1):** the remaining BODY rejections are lifted. Body prose now
+    accepts every well-formed UTF-16 string; only lone surrogates stay rejected. The rule narrated
+    in this bullet was a library-local heuristic with no upstream provenance, and it false-positive'd
+    on legitimate tool output (ESC/ANSI, NUL, FF, DEL). See `CHANGELOG.md` 0.7.0 and `MEMORY.md`.
 - **HEADERS**: **unchanged.** `assertHeaderText` in `src/headers.ts` still rejects every control
   character, TAB, LF and CR included, because a bare LF in a header is request smuggling. The
   `extraHeaders` path is untouched. What changed is only WHICH layer refuses a header carrying CRLF:

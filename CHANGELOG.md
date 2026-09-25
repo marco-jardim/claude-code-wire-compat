@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0-rc.1]
+
+### Breaking
+
+- **Body prose now accepts every well-formed UTF-16 string.** The graph
+  screeners (`src/build-request.ts`, `src/request-body.ts`,
+  `src/system-prompt.ts`) no longer reject C0 control characters (TAB/LF/CR
+  were already allowed), DEL or the C1 range in body text — message content,
+  `tool_result` content, `tool_use` input, tool descriptions and the `system`
+  field. Only lone surrogates remain rejected, because `TextEncoder` silently
+  replaces them with U+FFFD and would desync the body hash recorded in
+  evidence.
+
+  This was a library-local defensive policy with no upstream provenance, and
+  it produced false positives on legitimate data: real tool output carries
+  ESC (ANSI colour), NUL, FF and DEL, and rejecting those locally aborted
+  genuine sessions before any network call. The system field's stricter C1
+  rule (U+0085 accepted in a message but rejected in `system`) was the same
+  defect in asymmetric form.
+
+  Bytes for every input accepted before this change are unchanged; no golden
+  fixture or digest was resealed. Headers, metadata identifiers and runtime
+  identity fields keep their strict rules unchanged.
+
+  Consumers that relied on the library to scrub control characters must now
+  do so at their own display boundary. A request the remote API rejects now
+  surfaces as a remote error instead of a local pre-flight abort.
+
+  Rollback: pin `0.6.0`, or pre-sanitize content in the consumer.
+
+### Added
+
+- `inspectText`, `TextPolicy`, `TEXT_POLICY_PROSE` and
+  `TEXT_POLICY_IDENTIFIER` in `src/unicode.ts`: one shared text validator
+  with named policy presets. `classifySurrogateAt` is unchanged and remains
+  the single surrogate authority.
+
 ## [0.6.0] - 2026-09-23
 
 ### Breaking
