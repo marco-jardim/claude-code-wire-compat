@@ -40,7 +40,7 @@ import {
 import { sha256Hex } from "./sha256.js";
 import { buildCanonicalSystem, IDENTITY_TEXT } from "./system-prompt.js";
 import { isThinkingActive, isThinkingDisplayActive } from "./thinking.js";
-import { classifySurrogateAt } from "./unicode.js";
+import { inspectText, TEXT_POLICY_IDENTIFIER } from "./unicode.js";
 
 const METHOD = "POST";
 const MAX_INPUT_DEPTH = 100;
@@ -253,17 +253,8 @@ function assertExactKeys(
  * the body — and the body hash recorded in evidence — with no error anywhere.
  */
 function inspectString(value: string): number {
-  for (let index = 0; index < value.length; index += 1) {
-    const unit = value.charCodeAt(index);
-    if (
-      (unit <= 0x1f && unit !== 0x09 && unit !== 0x0a && unit !== 0x0d) ||
-      unit === 0x7f
-    ) {
-      fail("INVALID_UNICODE");
-    }
-    const classification = classifySurrogateAt(value, index);
-    if (classification === "loneSurrogate") fail("INVALID_UNICODE");
-    if (classification === "surrogatePair") index += 1;
+  if (inspectText(value, TEXT_POLICY_IDENTIFIER) !== null) {
+    fail("INVALID_UNICODE");
   }
   return new TextEncoder().encode(value).byteLength;
 }

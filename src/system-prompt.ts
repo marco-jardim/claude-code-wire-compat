@@ -6,7 +6,7 @@ import type {
   TextBlock,
 } from "./contracts.js";
 import { ClaudeCodeWireError } from "./contracts.js";
-import { classifySurrogateAt } from "./unicode.js";
+import { inspectText, TEXT_POLICY_SYSTEM_LEGACY } from "./unicode.js";
 
 /**
  * The pinned identity text, byte-exact.
@@ -41,23 +41,8 @@ function fail(
 }
 
 function validateText(text: string): void {
-  for (let index = 0; index < text.length; index += 1) {
-    const codeUnit = text.charCodeAt(index);
-
-    if (
-      codeUnit === 0 ||
-      (codeUnit < 0x20 &&
-        codeUnit !== 0x09 &&
-        codeUnit !== 0x0a &&
-        codeUnit !== 0x0d) ||
-      (codeUnit >= 0x7f && codeUnit <= 0x9f)
-    ) {
-      fail("INVALID_UNICODE");
-    }
-
-    const classification = classifySurrogateAt(text, index);
-    if (classification === "loneSurrogate") fail("INVALID_UNICODE");
-    if (classification === "surrogatePair") index += 1;
+  if (inspectText(text, TEXT_POLICY_SYSTEM_LEGACY) !== null) {
+    fail("INVALID_UNICODE");
   }
 }
 

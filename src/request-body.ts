@@ -29,7 +29,7 @@ import type {
 import { deriveCapabilities } from "./model-capabilities.js";
 import { stripModelMarkers } from "./model-identity.js";
 import { IDENTITY_TEXT } from "./system-prompt.js";
-import { classifySurrogateAt } from "./unicode.js";
+import { inspectText, TEXT_POLICY_IDENTIFIER } from "./unicode.js";
 
 const MAX_DEPTH = 100;
 const MAX_ITEMS = 100_000;
@@ -385,20 +385,11 @@ function inspectString(
   if (state.size > MAX_SIZE) fail("INPUT_TOO_LARGE");
   validateString?.(value);
 
-  for (let index = 0; index < value.length; index += 1) {
-    const unit = value.charCodeAt(index);
-    if (
-      unit <= 0x08 ||
-      unit === 0x0b ||
-      unit === 0x0c ||
-      (unit >= 0x0e && unit <= 0x1f) ||
-      unit === 0x7f
-    ) {
-      fail("INVALID_INPUT");
-    }
-    const classification = classifySurrogateAt(value, index);
-    if (classification === "loneSurrogate") fail("INVALID_UNICODE");
-    if (classification === "surrogatePair") index += 1;
+  const violation = inspectText(value, TEXT_POLICY_IDENTIFIER);
+  if (violation !== null) {
+    fail(
+      violation.reason === "control-char" ? "INVALID_INPUT" : "INVALID_UNICODE",
+    );
   }
 }
 
