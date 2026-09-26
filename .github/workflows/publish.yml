@@ -46,6 +46,13 @@ jobs:
           # steps.pack.outputs reference documents the dataflow instead of
           # leaking a variable into the environment of every later step.
           echo "tarball=$(npm pack --silent)" >> "$GITHUB_OUTPUT"
+      - name: Verify the packed tarball against the reviewed release manifest
+        # The reviewed git reference is the approval boundary. Never generate
+        # a baseline here; missing or mismatching approval blocks publication.
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        shell: bash
+        run: node scripts/verify-release-manifest.mjs "$TARBALL"
       - name: Publish with npm provenance
         # Authentication is npm trusted publishing over OIDC, not a token. The
         # trust is configured on npmjs.com against this repository and this
