@@ -16,6 +16,7 @@ import {
   type HeaderPair,
 } from "../../src/contracts.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
+import { parseBuiltClaudeCodeRequest } from "../../src/index.js";
 import {
   expectModuleUnimplemented,
   loadWave2Function,
@@ -107,7 +108,7 @@ describe("security/core-adversarial (Wave 1 RED specification)", () => {
 
   /*
    * P1.T1 split: NUL is body prose in message text, system blocks and tool
-   * names (valid scalar; JSON/TextEncoder encode it deterministically), but
+   * descriptions, but
    * it stays rejected in every position that reaches a header, an identity
    * field or a metadata identifier — those lanes keep their own strict rules
    * independent of the graph screen.
@@ -119,6 +120,11 @@ describe("security/core-adversarial (Wave 1 RED specification)", () => {
       "buildClaudeCodeRequest",
     );
     const hostileValues: readonly Record<string, unknown>[] = [
+      { ...baseInput(), model: `claude-sonnet-4-5${injection}` },
+      {
+        ...baseInput(),
+        tools: [{ name: `tool${injection}`, input_schema: {} }],
+      },
       { ...baseInput(), accessToken: `token${injection}` },
       { ...baseInput(), metadata: { value: `metadata${injection}` } },
       {
@@ -133,7 +139,7 @@ describe("security/core-adversarial (Wave 1 RED specification)", () => {
       await expect(build(hostile)).rejects.toThrow();
   });
 
-  it("accepts NUL as body prose in message, system, tool-name and model positions", async () => {
+  it("accepts NUL in prose without relaxing model or tool identifiers", async () => {
     const injection = "\u0000";
     const build = await loadWave2Function<BuildRequest>(
       "build-request",
@@ -148,17 +154,14 @@ describe("security/core-adversarial (Wave 1 RED specification)", () => {
       {
         ...baseInput(),
         tools: [
-          { name: `tool${injection}`, description: "x", input_schema: {} },
+          { name: "tool", description: `x${injection}`, input_schema: {} },
         ],
       },
-      // The model id is a body-JSON string leaf, not a header value; an
-      // unknown or malformed id is the remote API's concern, not a local
-      // character policy.
-      { ...baseInput(), model: `claude-sonnet-4-5${injection}` },
     ];
     for (const prose of proseValues) {
       const built = await build(prose);
       expect(built.body.length).toBeGreaterThan(0);
+      expect(parseBuiltClaudeCodeRequest(built).body).toBe(built.body);
     }
   });
 

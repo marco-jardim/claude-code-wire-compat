@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { MAX_INPUT_SIZE } from "./limits.js";
+
 import type {
   ClaudeCodeRuntimeIdentity,
   SystemInput,
@@ -27,7 +29,6 @@ import { violationDetails, type ViolationPathSegment } from "./violation.js";
 export const IDENTITY_TEXT =
   "You are Claude Code, Anthropic's official CLI for Claude.";
 const MAX_INPUT_DEPTH = 64;
-const MAX_INPUT_SIZE = 1_000_000;
 type UnknownRecord = Readonly<Record<PropertyKey, unknown>>;
 
 function fail(
@@ -61,16 +62,12 @@ function validateText(
 function isUnknownRecord(value: unknown): value is UnknownRecord {
   return value !== null && typeof value === "object";
 }
-
 function validateStructure(value: unknown): void {
   const ancestors = new WeakSet();
   let size = 0;
+  const path: ViolationPathSegment[] = ["system"];
 
-  function visit(
-    current: unknown,
-    depth: number,
-    path: readonly ViolationPathSegment[],
-  ): void {
+  function visit(current: unknown, depth: number): void {
     if (depth > MAX_INPUT_DEPTH) fail("INPUT_TOO_DEEP");
 
     if (typeof current === "string") {
@@ -85,18 +82,27 @@ function validateStructure(value: unknown): void {
 
     ancestors.add(current);
     for (const key of Reflect.ownKeys(current)) {
-      const childPath = typeof key === "string" ? [...path, key] : path;
+      // Only ARRAY indices become numeric segments (QA F1/F4); object keys
+      // stay strings and digits inside them render as `*`.
+      const segment: ViolationPathSegment =
+        typeof key !== "string"
+          ? "*"
+          : Array.isArray(current) && /^(?:0|[1-9]\d{0,5})$/u.test(key)
+            ? Number(key)
+            : key;
+      path.push(segment);
       if (typeof key === "string") {
         size += key.length;
         if (size > MAX_INPUT_SIZE) fail("INPUT_TOO_LARGE");
-        validateText(key, childPath, true);
+        validateText(key, path, true);
       }
-      visit(current[key], depth + 1, childPath);
+      visit(current[key], depth + 1);
+      path.pop();
     }
     ancestors.delete(current);
   }
 
-  visit(value, 0, []);
+  visit(value, 0);
 }
 
 function cloneTextBlock(value: unknown): TextBlock {

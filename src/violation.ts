@@ -15,7 +15,6 @@ import type { TextViolation } from "./unicode.js";
 export const VIOLATION_REASONS: ReadonlySet<string> = new Set([
   "lone-surrogate",
   "control-char",
-  "forbidden-key",
 ]);
 
 /**
@@ -59,8 +58,8 @@ const PATH_KEY_VOCABULARY: ReadonlySet<string> = new Set([
   "image",
   "input",
   "input_schema",
+  "input_examples",
   "items",
-  "length",
   "max_tokens",
   "maxTokens",
   "media_type",
@@ -109,16 +108,32 @@ const PATH_KEY_VOCABULARY: ReadonlySet<string> = new Set([
 const MAX_PATH_SEGMENTS = 16;
 const MAX_PATH_LENGTH = 256;
 const TRUNCATION_MARKER = "...";
+const OPAQUE_SUBTREES: ReadonlySet<string> = new Set([
+  "headers",
+  "input",
+  "input_schema",
+  "input_examples",
+  "metadata",
+  "metadataOverrides",
+  "userIdFields",
+  "extraHeaders",
+  "data",
+  "default",
+  "examples",
+]);
 
 export type ViolationPathSegment = string | number;
 
-function mapSegment(segment: ViolationPathSegment): string {
+function mapSegment(segment: ViolationPathSegment, opaque: boolean): string {
   if (typeof segment === "number") {
-    return Number.isSafeInteger(segment) && segment >= 0
+    return Number.isSafeInteger(segment) &&
+      !Object.is(segment, -0) &&
+      segment >= 0 &&
+      segment <= 999_999
       ? String(segment)
       : "*";
   }
-  return PATH_KEY_VOCABULARY.has(segment) ? segment : "*";
+  return !opaque && PATH_KEY_VOCABULARY.has(segment) ? segment : "*";
 }
 
 /**
@@ -128,22 +143,28 @@ function mapSegment(segment: ViolationPathSegment): string {
 export function formatViolationPath(
   segments: readonly ViolationPathSegment[],
 ): string {
-  const mapped = segments.map(mapSegment);
-  const truncated =
-    mapped.length > MAX_PATH_SEGMENTS
-      ? [...mapped.slice(0, MAX_PATH_SEGMENTS), TRUNCATION_MARKER]
-      : mapped;
-  const path = `/${truncated.join("/")}`;
-  return path.length > MAX_PATH_LENGTH
-    ? `${path.slice(0, MAX_PATH_LENGTH - (TRUNCATION_MARKER.length + 1))}/${TRUNCATION_MARKER}`
-    : path;
+  let path = "";
+  let opaque = false;
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = mapSegment(segments[index] ?? "*", opaque);
+    const tailLength = index < segments.length - 1 ? 4 : 0;
+    if (
+      index >= MAX_PATH_SEGMENTS ||
+      path.length + 1 + segment.length + tailLength > MAX_PATH_LENGTH
+    ) {
+      return `${path}/${TRUNCATION_MARKER}`;
+    }
+    path += `/${segment}`;
+    opaque ||= segment === "*" || OPAQUE_SUBTREES.has(segment);
+  }
+  return path || "/";
 }
 
 export function isValidViolationReason(value: string): boolean {
   return VIOLATION_REASONS.has(value);
 }
 
-const PATH_INDEX_SEGMENT = /^\d{1,6}$/u;
+const PATH_INDEX_SEGMENT = /^(?:0|[1-9]\d{0,5})$/u;
 
 /**
  * Revalidates a formatted violation path for the redaction allowlist. Every
@@ -153,22 +174,30 @@ const PATH_INDEX_SEGMENT = /^\d{1,6}$/u;
 export function isValidViolationPath(value: string): boolean {
   if (value.length === 0 || value.length > MAX_PATH_LENGTH) return false;
   if (!value.startsWith("/")) return false;
+  if (value === "/") return true;
   const segments = value.slice(1).split("/");
   if (segments.length > MAX_PATH_SEGMENTS + 1) return false;
+  let opaque = false;
   for (let index = 0; index < segments.length; index += 1) {
     const segment = segments[index];
     if (segment === undefined) return false;
     if (segment === TRUNCATION_MARKER) return index === segments.length - 1;
-    if (segment === "*") continue;
+    if (index >= MAX_PATH_SEGMENTS) return false;
+    if (segment === "*") {
+      opaque = true;
+      continue;
+    }
     if (PATH_INDEX_SEGMENT.test(segment)) continue;
-    if (!PATH_KEY_VOCABULARY.has(segment)) return false;
+    if (opaque || !PATH_KEY_VOCABULARY.has(segment)) return false;
+    opaque ||= OPAQUE_SUBTREES.has(segment);
   }
   return true;
 }
 
 /** Numeric range guard for `violationCodeUnit`: controls or surrogates only. */
 export function isValidViolationCodeUnit(value: number): boolean {
-  if (!Number.isInteger(value) || value < 0) return false;
+  if (!Number.isInteger(value) || Object.is(value, -0) || value < 0)
+    return false;
   return (
     value <= 0x1f ||
     (value >= 0x7f && value <= 0x9f) ||

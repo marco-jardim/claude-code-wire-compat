@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { MAX_INPUT_SIZE } from "./limits.js";
+
 import { composeBetas, composeBetasWithAudit } from "./betas.js";
 import type {
   BuiltClaudeCodeCountTokensRequest,
@@ -40,12 +42,15 @@ import {
 import { sha256Hex } from "./sha256.js";
 import { buildCanonicalSystem, IDENTITY_TEXT } from "./system-prompt.js";
 import { isThinkingActive, isThinkingDisplayActive } from "./thinking.js";
-import { inspectText, TEXT_POLICY_PROSE } from "./unicode.js";
+import {
+  inspectText,
+  TEXT_POLICY_IDENTIFIER,
+  TEXT_POLICY_PROSE,
+} from "./unicode.js";
 import { violationDetails, type ViolationPathSegment } from "./violation.js";
 
 const METHOD = "POST";
 const MAX_INPUT_DEPTH = 100;
-const MAX_INPUT_SIZE = 1_000_000;
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const INPUT_KEYS = new Set([
   "accessToken",
@@ -238,8 +243,8 @@ function assertExactKeys(
  * `JSON.stringify` escapes the C0 range and emits DEL/C1 raw, and
  * `TextEncoder` encodes every scalar deterministically, so no control
  * character can desync the body from its hash. Real tool output legitimately
- * carries ESC (ANSI colour), NUL, FF and DEL, and rejecting those locally
- * aborted genuine sessions before any network call. The old rule was a
+ * carries ESC (ANSI colour), NUL, FF and DEL; synthetic probes reproduced
+ * rejection before fetch, not the original incident's exact input. The old rule was a
  * library-local defensive heuristic with no upstream provenance; whether the
  * remote API rejects any scalar is a remote concern, surfaced as a remote
  * error, not a local pre-flight abort.
@@ -252,17 +257,28 @@ function assertExactKeys(
  *   metadata keys are identifiers that travel as JSON inside a header, not
  *   prose, and keep their own strict rule.
  * - LONE SURROGATES stay rejected in every context, deliberately.
- *   `TextEncoder` silently replaces them with U+FFFD, so an unpaired surrogate
- *   would corrupt the body — and the body hash recorded in evidence — with no
- *   error anywhere.
+ *   Raw `TextEncoder` replaces them, whereas JSON serialization escapes them.
+ *   Rejecting them keeps the text contract independent of serialization order.
  */
 function inspectString(
   value: string,
   path: readonly ViolationPathSegment[],
   inKey: boolean,
 ): number {
-  const violation = inspectText(value, TEXT_POLICY_PROSE);
+  const root = path[0];
+  const prose =
+    root === "messages" ||
+    root === "system" ||
+    root === "tools" ||
+    root === "stopSequences" ||
+    root === "stop_sequences" ||
+    root === "body";
+  const violation = inspectText(
+    value,
+    prose ? TEXT_POLICY_PROSE : TEXT_POLICY_IDENTIFIER,
+  );
   if (violation !== null) {
+    if (violation.reason === "control-char") fail("INVALID_UNICODE");
     fail(
       "INVALID_UNICODE",
       violationDetails(violation, path, value.length, inKey),
@@ -274,12 +290,11 @@ function inspectString(
 function inspectGraph(value: unknown): void {
   const active = new WeakSet();
   let size = 0;
+  // Mutable walk stack: pushed/popped per node and only READ (synchronously)
+  // when a failure renders it, so successful requests pay no per-node copy.
+  const path: ViolationPathSegment[] = [];
 
-  function visit(
-    current: unknown,
-    depth: number,
-    path: readonly ViolationPathSegment[],
-  ): void {
+  function visit(current: unknown, depth: number): void {
     if (depth > MAX_INPUT_DEPTH) fail("INPUT_TOO_DEEP");
     if (typeof current === "string") {
       size += inspectString(current, path, false);
@@ -307,19 +322,23 @@ function inspectGraph(value: unknown): void {
       size += keys.length;
       for (const key of keys) {
         if (typeof key !== "string" || FORBIDDEN_KEYS.has(key)) fail();
-        const segment: ViolationPathSegment = /^\d{1,6}$/u.test(key)
-          ? Number(key)
-          : key;
-        const childPath = [...path, segment];
-        size += inspectString(key, childPath, true);
-        visit(ownValue(current, key), depth + 1, childPath);
+        // Only ARRAY indices become numeric segments; digits inside an object
+        // key are user-controlled text and must stay masked (QA F1).
+        const segment: ViolationPathSegment =
+          Array.isArray(current) && /^(?:0|[1-9]\d{0,5})$/u.test(key)
+            ? Number(key)
+            : key;
+        path.push(segment);
+        size += inspectString(key, path, true);
+        visit(ownValue(current, key), depth + 1);
+        path.pop();
       }
       active.delete(current);
     }
     if (size > MAX_INPUT_SIZE) fail("INPUT_TOO_LARGE");
   }
 
-  visit(value, 0, []);
+  visit(value, 0);
 }
 
 function containsString(value: unknown, target: string): boolean {
@@ -1774,6 +1793,7 @@ export function parseBuiltClaudeCodeRequest(
     const body = ownValue(value, "body");
     if (typeof body !== "string") fail();
     const parsedBody = parseBody(body);
+    inspectGraph(parsedBody);
     const headers = parseHeaders(ownValue(value, "headers"));
     const evidence = parseEvidence(ownValue(value, "evidence"), pinnedProfile);
     // Reading evidence is not trusting evidence. A claim that the seam

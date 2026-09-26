@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { MAX_INPUT_SIZE as MAX_SIZE } from "./limits.js";
+
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 import { clampMaxTokens, resolveThinking } from "./thinking.js";
 import type { ThinkingDisplay, ThinkingRequest } from "./thinking.js";
@@ -29,12 +31,15 @@ import type {
 import { deriveCapabilities } from "./model-capabilities.js";
 import { stripModelMarkers } from "./model-identity.js";
 import { IDENTITY_TEXT } from "./system-prompt.js";
-import { inspectText, TEXT_POLICY_PROSE } from "./unicode.js";
+import {
+  inspectText,
+  TEXT_POLICY_IDENTIFIER,
+  TEXT_POLICY_PROSE,
+} from "./unicode.js";
 import { violationDetails, type ViolationPathSegment } from "./violation.js";
 
 const MAX_DEPTH = 100;
 const MAX_ITEMS = 100_000;
-const MAX_SIZE = 1_000_000;
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const MESSAGE_KEYS = new Set(["role", "content"]);
 const CACHE_CONTROL_KEYS = new Set(["type", "ttl"]);
@@ -405,7 +410,7 @@ function inspect(
   depth: number,
   state: InspectionState,
   validateString?: (value: string) => void,
-  path: readonly ViolationPathSegment[] = [],
+  path: ViolationPathSegment[] = [],
 ): void {
   if (depth > MAX_DEPTH) fail("INPUT_TOO_DEEP");
   if (value === null || typeof value === "boolean") return;
@@ -429,7 +434,9 @@ function inspect(
     if (state.size > MAX_SIZE) fail("INPUT_TOO_LARGE");
     for (let index = 0; index < value.length; index += 1) {
       if (!hasOwn(value, String(index))) fail("INVALID_INPUT");
-      inspect(value[index], depth + 1, state, validateString, [...path, index]);
+      path.push(index);
+      inspect(value[index], depth + 1, state, validateString, path);
+      path.pop();
     }
   } else {
     const prototype = Reflect.getPrototypeOf(value);
@@ -440,28 +447,37 @@ function inspect(
       if (typeof key !== "string" || FORBIDDEN_KEYS.has(key)) {
         fail("INVALID_INPUT");
       }
-      const childPath = [...path, key];
-      inspectString(key, state, validateString, childPath, true);
+      // Object keys stay strings: digits inside user keys must not become
+      // readable numeric path segments (QA F1).
+      path.push(key);
+      inspectString(key, state, validateString, path, true);
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor === undefined || !("value" in descriptor)) {
         fail("INVALID_INPUT");
       }
-      inspect(descriptor.value, depth + 1, state, validateString, childPath);
+      inspect(descriptor.value, depth + 1, state, validateString, path);
+      path.pop();
     }
   }
   state.active.delete(value);
 }
 
+/** Paths without a caller hint are relative to the inspected value's root. */
 export function inspectJsonInputs(
   values: readonly unknown[],
   validateString?: (value: string) => void,
+  paths?: readonly (readonly ViolationPathSegment[])[],
 ): void {
   const state: InspectionState = {
     active: new WeakSet(),
     items: 0,
     size: 0,
   };
-  for (const value of values) inspect(value, 0, state, validateString);
+  for (let index = 0; index < values.length; index += 1) {
+    inspect(values[index], 0, state, validateString, [
+      ...(paths?.[index] ?? []),
+    ]);
+  }
 }
 
 function requireRecord(value: unknown): Record<string, unknown> {
@@ -481,6 +497,13 @@ function assertExactKeys(
 function requireString(value: unknown): string {
   if (typeof value !== "string") fail("INVALID_INPUT");
   return value;
+}
+
+function requireIdentifier(value: unknown): string {
+  const text = requireString(value);
+  if (inspectText(text, TEXT_POLICY_IDENTIFIER) !== null)
+    fail("INVALID_UNICODE");
+  return text;
 }
 
 function requirePositiveInteger(value: unknown): number {
@@ -829,7 +852,7 @@ function imageSource(value: unknown): ImageBlock["source"] {
       )
         fail("INVALID_INPUT");
       entries.push([key, item]);
-    } else entries.push([key, requireString(item)]);
+    } else entries.push([key, requireIdentifier(item)]);
   }
   return Object.fromEntries(entries) as unknown as ImageBlock["source"];
 }
@@ -890,7 +913,11 @@ function documentSource(value: unknown): DocumentBlock["source"] {
           }),
         ]);
       }
-    } else entries.push([key, requireString(item)]);
+    } else
+      entries.push([
+        key,
+        type === "text" ? requireString(item) : requireIdentifier(item),
+      ]);
   }
   return Object.fromEntries(entries) as unknown as DocumentBlock["source"];
 }
@@ -925,7 +952,11 @@ function thinkingBlock(
     if (key === "type") entries.push([key, "thinking"]);
     else if (key === "cache_control")
       entries.push([key, nullable(item, cacheControl)]);
-    else entries.push([key, requireString(item)]);
+    else
+      entries.push([
+        key,
+        key === "signature" ? requireIdentifier(item) : requireString(item),
+      ]);
   }
   return Object.fromEntries(entries) as unknown as ThinkingBlock;
 }
@@ -950,7 +981,7 @@ function redactedThinkingBlock(
     if (key === "type") entries.push([key, "redacted_thinking"]);
     else if (key === "cache_control")
       entries.push([key, nullable(item, cacheControl)]);
-    else entries.push([key, requireString(item)]);
+    else entries.push([key, requireIdentifier(item)]);
   }
   return Object.fromEntries(entries) as unknown as RedactedThinkingBlock;
 }
@@ -966,8 +997,8 @@ function searchResultBlock(value: unknown): SearchResultBlock {
     if (key === "content") {
       if (!Array.isArray(item)) fail("INVALID_INPUT");
       entries.push([key, item.map((block) => textBlock(block))]);
-    } else if (key === "source" || key === "title")
-      entries.push([key, requireString(item)]);
+    } else if (key === "source") entries.push([key, requireIdentifier(item)]);
+    else if (key === "title") entries.push([key, requireString(item)]);
     else if (key === "type") entries.push([key, "search_result"]);
     else if (key === "cache_control")
       entries.push([key, nullable(item, cacheControl)]);
@@ -984,7 +1015,7 @@ function toolReferenceBlock(value: unknown): ToolReferenceBlock {
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
     const item = record[key];
-    if (key === "tool_name") entries.push([key, requireString(item)]);
+    if (key === "tool_name") entries.push([key, requireIdentifier(item)]);
     else if (key === "type") entries.push([key, "tool_reference"]);
     else entries.push([key, nullable(item, cacheControl)]);
   }
@@ -1000,7 +1031,7 @@ function toolUseBlock(value: unknown): ToolUseBlock {
   for (const key of Object.keys(record)) {
     const item = record[key];
     if (key === "id" || key === "name")
-      entries.push([key, requireString(item)]);
+      entries.push([key, requireIdentifier(item)]);
     else if (key === "input") entries.push([key, validatedJson(item)]);
     else if (key === "type") entries.push([key, "tool_use"]);
     else if (key === "cache_control")
@@ -1025,7 +1056,7 @@ function toolCaller(value: unknown): ToolUseBlock["caller"] {
   return Object.fromEntries(
     Object.keys(record).map((key) => [
       key,
-      key === "type" ? type : requireString(record[key]),
+      key === "type" ? type : requireIdentifier(record[key]),
     ]),
   ) as unknown as NonNullable<ToolUseBlock["caller"]>;
 }
@@ -1048,7 +1079,7 @@ function toolResultBlock(value: unknown): ToolResultBlock {
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
     const item = record[key];
-    if (key === "tool_use_id") entries.push([key, requireString(item)]);
+    if (key === "tool_use_id") entries.push([key, requireIdentifier(item)]);
     else if (key === "type") entries.push([key, "tool_result"]);
     else if (key === "cache_control")
       entries.push([key, nullable(item, cacheControl)]);
@@ -1327,8 +1358,8 @@ function customToolDefinition(record: Record<string, unknown>): ToolDefinition {
   for (const key of Object.keys(record)) {
     const item = record[key];
     if (key === "input_schema") entries.push([key, toolInputSchema(item)]);
-    else if (key === "name" || key === "description")
-      entries.push([key, requireString(item)]);
+    else if (key === "name") entries.push([key, requireIdentifier(item)]);
+    else if (key === "description") entries.push([key, requireString(item)]);
     else if (key === "allowed_callers")
       entries.push([key, allowedCallers(item)]);
     else if (key === "cache_control")
@@ -1357,7 +1388,7 @@ function builtInToolDefinition(
       if (item !== spec.name) fail("INVALID_INPUT");
       entries.push([key, item]);
     } else if (key === "mcp_server_name" || key === "model")
-      entries.push([key, requireString(item)]);
+      entries.push([key, requireIdentifier(item)]);
     else if (key === "allowed_callers")
       entries.push([key, allowedCallers(item)]);
     else if (key === "cache_control" || key === "caching")
@@ -1401,7 +1432,7 @@ function tools(value: unknown): readonly ToolDefinition[] {
       ? builtInToolDefinition(record)
       : customToolDefinition(record);
     if (hasOwn(record, "name")) {
-      const name = requireString(record["name"]);
+      const name = requireIdentifier(record["name"]);
       if (names.has(name)) fail("INVALID_INPUT");
       names.add(name);
     }
@@ -1462,8 +1493,8 @@ function modelResolution(
     fail("INVALID_INPUT");
   }
   return {
-    id: requireString(record["id"]),
-    wireId: requireString(record["wireId"]),
+    id: requireIdentifier(record["id"]),
+    wireId: requireIdentifier(record["wireId"]),
     capabilities: {
       thinking: capabilityBoolean(capabilities.thinking, derived.thinking),
       adaptiveThinking: capabilityBoolean(
@@ -1647,7 +1678,8 @@ function toolChoice(value: unknown): Readonly<Record<string, unknown>> {
   const entries: [string, unknown][] = [];
   for (const key of Object.keys(record)) {
     if (key === "type") entries.push([key, type]);
-    else if (key === "name") entries.push([key, requireString(record[key])]);
+    else if (key === "name")
+      entries.push([key, requireIdentifier(record[key])]);
     else entries.push([key, requireBoolean(record[key])]);
   }
   return Object.fromEntries(entries);
@@ -1747,13 +1779,17 @@ export function buildCanonicalBody(
   profile?: ClaudeCodeProtocolProfile,
   thinkingDisplayOverride?: "updates",
 ): Readonly<Record<string, unknown>> {
-  inspectJsonInputs([
-    rawInput,
-    rawResolvedModel,
-    rawSystemBlocks,
-    rawMetadata,
-    ...(profile === undefined ? [] : [profile]),
-  ]);
+  inspectJsonInputs(
+    [
+      rawInput,
+      rawResolvedModel,
+      rawSystemBlocks,
+      rawMetadata,
+      ...(profile === undefined ? [] : [profile]),
+    ],
+    undefined,
+    [[], ["model"], ["system"], ["metadata"], ["profileOverride"]],
+  );
 
   const input = requireRecord(rawInput);
   assertExactKeys(input, INPUT_KEY_SET);

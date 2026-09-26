@@ -43,30 +43,25 @@ export interface TextViolation {
  * Character-level acceptance policy for one string lane.
  *
  * `rejectControls` rejects every C0 control except TAB (0x09), LF (0x0A) and
- * CR (0x0D), plus DEL (0x7F). `rejectC1` additionally rejects the C1 range
- * (0x80-0x9F); it is only meaningful together with `rejectControls`. Lone
- * surrogates are ALWAYS rejected regardless of policy, because `TextEncoder`
- * silently replaces them with U+FFFD and would desync the body hash.
+ * CR (0x0D), plus DEL (0x7F). Lone surrogates are always rejected, rather than
+ * depending on whether a caller serializes or directly encodes the string.
  */
 export interface TextPolicy {
   readonly rejectControls: boolean;
-  readonly rejectC1: boolean;
 }
 
 /** Body prose: every well-formed UTF-16 string is accepted. */
 export const TEXT_POLICY_PROSE: TextPolicy = Object.freeze({
   rejectControls: false,
-  rejectC1: false,
 });
 
 /**
- * Identifiers and legacy body lanes: C0 except TAB/LF/CR, plus DEL, plus lone
+ * Identifier graph screening: C0 except TAB/LF/CR, plus DEL, plus lone
  * surrogates. This is exactly the set the graph inspectors rejected before the
  * shared validator existed.
  */
 export const TEXT_POLICY_IDENTIFIER: TextPolicy = Object.freeze({
   rejectControls: true,
-  rejectC1: false,
 });
 
 /**
@@ -86,8 +81,7 @@ export function inspectText(
     if (
       policy.rejectControls &&
       ((unit <= 0x1f && unit !== 0x09 && unit !== 0x0a && unit !== 0x0d) ||
-        unit === 0x7f ||
-        (policy.rejectC1 && unit >= 0x80 && unit <= 0x9f))
+        unit === 0x7f)
     ) {
       return { reason: "control-char", offset: index, codeUnit: unit };
     }

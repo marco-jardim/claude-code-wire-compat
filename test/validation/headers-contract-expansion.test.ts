@@ -156,10 +156,7 @@ describe("expanded header controls", () => {
       { extraHeaders: [["x-custom", `leak-${ACCESS_TOKEN}`]] },
       "INVALID_INPUT",
     );
-    // P1.T1: the graph screen no longer rejects controls, so a header-landing
-    // identifier like stainlessHelper is refused one layer later, by
-    // `assertHeaderText` — the refusal is preserved, the code is more precise.
-    await expectCode({ stainlessHelper: "bad\u0001value" }, "HEADER_INJECTION");
+    await expectCode({ stainlessHelper: "bad\u0001value" }, "INVALID_UNICODE");
     await expectCode({ clientApp: `leak-${ACCESS_TOKEN}` }, "INVALID_INPUT");
   });
 

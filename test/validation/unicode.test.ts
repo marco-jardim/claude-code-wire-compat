@@ -48,7 +48,7 @@ describe("inspectText", () => {
     expect(inspectText("plain text", TEXT_POLICY_PROSE)).toBeNull();
     expect(inspectText("tab\tlf\ncr\r", TEXT_POLICY_PROSE)).toBeNull();
     expect(
-      inspectText("nul esc del nel", TEXT_POLICY_PROSE),
+      inspectText(String.fromCharCode(0, 27, 127, 133), TEXT_POLICY_PROSE),
     ).toBeNull();
     expect(inspectText("emoji 😀 pair", TEXT_POLICY_PROSE)).toBeNull();
   });
