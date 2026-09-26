@@ -710,7 +710,7 @@ blank lines and tabs, on both the messages path and the count-tokens path.
     accepts every well-formed UTF-16 string; only lone surrogates stay rejected. The rule narrated
     in this bullet was a library-local heuristic with no upstream provenance, and it false-positive'd
     in synthetic tool-output probes (ESC/ANSI, NUL, FF, DEL); the original incident's
-    input remains unknown. See `CHANGELOG.md` 0.7.0-rc.1 and `MEMORY.md`.
+    input remains unknown. See `CHANGELOG.md` 0.7.0 and `MEMORY.md`.
 - **HEADERS**: **unchanged.** `assertHeaderText` in `src/headers.ts` still rejects every control
   character, TAB, LF and CR included, because a bare LF in a header is request smuggling. The
   `extraHeaders` path is untouched. What changed is only WHICH layer refuses a header carrying CRLF:
