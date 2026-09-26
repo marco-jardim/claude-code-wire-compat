@@ -29,6 +29,8 @@ const reflectGet: (
   receiver?: unknown,
 ) => unknown = Reflect.get;
 
+// Independent oracle for the shared ceiling in src/limits.ts (32 MiB).
+const MAX_INPUT_SIZE = 33_554_432;
 const TOKEN = "mutation-token-4d30e8";
 const SESSION_ID = "10000000-0000-4000-8000-000000000001";
 const CLIENT_REQUEST_ID = "10000000-0000-4000-8000-000000000002";
@@ -524,95 +526,135 @@ describe("build-request surviving input-validation mutants", () => {
     );
   });
 
-  it("rejects an oversized string at the graph-inspection boundary", async () => {
-    await expectBuildError(
-      withField("messages", [{ role: "user", content: "x".repeat(1_000_001) }]),
-      "INPUT_TOO_LARGE",
-    );
-  });
+  it(
+    "rejects an oversized string at the graph-inspection boundary",
+    { timeout: 60_000 },
+    async () => {
+      await expectBuildError(
+        withField("messages", [
+          { role: "user", content: "x".repeat(MAX_INPUT_SIZE + 1) },
+        ]),
+        "INPUT_TOO_LARGE",
+        { maximumSize: MAX_INPUT_SIZE },
+      );
+    },
+  );
 
-  it("accepts exactly the graph size limit before later consumers see small metadata", async () => {
-    const candidate = { ...validInput(), metadata: { padding: "" } };
-    const paddingLength = 1_000_000 - graphSize(candidate);
-    expect(paddingLength).toBeGreaterThan(0);
-    const oversizedDuringInspection = {
-      padding: "x".repeat(paddingLength),
-    };
-    expect(
-      graphSize({ ...validInput(), metadata: oversizedDuringInspection }),
-    ).toBe(1_000_000);
+  it(
+    "accepts exactly the graph size limit before later consumers see small metadata",
+    { timeout: 60_000 },
+    async () => {
+      const candidate = { ...validInput(), metadata: { padding: "" } };
+      const paddingLength = MAX_INPUT_SIZE - graphSize(candidate);
+      expect(paddingLength).toBeGreaterThan(0);
+      const oversizedDuringInspection = {
+        padding: "x".repeat(paddingLength),
+      };
+      expect(
+        graphSize({ ...validInput(), metadata: oversizedDuringInspection }),
+      ).toBe(MAX_INPUT_SIZE);
 
-    const target = { ...validInput(), metadata: { source: "small" } };
-    let metadataDescriptors = 0;
-    const input = new Proxy(target, {
-      getOwnPropertyDescriptor: (value, key) => {
-        const descriptor = Object.getOwnPropertyDescriptor(value, key);
-        if (key !== "metadata" || descriptor === undefined) return descriptor;
-        metadataDescriptors += 1;
-        return {
-          ...descriptor,
-          value:
-            metadataDescriptors === 1
-              ? oversizedDuringInspection
-              : target.metadata,
-        };
-      },
-    });
-    await expect(
-      buildClaudeCodeRequest(requestInput(input)),
-    ).resolves.toMatchObject({ method: "POST" });
-  });
+      const target = { ...validInput(), metadata: { source: "small" } };
+      let metadataDescriptors = 0;
+      const input = new Proxy(target, {
+        getOwnPropertyDescriptor: (value, key) => {
+          const descriptor = Object.getOwnPropertyDescriptor(value, key);
+          if (key !== "metadata" || descriptor === undefined) return descriptor;
+          metadataDescriptors += 1;
+          return {
+            ...descriptor,
+            value:
+              metadataDescriptors === 1
+                ? oversizedDuringInspection
+                : target.metadata,
+          };
+        },
+      });
+      await expect(
+        buildClaudeCodeRequest(requestInput(input)),
+      ).resolves.toMatchObject({ method: "POST" });
+    },
+  );
 
-  it("rejects transient oversized messages before later consumers see a small value", async () => {
-    let messageDescriptors = 0;
-    const target = { ...validInput() };
-    const laterMessages = target.messages;
-    const input = new Proxy(target, {
-      getOwnPropertyDescriptor: (candidate, key) => {
-        const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
-        if (key !== "messages" || descriptor === undefined) return descriptor;
-        messageDescriptors += 1;
-        return {
-          configurable: true,
-          enumerable: true,
-          writable: true,
-          value:
-            messageDescriptors === 1
-              ? [{ role: "user", content: "x".repeat(1_000_001) }]
-              : laterMessages,
-        };
-      },
-    });
-    await expectBuildError(requestInput(input), "INPUT_TOO_LARGE");
-    expect(messageDescriptors).toBe(1);
-  });
+  it(
+    "rejects transient oversized messages before later consumers see a small value",
+    { timeout: 60_000 },
+    async () => {
+      let messageDescriptors = 0;
+      const target = { ...validInput() };
+      const laterMessages = target.messages;
+      const input = new Proxy(target, {
+        getOwnPropertyDescriptor: (candidate, key) => {
+          const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
+          if (key !== "messages" || descriptor === undefined) return descriptor;
+          messageDescriptors += 1;
+          return {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value:
+              messageDescriptors === 1
+                ? [{ role: "user", content: "x".repeat(MAX_INPUT_SIZE + 1) }]
+                : laterMessages,
+          };
+        },
+      });
+      await expectBuildError(requestInput(input), "INPUT_TOO_LARGE", {
+        maximumSize: MAX_INPUT_SIZE,
+      });
+      expect(messageDescriptors).toBe(1);
+    },
+  );
 
-  it("counts an oversized property name toward the graph size", async () => {
-    const metadata: Record<string, unknown> = {
-      ["k".repeat(1_000_001)]: null,
-    };
-    await expectBuildError(withField("metadata", metadata), "INPUT_TOO_LARGE");
-  });
-
-  it("counts array keys and primitive entries toward the graph size", async () => {
-    const items = Array.from({ length: 140_000 }, () => null);
-    await expectBuildError(
-      withField("messages", [
+  it(
+    "counts an oversized property name toward the graph size",
+    { timeout: 60_000 },
+    async () => {
+      const metadata: Record<string, unknown> = {
+        ["k".repeat(MAX_INPUT_SIZE + 1)]: null,
+      };
+      await expectBuildError(
+        withField("metadata", metadata),
+        "INPUT_TOO_LARGE",
         {
-          role: "user",
-          content: [
+          maximumSize: MAX_INPUT_SIZE,
+        },
+      );
+    },
+  );
+
+  it(
+    "counts array keys and primitive entries toward the graph size",
+    { timeout: 60_000 },
+    async () => {
+      // 140,000 nulls: their index keys alone total 728,890 bytes, and one unit
+      // per key plus one per null lifts the array past the original 1,000,000
+      // budget. The metadata pad shifts that arithmetic onto the current
+      // ceiling without allocating millions of entries.
+      const items = Array.from({ length: 140_000 }, () => null);
+      await expectBuildError(
+        requestInput({
+          ...validInput(),
+          metadata: { p: "x".repeat(MAX_INPUT_SIZE - 1_000_000) },
+          messages: [
             {
-              type: "tool_use",
-              id: "large-tool-use",
-              name: "large_tool",
-              input: { items },
+              role: "user",
+              content: [
+                {
+                  type: "tool_use",
+                  id: "large-tool-use",
+                  name: "large_tool",
+                  input: { items },
+                },
+              ],
             },
           ],
-        },
-      ]),
-      "INPUT_TOO_LARGE",
-    );
-  });
+        }),
+        "INPUT_TOO_LARGE",
+        { maximumSize: MAX_INPUT_SIZE },
+      );
+    },
+  );
 
   it("rejects a cycle but accepts repeated inactive references", async () => {
     const cyclic: Record<string, unknown> = {};

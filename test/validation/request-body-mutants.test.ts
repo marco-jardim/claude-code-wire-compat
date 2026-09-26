@@ -128,25 +128,29 @@ describe("request body inspection mutation boundaries", () => {
     },
   );
 
-  it("distinguishes the exact aggregate string-size limit from one over", () => {
-    const exactlyAtLimit = "x".repeat(999_912);
-    const oneOverLimit = "x".repeat(999_913);
+  it(
+    "distinguishes the exact aggregate string-size limit from one over",
+    { timeout: 60_000 },
+    () => {
+      const exactlyAtLimit = "x".repeat(33_554_432 - 88);
+      const oneOverLimit = "x".repeat(33_554_432 - 87);
 
-    expect(
-      build({
-        maxTokens: 1,
-        messages: [{ role: "user", content: exactlyAtLimit }],
-      }),
-    ).toMatchObject({ messages: [{ content: exactlyAtLimit }] });
-    expectWireCode(
-      () =>
+      expect(
         build({
           maxTokens: 1,
-          messages: [{ role: "user", content: oneOverLimit }],
+          messages: [{ role: "user", content: exactlyAtLimit }],
         }),
-      "INPUT_TOO_LARGE",
-    );
-  });
+      ).toMatchObject({ messages: [{ content: exactlyAtLimit }] });
+      expectWireCode(
+        () =>
+          build({
+            maxTokens: 1,
+            messages: [{ role: "user", content: oneOverLimit }],
+          }),
+        "INPUT_TOO_LARGE",
+      );
+    },
+  );
 
   it("distinguishes the exact nesting limit from one over", () => {
     expect(build(baseInput(), model, [], nestedValue(100))).toHaveProperty(

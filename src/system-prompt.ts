@@ -72,7 +72,9 @@ function validateStructure(value: unknown): void {
 
     if (typeof current === "string") {
       size += current.length;
-      if (size > MAX_INPUT_SIZE) fail("INPUT_TOO_LARGE");
+      if (size > MAX_INPUT_SIZE) {
+        fail("INPUT_TOO_LARGE", { maximumSize: MAX_INPUT_SIZE });
+      }
       validateText(current, path, false);
       return;
     }
@@ -93,7 +95,9 @@ function validateStructure(value: unknown): void {
       path.push(segment);
       if (typeof key === "string") {
         size += key.length;
-        if (size > MAX_INPUT_SIZE) fail("INPUT_TOO_LARGE");
+        if (size > MAX_INPUT_SIZE) {
+          fail("INPUT_TOO_LARGE", { maximumSize: MAX_INPUT_SIZE });
+        }
         validateText(key, path, true);
       }
       visit(current[key], depth + 1);

@@ -289,26 +289,33 @@ describe("security/core-adversarial (Wave 1 RED specification)", () => {
     expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
   });
 
-  it("rejects deep, oversized, cyclic, and malformed Unicode graphs", async () => {
-    const build = await loadWave2Function<BuildRequest>(
-      "build-request",
-      "buildClaudeCodeRequest",
-    );
-    const cyclic: Record<string, unknown> = {};
-    cyclic["self"] = cyclic;
-    const cases: readonly [unknown, string][] = [
-      [nested(200), "INPUT_TOO_DEEP"],
-      ["x".repeat(2_000_000), "INPUT_TOO_LARGE"],
-      [cyclic, "CYCLIC_INPUT"],
-      ["\ud800", "INVALID_UNICODE"],
-      ["\udc00", "INVALID_UNICODE"],
-    ];
-    for (const [value, code] of cases) {
-      await expect(
-        build({ ...baseInput(), messages: [{ role: "user", content: value }] }),
-      ).rejects.toThrow(expect.objectContaining({ code }));
-    }
-  });
+  it(
+    "rejects deep, oversized, cyclic, and malformed Unicode graphs",
+    { timeout: 60_000 },
+    async () => {
+      const build = await loadWave2Function<BuildRequest>(
+        "build-request",
+        "buildClaudeCodeRequest",
+      );
+      const cyclic: Record<string, unknown> = {};
+      cyclic["self"] = cyclic;
+      const cases: readonly [unknown, string][] = [
+        [nested(200), "INPUT_TOO_DEEP"],
+        ["x".repeat(33_554_433), "INPUT_TOO_LARGE"],
+        [cyclic, "CYCLIC_INPUT"],
+        ["\ud800", "INVALID_UNICODE"],
+        ["\udc00", "INVALID_UNICODE"],
+      ];
+      for (const [value, code] of cases) {
+        await expect(
+          build({
+            ...baseInput(),
+            messages: [{ role: "user", content: value }],
+          }),
+        ).rejects.toThrow(expect.objectContaining({ code }));
+      }
+    },
+  );
 
   it("keeps ClaudeCodeWireError serialization cause- and stack-free", () => {
     const error = new ClaudeCodeWireError("INVALID_INPUT", {

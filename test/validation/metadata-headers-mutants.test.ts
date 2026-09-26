@@ -16,6 +16,9 @@ import {
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
 import { buildCanonicalSystem } from "../../src/system-prompt.js";
 
+// Independent oracle for the shared ceiling in src/limits.ts (32 MiB).
+const MAX_INPUT_SIZE = 33_554_432;
+
 const identity = {
   sessionId: "session-123",
   deviceId: "device-456",
@@ -535,73 +538,89 @@ describe("system prompt mutation boundaries", () => {
     );
   });
 
-  it("accepts total string size 1,000,000 and rejects 1,000,001", () => {
-    const textAtLimit = "x".repeat(999_981);
-    expect(
-      buildCanonicalSystem(
-        [{ type: "text", text: textAtLimit }],
-        billingBlock,
-        identity,
-      )[2]?.text,
-    ).toHaveLength(999_981);
-    expectWireError(
-      () =>
+  it(
+    "accepts total string size at the ceiling and rejects one more",
+    { timeout: 60_000 },
+    () => {
+      const textAtLimit = "x".repeat(MAX_INPUT_SIZE - 19);
+      expect(
         buildCanonicalSystem(
-          [{ type: "text", text: `${textAtLimit}x` }],
+          [{ type: "text", text: textAtLimit }],
+          billingBlock,
+          identity,
+        )[2]?.text,
+      ).toHaveLength(MAX_INPUT_SIZE - 19);
+      expectWireError(
+        () =>
+          buildCanonicalSystem(
+            [{ type: "text", text: `${textAtLimit}x` }],
+            billingBlock,
+            identity,
+          ),
+        "INPUT_TOO_LARGE",
+      );
+    },
+  );
+
+  it(
+    "applies the exact size boundary when the final input member is text",
+    { timeout: 60_000 },
+    () => {
+      const atLimit: unknown[] = [{ type: "text", text: "prompt" }];
+      Object.defineProperty(atLimit, "tail", {
+        value: "x".repeat(MAX_INPUT_SIZE - 29),
+        enumerable: true,
+      });
+      expect(
+        buildCanonicalSystem(systemInput(atLimit), billingBlock, identity),
+      ).toHaveLength(3);
+
+      const overLimit: unknown[] = [{ type: "text", text: "prompt" }];
+      Object.defineProperty(overLimit, "tail", {
+        value: "x".repeat(MAX_INPUT_SIZE - 28),
+        enumerable: true,
+      });
+      expectWireError(
+        () =>
+          buildCanonicalSystem(systemInput(overLimit), billingBlock, identity),
+        "INPUT_TOO_LARGE",
+      );
+    },
+  );
+
+  it(
+    "counts property-key size at the exact input-size boundary",
+    { timeout: 60_000 },
+    () => {
+      const blockAtLimit: Record<PropertyKey, unknown> = {
+        type: "text",
+        text: "prompt",
+      };
+      blockAtLimit["k".repeat(MAX_INPUT_SIZE - 25)] = true;
+      expect(
+        buildCanonicalSystem(
+          systemInput([blockAtLimit]),
           billingBlock,
           identity,
         ),
-      "INPUT_TOO_LARGE",
-    );
-  });
+      ).toHaveLength(3);
 
-  it("applies the exact size boundary when the final input member is text", () => {
-    const atLimit: unknown[] = [{ type: "text", text: "prompt" }];
-    Object.defineProperty(atLimit, "tail", {
-      value: "x".repeat(999_971),
-      enumerable: true,
-    });
-    expect(
-      buildCanonicalSystem(systemInput(atLimit), billingBlock, identity),
-    ).toHaveLength(3);
-
-    const overLimit: unknown[] = [{ type: "text", text: "prompt" }];
-    Object.defineProperty(overLimit, "tail", {
-      value: "x".repeat(999_972),
-      enumerable: true,
-    });
-    expectWireError(
-      () =>
-        buildCanonicalSystem(systemInput(overLimit), billingBlock, identity),
-      "INPUT_TOO_LARGE",
-    );
-  });
-
-  it("counts property-key size at the exact input-size boundary", () => {
-    const blockAtLimit: Record<PropertyKey, unknown> = {
-      type: "text",
-      text: "prompt",
-    };
-    blockAtLimit["k".repeat(999_975)] = true;
-    expect(
-      buildCanonicalSystem(systemInput([blockAtLimit]), billingBlock, identity),
-    ).toHaveLength(3);
-
-    const blockOverLimit: Record<PropertyKey, unknown> = {
-      type: "text",
-      text: "prompt",
-    };
-    blockOverLimit["k".repeat(999_976)] = true;
-    expectWireError(
-      () =>
-        buildCanonicalSystem(
-          systemInput([blockOverLimit]),
-          billingBlock,
-          identity,
-        ),
-      "INPUT_TOO_LARGE",
-    );
-  });
+      const blockOverLimit: Record<PropertyKey, unknown> = {
+        type: "text",
+        text: "prompt",
+      };
+      blockOverLimit["k".repeat(MAX_INPUT_SIZE - 24)] = true;
+      expectWireError(
+        () =>
+          buildCanonicalSystem(
+            systemInput([blockOverLimit]),
+            billingBlock,
+            identity,
+          ),
+        "INPUT_TOO_LARGE",
+      );
+    },
+  );
 
   it("accepts symbol-keyed extension data without treating the symbol as text", () => {
     const extension = Symbol("extension");
@@ -615,18 +634,23 @@ describe("system prompt mutation boundaries", () => {
     ).toStrictEqual({ type: "text", text: "prompt" });
   });
 
-  it("still enforces input size inside symbol-keyed extension data", () => {
-    const extension = Symbol("extension");
-    const block: Record<PropertyKey, unknown> = {
-      type: "text",
-      text: "prompt",
-      [extension]: "x".repeat(1_000_000),
-    };
-    expectWireError(
-      () => buildCanonicalSystem(systemInput([block]), billingBlock, identity),
-      "INPUT_TOO_LARGE",
-    );
-  });
+  it(
+    "still enforces input size inside symbol-keyed extension data",
+    { timeout: 60_000 },
+    () => {
+      const extension = Symbol("extension");
+      const block: Record<PropertyKey, unknown> = {
+        type: "text",
+        text: "prompt",
+        [extension]: "x".repeat(MAX_INPUT_SIZE),
+      };
+      expectWireError(
+        () =>
+          buildCanonicalSystem(systemInput([block]), billingBlock, identity),
+        "INPUT_TOO_LARGE",
+      );
+    },
+  );
 });
 
 describe("profile deep immutability", () => {

@@ -6,6 +6,56 @@ Append-only log of non-obvious maintenance decisions and their reasoning, so
 future work does not re-litigate or accidentally reverse them. Newest entries
 first. Keep entries dated, factual, and in consumer-neutral language.
 
+## 2026-09-26 - Input ceilings follow the 32 MiB API request limit (0.7.1)
+
+Context: long sessions on 1M-token models failed before fetch with
+`INPUT_TOO_LARGE (maximumSize=1000000)`. The 1,000,000-unit aggregate graph
+budget in `src/limits.ts` had no upstream provenance; the genuine client has
+no client-side cap and the Messages API accepts bodies up to 32 MB.
+
+Decisions:
+
+1. **`MAX_INPUT_SIZE = 32 * 1024 * 1024` (33,554,432).** Binary, not
+   32,000,000: of the two readings of "32 MB" it rejects less. Every walker's
+   measure (UTF-8 or UTF-16 string length plus key and scalar counts) is at
+   most the serialized size of the graph it inspects, apart from `undefined`
+   values serialization omits, so an API-acceptable request is never refused
+   locally. Measures were not unified; only the ceiling is shared.
+2. **`MAX_INPUT_ITEMS = floor(MAX_INPUT_SIZE / 10)` (3,355,443)** keeps the
+   old 100,000 : 1,000,000 ratio. Messages and content blocks each serialize
+   to well over ten bytes, so only pathological tool-input JSON (millions of
+   empty containers) can reach it before the size budget.
+3. **`MAX_COMPOSITE_SIZE = 3 * MAX_INPUT_SIZE` (100,663,296)** for graphs that
+   hold the serialized body next to other material: redaction evidence input
+   and the built-request wrapper given to the parser. Under the single
+   ceiling, evidence (normalized request plus body plus two profiles) would
+   have capped inputs near 16 MiB. The builder still never returns a request
+   its own parser rejects: evidence input is a superset of the wrapper except
+   the few hundred bytes of evidence output, and the profiles it also carries
+   are larger than that.
+4. **Size failures carry `safeDetails.maximumSize`** from every walker, not
+   only the evidence walker, so a consumer's message names the budget that
+   fired. The container ceiling reports the additive `maximumItems` instead
+   (review finding on PR #36), so the two limits stay distinguishable. The violation-offset sanitizer bound follows `MAX_INPUT_SIZE`
+   (previously 1,000,000).
+
+Measured on Node 24 (Windows, x64) with realistic sessions of tool calls and
+multi-kilobyte tool results: build ~75 ms per MiB of body, linear (1.2 MB
+body 101 ms, 5.8 MB 367 ms, 11.6 MB 749 ms, 23.2 MB 1,306 ms, 30.2 MB
+1,935 ms); parse and count-tokens are cheaper. Heap growth during a 30 MB
+build was ~113 MiB. The largest single-string build input sits 5,058 units
+under the ceiling, the room later walkers need for canonical system blocks
+and the profile.
+
+Unchanged: depth limits, cycle and prototype guards, header, identifier and
+metadata field limits. No fixture was resealed; frozen digests hold.
+
+Revert: restore `MAX_INPUT_SIZE = 1_000_000` and `MAX_ITEMS = 100_000`
+(private in `src/request-body.ts`), point `src/redaction.ts` and the parser
+wrapper back at `MAX_INPUT_SIZE`, drop `MAX_COMPOSITE_SIZE` and the added
+`maximumSize` details, and restore the test boundaries; add a dated entry
+here.
+
 ## 2026-09-25 - P1.T1/D4 diagnostic review and provenance correction
 
 The entry below overstated incident attribution and identifier coverage.

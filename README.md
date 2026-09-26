@@ -68,6 +68,10 @@ await fetch(target, {
 2. Speculative surface is not added to this package. A host that has a base URL already has a URL library; a package field would be a second way to do the same thing, with a validation and normalisation burden this package would then own.
 3. The only real consumer case observed is an origin override, which the four lines above express exactly — including the case where the base URL carries a path prefix, which a naive `baseUrl + pathname` concatenation gets wrong.
 
+## Input limits
+
+Local ceilings exist only as defensive bounds and never sit below what the Messages API accepts. A caller's input graph, the canonical body, the `system` field and the decoded body inside `parseBuiltClaudeCodeRequest` share one aggregate budget of 33,554,432 units (32 MiB, the API's 32 MB request limit in its larger binary reading); units are string lengths plus structural overhead, not serialized bytes. The canonical body also allows at most 3,355,443 objects and arrays. Graphs that carry the serialized body beside other material (redaction evidence, the built-request wrapper) get three times the budget. Nesting depth, header, identifier and metadata field limits are separate and unchanged. Exceeding a size budget raises `ClaudeCodeWireError` code `INPUT_TOO_LARGE` with `safeDetails.maximumSize` naming the budget that applied; exceeding the container ceiling raises the same code with `safeDetails.maximumItems`.
+
 ## Protocol documentation
 
 The wire contract this package pins was reverse engineered before it was

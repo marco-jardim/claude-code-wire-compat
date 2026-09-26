@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { MAX_INPUT_SIZE as MAX_SIZE } from "./limits.js";
+import {
+  MAX_INPUT_ITEMS as MAX_ITEMS,
+  MAX_INPUT_SIZE as MAX_SIZE,
+} from "./limits.js";
 
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 import { clampMaxTokens, resolveThinking } from "./thinking.js";
@@ -39,7 +42,6 @@ import {
 import { violationDetails, type ViolationPathSegment } from "./violation.js";
 
 const MAX_DEPTH = 100;
-const MAX_ITEMS = 100_000;
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const MESSAGE_KEYS = new Set(["role", "content"]);
 const CACHE_CONTROL_KEYS = new Set(["type", "ttl"]);
@@ -391,7 +393,7 @@ function inspectString(
   inKey = false,
 ): void {
   state.size += value.length;
-  if (state.size > MAX_SIZE) fail("INPUT_TOO_LARGE");
+  if (state.size > MAX_SIZE) fail("INPUT_TOO_LARGE", { maximumSize: MAX_SIZE });
   validateString?.(value);
 
   // Body prose policy (P1.T1): only a lone surrogate can fail here now, so
@@ -427,11 +429,15 @@ function inspect(
   if (state.active.has(value)) fail("CYCLIC_INPUT");
   state.active.add(value);
   state.items += 1;
-  if (state.items > MAX_ITEMS) fail("INPUT_TOO_LARGE");
+  if (state.items > MAX_ITEMS) {
+    fail("INPUT_TOO_LARGE", { maximumItems: MAX_ITEMS });
+  }
 
   if (Array.isArray(value)) {
     state.size += value.length;
-    if (state.size > MAX_SIZE) fail("INPUT_TOO_LARGE");
+    if (state.size > MAX_SIZE) {
+      fail("INPUT_TOO_LARGE", { maximumSize: MAX_SIZE });
+    }
     for (let index = 0; index < value.length; index += 1) {
       if (!hasOwn(value, String(index))) fail("INVALID_INPUT");
       path.push(index);

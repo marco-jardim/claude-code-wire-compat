@@ -126,7 +126,7 @@ describe("system-prompt (Wave 1 RED specification)", () => {
 
   it.each([
     ["lone surrogate", "bad\ud800text", "INVALID_UNICODE"],
-    ["excessive size", "x".repeat(2_000_000), "INPUT_TOO_LARGE"],
+    ["excessive size", "x".repeat(33_554_433), "INPUT_TOO_LARGE"],
   ] as const)("rejects %s", async (_name, text, code) => {
     const build = await loadWave2Function<BuildCanonicalSystem>(
       "system-prompt",
