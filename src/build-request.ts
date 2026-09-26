@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { MAX_INPUT_SIZE } from "./limits.js";
+import { MAX_COMPOSITE_SIZE, MAX_INPUT_SIZE } from "./limits.js";
 
 import { composeBetas, composeBetasWithAudit } from "./betas.js";
 import type {
@@ -287,7 +287,7 @@ function inspectString(
   return new TextEncoder().encode(value).byteLength;
 }
 
-function inspectGraph(value: unknown): void {
+function inspectGraph(value: unknown, maximumSize = MAX_INPUT_SIZE): void {
   const active = new WeakSet();
   let size = 0;
   // Mutable walk stack: pushed/popped per node and only READ (synchronously)
@@ -335,7 +335,7 @@ function inspectGraph(value: unknown): void {
       }
       active.delete(current);
     }
-    if (size > MAX_INPUT_SIZE) fail("INPUT_TOO_LARGE");
+    if (size > maximumSize) fail("INPUT_TOO_LARGE", { maximumSize });
   }
 
   visit(value, 0);
@@ -1781,7 +1781,9 @@ export function parseBuiltClaudeCodeRequest(
 ): BuiltClaudeCodeRequest {
   try {
     const pinnedProfile = validateProfile(profile);
-    inspectGraph(value);
+    // The wrapper carries the serialized body beside headers and evidence, so
+    // it gets the composite budget; the decoded body below gets the input one.
+    inspectGraph(value, MAX_COMPOSITE_SIZE);
     if (!isRecord(value)) fail();
     assertExactKeys(value, BUILT_KEYS);
     if (

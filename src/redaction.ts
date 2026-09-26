@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { MAX_INPUT_SIZE } from "./limits.js";
+import { MAX_COMPOSITE_SIZE, MAX_INPUT_SIZE } from "./limits.js";
 
 import type {
   ClaudeCodeCapabilityDecisions,
@@ -209,8 +209,10 @@ function validateInputGraph(value: unknown, encoder: TextEncoder): void {
         }
       }
 
-      if (aggregateSize > MAX_INPUT_SIZE) {
-        throw wireError("INPUT_TOO_LARGE", { maximumSize: MAX_INPUT_SIZE });
+      if (aggregateSize > MAX_COMPOSITE_SIZE) {
+        throw wireError("INPUT_TOO_LARGE", {
+          maximumSize: MAX_COMPOSITE_SIZE,
+        });
       }
     }
   } catch (error: unknown) {

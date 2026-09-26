@@ -158,7 +158,7 @@ describe("experimental body fields", () => {
     },
   );
 
-  it("retains graph and JSON validation failures", () => {
+  it("retains graph and JSON validation failures", { timeout: 60_000 }, () => {
     const withSymbol = { safe: true, [Symbol("unsafe")]: true };
     const cyclic: Record<string, unknown> = {};
     cyclic["self"] = cyclic;
@@ -200,7 +200,7 @@ describe("experimental body fields", () => {
       () =>
         build({
           ...BASE_INPUT,
-          experimentalBodyFields: { novel: "x".repeat(1_000_001) },
+          experimentalBodyFields: { novel: "x".repeat(33_554_433) },
         }),
       "INPUT_TOO_LARGE",
     );

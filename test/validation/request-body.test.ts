@@ -95,14 +95,14 @@ describe("buildCanonicalBody structural validation", () => {
     );
   });
 
-  it("rejects MAX_ITEMS overflow", () => {
-    const values = Array.from({ length: 100_001 }, () => ({}));
+  it("rejects MAX_ITEMS overflow", { timeout: 60_000 }, () => {
+    const values = Array.from({ length: 3_355_444 }, () => ({}));
     expectCode("INPUT_TOO_LARGE", () => build({ ...BASE_INPUT, values }));
   });
 
   it("rejects MAX_SIZE overflow from an array", () => {
     expectCode("INPUT_TOO_LARGE", () =>
-      build({ ...BASE_INPUT, values: new Array(1_000_001) }),
+      build({ ...BASE_INPUT, values: new Array(33_554_433) }),
     );
   });
 

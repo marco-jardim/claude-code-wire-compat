@@ -23,7 +23,10 @@ import {
   type ProfileUnderTest,
 } from "../support/profile-matrix.js";
 
-const MAX_INPUT_SIZE = 1_000_000;
+// Independent oracle for the evidence budget in src/limits.ts: three times the
+// 32 MiB input ceiling, because evidence carries both the normalized request
+// and its serialized body.
+const MAX_COMPOSITE_SIZE = 100_663_296;
 const TOKEN = "sentinel-secret-token";
 let freshImportSequence = 0;
 
@@ -258,7 +261,7 @@ function sizedInput(
   addOwnValue(input, "sharedTwo", shared);
   addOwnValue(input, "undefinedValue", undefined);
   addOwnValue(input, "padding", "");
-  const paddingLength = MAX_INPUT_SIZE - measureGraph(input) + extraBytes;
+  const paddingLength = MAX_COMPOSITE_SIZE - measureGraph(input) + extraBytes;
   expect(paddingLength).toBeGreaterThan(0);
   addOwnValue(input, "padding", "x".repeat(paddingLength));
   return input;
@@ -431,18 +434,22 @@ describeEachProfile("redaction mutation boundaries", (entry) => {
     );
   });
 
-  it("accepts exactly 1,000,000 measured bytes and rejects one more", async () => {
-    await expect(
-      buildRedactedEvidence(sizedInput(entry, 0)),
-    ).resolves.toMatchObject({
-      modelFamily: "sonnet",
-    });
-    await expectWireRejection(
-      () => buildRedactedEvidence(sizedInput(entry, 1)),
-      "INPUT_TOO_LARGE",
-      { maximumSize: MAX_INPUT_SIZE },
-    );
-  });
+  it(
+    "accepts exactly the composite budget in measured bytes and rejects one more",
+    { timeout: 60_000 },
+    async () => {
+      await expect(
+        buildRedactedEvidence(sizedInput(entry, 0)),
+      ).resolves.toMatchObject({
+        modelFamily: "sonnet",
+      });
+      await expectWireRejection(
+        () => buildRedactedEvidence(sizedInput(entry, 1)),
+        "INPUT_TOO_LARGE",
+        { maximumSize: MAX_COMPOSITE_SIZE },
+      );
+    },
+  );
 
   it("rejects cycles, symbols, custom prototypes, accessors, and missing descriptors", async () => {
     const cyclic = redactionInput(entry);

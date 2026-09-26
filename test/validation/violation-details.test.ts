@@ -62,32 +62,46 @@ async function captureError(
 
 describe("violation safeDetails end to end", () => {
   it.each([
-    [27, 140_000],
-    [34, 330_000],
-    [97, 495_000],
-  ])("roundtrips near-budget prose, code unit %s", async (unit, length) => {
-    const built = await buildClaudeCodeRequest({
-      ...BASE,
-      messages: [
-        { role: "user", content: String.fromCharCode(unit).repeat(length) },
-      ],
-    });
-    expect(parseBuiltClaudeCodeRequest(built).body).toBe(built.body);
-  });
-
-  it("rejects expanded evidence during build rather than returning an unparseable body", async () => {
-    await expect(
-      buildClaudeCodeRequest({
+    // ESC serializes as six bytes, so request plus body is ~7N against the
+    // 100,663,296 composite evidence budget; a quote serializes as two bytes
+    // (~3N); plain ASCII is bounded by the 33,554,432 input ceiling instead.
+    [27, 14_300_000],
+    [34, 33_000_000],
+    [97, 33_000_000],
+  ])(
+    "roundtrips near-budget prose, code unit %s",
+    { timeout: 120_000 },
+    async (unit, length) => {
+      const built = await buildClaudeCodeRequest({
         ...BASE,
         messages: [
-          { role: "user", content: String.fromCharCode(27).repeat(170_000) },
+          { role: "user", content: String.fromCharCode(unit).repeat(length) },
         ],
-      }),
-    ).rejects.toMatchObject({
-      code: "INPUT_TOO_LARGE",
-      safeDetails: { maximumSize: 1_000_000 },
-    });
-  });
+      });
+      expect(parseBuiltClaudeCodeRequest(built).body).toBe(built.body);
+    },
+  );
+
+  it(
+    "rejects expanded evidence during build rather than returning an unparseable body",
+    { timeout: 120_000 },
+    async () => {
+      await expect(
+        buildClaudeCodeRequest({
+          ...BASE,
+          messages: [
+            {
+              role: "user",
+              content: String.fromCharCode(27).repeat(14_500_000),
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        code: "INPUT_TOO_LARGE",
+        safeDetails: { maximumSize: 100_663_296 },
+      });
+    },
+  );
 
   it.each([
     { type: "image", source: { type: "url", url: "bad\u0000url" } },
@@ -491,7 +505,7 @@ describe("violation path formatting", () => {
 });
 
 describe("toSafeErrorDetails violation allowlist", () => {
-  it.each([-0, -1, 1.5, 1_000_001, Number.MAX_SAFE_INTEGER + 1])(
+  it.each([-0, -1, 1.5, 33_554_433, Number.MAX_SAFE_INTEGER + 1])(
     "drops out-of-budget positions: %s",
     (value) => {
       const details = toSafeErrorDetails(
@@ -504,6 +518,17 @@ describe("toSafeErrorDetails violation allowlist", () => {
       expect(details["violationTextLength"]).toBeUndefined();
     },
   );
+
+  it("keeps positions at the 33,554,432 input ceiling", () => {
+    const details = toSafeErrorDetails(
+      new ClaudeCodeWireError("INVALID_UNICODE", {
+        violationOffset: 33_554_432,
+        violationTextLength: 33_554_432,
+      }),
+    );
+    expect(details["violationOffset"]).toBe(33_554_432);
+    expect(details["violationTextLength"]).toBe(33_554_432);
+  });
 
   it.each([
     ["lone-surrogate", 0x1b],

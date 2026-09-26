@@ -62,11 +62,15 @@ describe("buildCanonicalSystem validation", () => {
     ).toThrow(expect.objectContaining({ code: "CYCLIC_INPUT" }));
   });
 
-  it("rejects input whose cumulative text is oversized", () => {
-    expect(() =>
-      buildCanonicalSystem(["x".repeat(1_000_001)], BILLING, IDENTITY),
-    ).toThrow(expect.objectContaining({ code: "INPUT_TOO_LARGE" }));
-  });
+  it(
+    "rejects input whose cumulative text is oversized",
+    { timeout: 60_000 },
+    () => {
+      expect(() =>
+        buildCanonicalSystem(["x".repeat(33_554_433)], BILLING, IDENTITY),
+      ).toThrow(expect.objectContaining({ code: "INPUT_TOO_LARGE" }));
+    },
+  );
 
   it.each([
     ["non-record entry", null],
@@ -185,15 +189,19 @@ describe("buildCanonicalSystem validation", () => {
     ).toEqual({ type: "text", text: "x" });
   });
 
-  it("rejects input whose cumulative property-key size is oversized", () => {
-    const oversizedInput: unknown = { ["x".repeat(1_000_001)]: true };
+  it(
+    "rejects input whose cumulative property-key size is oversized",
+    { timeout: 60_000 },
+    () => {
+      const oversizedInput: unknown = { ["x".repeat(33_554_433)]: true };
 
-    expect(() => {
-      Reflect.apply(buildCanonicalSystem, undefined, [
-        oversizedInput,
-        BILLING,
-        IDENTITY,
-      ]);
-    }).toThrow(expect.objectContaining({ code: "INPUT_TOO_LARGE" }));
-  });
+      expect(() => {
+        Reflect.apply(buildCanonicalSystem, undefined, [
+          oversizedInput,
+          BILLING,
+          IDENTITY,
+        ]);
+      }).toThrow(expect.objectContaining({ code: "INPUT_TOO_LARGE" }));
+    },
+  );
 });

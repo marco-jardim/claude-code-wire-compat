@@ -134,47 +134,51 @@ describe("request properties", () => {
      */
   }, 30_000);
 
-  it("rejects explicit cyclic, Unicode, depth, size, pollution, and duplicate-id cases", async () => {
-    const cyclic: Record<string, unknown> = {};
-    cyclic["self"] = cyclic;
-    const deep: Record<string, unknown> = {};
-    let cursor = deep;
-    for (let index = 0; index < 101; index += 1) {
-      const next: Record<string, unknown> = {};
-      cursor["next"] = next;
-      cursor = next;
-    }
-    const pollution = pollutionFixture();
-    const invalidValues: readonly (readonly [unknown, string])[] = [
-      [cyclic, "CYCLIC_INPUT"],
-      [deep, "INPUT_TOO_DEEP"],
-      ["\ud800", "INVALID_UNICODE"],
-      ["\udc00", "INVALID_UNICODE"],
-      ["trailing\ud800", "INVALID_UNICODE"],
-      ["trailing\udc00", "INVALID_UNICODE"],
-      ["x".repeat(10_000_001), "INPUT_TOO_LARGE"],
-      [pollution, "INVALID_INPUT"],
-    ];
-    for (const [metadata, code] of invalidValues) {
+  it(
+    "rejects explicit cyclic, Unicode, depth, size, pollution, and duplicate-id cases",
+    { timeout: 60_000 },
+    async () => {
+      const cyclic: Record<string, unknown> = {};
+      cyclic["self"] = cyclic;
+      const deep: Record<string, unknown> = {};
+      let cursor = deep;
+      for (let index = 0; index < 101; index += 1) {
+        const next: Record<string, unknown> = {};
+        cursor["next"] = next;
+        cursor = next;
+      }
+      const pollution = pollutionFixture();
+      const invalidValues: readonly (readonly [unknown, string])[] = [
+        [cyclic, "CYCLIC_INPUT"],
+        [deep, "INPUT_TOO_DEEP"],
+        ["\ud800", "INVALID_UNICODE"],
+        ["\udc00", "INVALID_UNICODE"],
+        ["trailing\ud800", "INVALID_UNICODE"],
+        ["trailing\udc00", "INVALID_UNICODE"],
+        ["x".repeat(33_554_433), "INPUT_TOO_LARGE"],
+        [pollution, "INVALID_INPUT"],
+      ];
+      for (const [metadata, code] of invalidValues) {
+        await expect(
+          Reflect.apply(buildClaudeCodeRequest, undefined, [
+            { ...base, metadata },
+          ]),
+        ).rejects.toMatchObject({ code });
+      }
       await expect(
         Reflect.apply(buildClaudeCodeRequest, undefined, [
-          { ...base, metadata },
+          {
+            ...base,
+            tools: [
+              { name: "same", inputSchema: { type: "object" } },
+              { name: "same", inputSchema: { type: "object" } },
+            ],
+          },
         ]),
-      ).rejects.toMatchObject({ code });
-    }
-    await expect(
-      Reflect.apply(buildClaudeCodeRequest, undefined, [
-        {
-          ...base,
-          tools: [
-            { name: "same", inputSchema: { type: "object" } },
-            { name: "same", inputSchema: { type: "object" } },
-          ],
-        },
-      ]),
-    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
-    expect(JSON.parse('{"key":1,"key":2}')).toEqual({ key: 2 });
-  });
+      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+      expect(JSON.parse('{"key":1,"key":2}')).toEqual({ key: 2 });
+    },
+  );
 
   /*
    * Package-extension seam invariants. `additionalBetas` is the only caller

@@ -202,12 +202,18 @@ describe("buildClaudeCodeRequest input validation", () => {
     await expectBuildCode(inputWith("metadata", nested), "INPUT_TOO_DEEP");
   });
 
-  it("rejects input larger than the graph limit", async () => {
-    await expectBuildCode(
-      inputWith("messages", [{ role: "user", content: "x".repeat(1_000_001) }]),
-      "INPUT_TOO_LARGE",
-    );
-  });
+  it(
+    "rejects input larger than the graph limit",
+    { timeout: 60_000 },
+    async () => {
+      await expectBuildCode(
+        inputWith("messages", [
+          { role: "user", content: "x".repeat(33_554_433) },
+        ]),
+        "INPUT_TOO_LARGE",
+      );
+    },
+  );
 
   it("rejects a cyclic input", async () => {
     const input = { ...validInput() } as Record<string, unknown>;

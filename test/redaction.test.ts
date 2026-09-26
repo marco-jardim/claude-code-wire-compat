@@ -203,7 +203,7 @@ describe("redaction (Wave 1 RED specification)", () => {
     ).rejects.toMatchObject({ code: "INPUT_TOO_DEEP" });
   });
 
-  it("rejects excessive aggregate size", async () => {
+  it("rejects excessive aggregate size", { timeout: 60_000 }, async () => {
     const buildRedactedEvidence =
       await loadWave2Function<BuildRedactedEvidence>(
         "redaction",
@@ -211,7 +211,7 @@ describe("redaction (Wave 1 RED specification)", () => {
       );
 
     await expect(
-      buildRedactedEvidence(evidenceInput("x".repeat(2_000_000))),
+      buildRedactedEvidence(evidenceInput("x".repeat(100_663_297))),
     ).rejects.toMatchObject({ code: "INPUT_TOO_LARGE" });
   });
 

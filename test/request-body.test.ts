@@ -187,7 +187,7 @@ describe("request-body (Wave 1 RED specification)", () => {
 
   it.each([
     ["excessive depth", nestedObject(200), "INPUT_TOO_DEEP"],
-    ["excessive size", "x".repeat(2_000_000), "INPUT_TOO_LARGE"],
+    ["excessive size", "x".repeat(33_554_433), "INPUT_TOO_LARGE"],
     ["non-finite NaN", Number.NaN, "INVALID_INPUT"],
     ["non-finite Infinity", Number.POSITIVE_INFINITY, "INVALID_INPUT"],
     ["lone surrogate", "\ud800", "INVALID_UNICODE"],
