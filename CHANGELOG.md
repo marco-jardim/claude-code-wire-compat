@@ -61,7 +61,7 @@ Building also budgets evidence containing both the serialized body and the
 normalized request. The input-only cap is therefore not a promise that every
 request below it will fit later aggregate budgets; these caps are unchanged.
 
-## [0.6.0] - 2026-09-23
+## [0.6.0] - 2026-09-24
 
 ### Breaking
 
@@ -102,6 +102,12 @@ request below it will fit later aggregate budgets; these caps are unchanged.
   `BuiltClaudeCodeRequest` persisted under the old default and parsed unpinned
   after upgrading is rejected with `ClaudeCodeWireError` code `INVALID_INPUT`.
 
+  Pinning restores the previous profile's data, not every byte it used to
+  produce. Three behaviours in this release are shared by every profile, the
+  previous pin included, and pinning does not undo them: the model-id
+  normalizer rungs and the extended-thinking budget floor and caller-type guard
+  (both under Fixed), and the `tool_choice` `any` demotion (under Changed).
+
 - **`ClaudeCodeCapabilities` gains two required booleans**,
   `midConvToolChange` and `perTurnEffort`. Because
   `ClaudeCodeCapabilityDecisions` is keyed off that type,
@@ -119,8 +125,8 @@ request below it will fit later aggregate budgets; these caps are unchanged.
   new keys. The parser requires the decisions record to carry exactly the
   expected key set and reads both new booleans as mandatory. Re-build those
   requests, or keep parsing them with 0.5.0. The rollback snippet above
-  restores bytes for new builds; it does not restore parseability of
-  artefacts persisted before this version.
+  restores the previous profile for new builds; it does not restore
+  parseability of artefacts persisted before this version.
 
 ### Added
 
@@ -152,6 +158,15 @@ request below it will fit later aggregate budgets; these caps are unchanged.
 - **`cacheDiagnosisEnabled` is `true` for the 2.1.280 profile.** The 2.1.233
   profile is deliberately unchanged: whether its `false` was always wrong
   cannot be settled without that release's binary.
+- **`tool_choice` of type `any` is demoted to `{type:"auto"}` while extended
+  thinking is active**, on every profile, alongside the existing `tool`
+  demotion. Upstream demotes only `tool`; this is a deliberate, recorded
+  divergence (2.1.280 analysis §6.6 amendment, `MEMORY.md` 2026-09-24)
+  because the Messages API rejects forced tool use under extended thinking.
+  A caller that previously received an HTTP 400 for `any` under thinking now
+  gets an `auto` request; `disable_parallel_tool_use` on the demoted `any` is
+  dropped, as it already was for `tool`. `auto`/`none`, and `any` with
+  thinking inactive, are unchanged. No sealed fixture or frozen digest moved.
 
 ### Removed
 
@@ -185,6 +200,33 @@ request below it will fit later aggregate budgets; these caps are unchanged.
   emitted thinking object from a budgeted one to an adaptive one. The ids
   concerned are not in that pin's own model catalogue, so this affects only a
   caller naming a model that release never shipped.
+
+- **The extended-thinking budget follows the transcribed upstream
+  computation.** When the emitted `thinking` block is `enabled`,
+  `budget_tokens` now has a floor of 1024, applied after the clamp to
+  `max_tokens` minus one, so the floor wins when the two conflict; a small
+  `max_tokens` previously produced a budget of zero or a negative number that
+  no client sends. The caller's `budgetTokens` is now honoured only when the
+  caller itself declared an `enabled` request: an `adaptive` request downgraded
+  to `enabled` on a model without adaptive thinking now uses the default budget
+  (the model's upper limit minus one, then clamped and floored) instead of its
+  own.
+
+  Compatibility: only the 2.1.280 analysis transcribes this computation, so the
+  floor and the guard are evidenced for the newest pin only. They are applied
+  to every profile as one shared behaviour rather than gated, because gating
+  would assert that older clients lacked them. Under every pin, `budget_tokens`
+  therefore changes for an `enabled` block whose clamped budget was below 1024,
+  including a caller `budgetTokens` below 1024, and for a downgraded `adaptive`
+  request that carried a budget. No sealed fixture or frozen digest moved.
+
+- **`isAdaptiveThinkingModel` covers every catalogue-adaptive id.** It was a
+  union of six named predicates and answered `false` for `claude-opus-5`,
+  `claude-opus-5-5` and `claude-sonnet-5`, while the builder emitted an
+  adaptive `thinking` block for the same model. The omission predates this
+  release: two of those ids are catalogued adaptive in the 2.1.233 pin as
+  well. The union now covers every id any pinned profile's catalogue marks
+  `adaptive_thinking`. No new symbol is exported from the entry point.
 
 ## [0.5.0] - 2026-08-16
 

@@ -167,8 +167,9 @@ A reader re-deriving any claim here must confirm the offset, not the name.
   or `mid_conv_tool_change`, and `thinking-binding-controls-2026-08-01` did not
   exist, so none of the three newly-required push sites can fire for that
   profile (§7.6.3). The gap described in §7.6 is specific to 2.1.280.
-- The `tool_choice` demotion is byte-for-byte the behaviour this package
-  already implements (§6.6).
+- The `tool_choice` demotion was byte-for-byte the behaviour this package
+  already implemented (§6.6); since 2026-09-24 the package also demotes
+  `type === "any"`, a recorded divergence (§6.6 amendment, `MEMORY.md`).
 - The `redact_thinking` five-conjunct guard this package ports is confirmed
   correct against upstream's own composition (§7.5).
 
@@ -1076,6 +1077,15 @@ Only `type === "tool"` is demoted; `type === "any"` is **not** handled here. Thi
 matches this package's implementation exactly, including the omission. The
 behaviour predates Opus 5.5 and is therefore not a mitigation *for* it, though
 Opus 5.5 does reject both `any` and `tool` server-side `[EXT-3]`.
+
+> **Amendment (2026-09-24):** the "matches this package's implementation
+> exactly, including the omission" sentence above no longer holds. Since
+> 2026-09-24 the package also demotes `type === "any"` to `{type:"auto"}` under
+> the same condition, on every profile, as a deliberate divergence from the
+> transcription above, which is left as read: the Messages API rejects forced
+> tool use whenever extended thinking is on (a documented constraint, cited in
+> `MEMORY.md`), not only on Opus 5.5 `[EXT-3]`. See `MEMORY.md`, entry dated
+> 2026-09-24.
 
 ### 6.7 `thinking_disabled_effort_cap` clamps, it does not refuse
 
@@ -2177,7 +2187,7 @@ any one of them without the other two writes bytes no genuine client sends.
 | `thinking.display: "updates"` (§6.4)                            | behaviour | **emit** on the pinned first-party path, under the same guard as `THINKING_DISPLAY_UPDATES`. `ThinkingDisplay` gains `"updates"` as a third member — injected by the builder, not offered to callers, since a caller-supplied display suppresses the branch entirely |
 | `thinking.block_binding` (§6.3)                                 | —         | do **not** emit; `Rx` is `undefined` unless `CLAUDE_CODE_POLISHED_DEWDROP` or the remote flag `tengu_polished_dewdrop` is set. The *beta* is still emitted (§13.5); only the body field is withheld |
 | `"highlights"` as a fourth display value (§6.4)                 | —         | do not add to `ThinkingDisplay`. It *is* caller-reachable upstream (`Vg` passes `r.display==="highlights"` through, and §7.7 carries a server-refusal latch for it), so the reason is scope, not impossibility: this package models no retry, and a value whose only documented handling is a rejection ladder cannot be offered safely |
-| `tool_choice` demotion (§6.6)                                   | —         | already correct, no change                                              |
+| `tool_choice` demotion (§6.6)                                   | —         | `tool` demotion already correct; `any` demotion added 2026-09-24 as a recorded divergence (§6.6 amendment) |
 | `redact_thinking` removal (§7.5)                                | behaviour | **changed.** The existing `!thinkingDisplayActive` guard reproduces upstream's *first* removal, which keys off a caller-supplied display. Upstream has a *second* removal keyed off its own `"updates"` injection (byte 13604689), and that is the one that fires on the pinned path. The package must drop `redact-thinking-2026-02-12` from the composed set whenever it injects `display: "updates"` |
 | `context_management` first-party override (§7.1)                | —         | pre-existing divergence, recorded, **not** changed in this port         |
 | `np` / served-capability path in `wRt` (§13.4)                  | —         | **new divergence, recorded not ported.** `gq` (byte 7846777) can return true for a model the static catalogue does not declare, via the remote client-data cache `nNn` (byte 7207706). A package with no remote read cannot reproduce it, and at defaults that cache is empty, so the emitted header is unaffected |

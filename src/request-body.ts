@@ -1954,9 +1954,15 @@ export function buildCanonicalBody(
       result["output_format"] = nullable(item, outputFormat);
     else if (key === "toolChoice") {
       const validatedToolChoice = toolChoice(item);
+      // Upstream demotes only `tool` here. This package deliberately also
+      // demotes `any`: the Messages API rejects every forced tool choice while
+      // extended thinking is on, so passing `any` through could only produce
+      // an HTTP 400. Shared by every profile; see `MEMORY.md`, 2026-09-24.
+      const forcedToolChoice =
+        validatedToolChoice["type"] === "tool" ||
+        validatedToolChoice["type"] === "any";
       result["tool_choice"] =
-        validatedToolChoice["type"] === "tool" &&
-        resolved.extendedThinkingActive
+        forcedToolChoice && resolved.extendedThinkingActive
           ? { type: "auto" }
           : validatedToolChoice;
     } else if (key === "topP") result["top_p"] = requireNumber(item);

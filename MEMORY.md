@@ -730,3 +730,58 @@ Decisions:
    that was actually read, with the consequence recorded here and pinned by a
    test. Settling which answer the genuine 2.1.233 client gives needs that
    release's binary.
+
+## 2026-09-24 — `tool_choice` of type `any` is demoted under extended thinking
+
+Context: upstream demotes a forced `tool_choice` to `{type:"auto"}` while
+extended thinking is active, but only for `type:"tool"`. The transcription is
+in `docs/protocol/versions/claude-code-2.1.280-analysis.md` §6.6 (`[BIN]` byte
+13604689), and until this entry the package matched it exactly, omission
+included. Anthropic's extended-thinking documentation
+(`https://docs.claude.com/en/docs/build-with-claude/extended-thinking`,
+section "Extended thinking with tool use"; quoted verbatim in
+`run-llama/llama_index#19641` and `vercel/ai#9351`, retrieved 2026-09-24)
+states: "Tool use with thinking only supports tool_choice: {"type": "auto"}
+(the default) or tool_choice: {"type": "none"}. Using tool_choice:
+{"type": "any"} or tool_choice: {"type": "tool", "name": "..."} will result
+in an error because these options force tool use, which is incompatible
+with extended thinking." The API's error text is "Thinking may not be
+enabled when tool_choice forces tool use". That is a general Messages API
+constraint, not an Opus 5.5 rule; it is cited here rather than added to the
+analysis document's `[EXT-n]` registry, which stays at four. The same
+analysis records that Opus 5.5 rejects both server-side `[EXT-3]`. A
+caller-supplied `any` under active thinking could therefore only ever produce
+an HTTP 400.
+
+Decisions:
+
+1. **`any` is demoted too, knowingly diverging from the transcribed code.**
+   In `src/request-body.ts` the demotion condition now reads type `tool` or
+   type `any`, gated on the same `extendedThinkingActive` signal as before, and
+   emits the same bare `{type:"auto"}`, so any `disable_parallel_tool_use` on
+   the caller's `any` is dropped exactly as it already was for `tool`. Faithful
+   bytes that the server is guaranteed to reject buy no indistinguishability;
+   they only turn a recoverable request into a failed one. `auto` and `none`
+   are never altered, and `any` is preserved verbatim whenever extended
+   thinking is inactive. `test/validation/thinking-contract.test.ts` pins all
+   of it, including `claude-opus-5-5` with thinking omitted and with thinking
+   requested disabled, where `rejects_disabled_thinking` makes extended
+   thinking active.
+2. **It is shared behaviour on every profile, not a behaviour flag.** The API
+   constraint is not version-dependent, so gating it per profile would encode
+   a difference no release actually has.
+3. **Digests and seal are unmoved.** No sealed fixture and no packed-consumer
+   canary carries `tool_choice`; on this change `npm run fixtures:check`
+   reported `sealed=ok` and `npm run test:pack` matched all three frozen
+   digests.
+
+Revert: in `src/request-body.ts` delete the `forcedToolChoice` constant and
+its comment and restore the condition
+`validatedToolChoice["type"] === "tool" && resolved.extendedThinkingActive`;
+restore the two comments in `src/thinking.ts` (the `extendedThinkingActive`
+doc comment and the note above its computation); delete the describe
+"forced tool choice demotion of any" in
+`test/validation/thinking-contract.test.ts`; amend the §6.6 amendment, the
+§2 summary bullet and the §13 row of
+`docs/protocol/versions/claude-code-2.1.280-analysis.md` again with the
+revert date; and add a new dated entry here — this log is append-only.
