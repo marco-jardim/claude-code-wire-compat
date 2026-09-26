@@ -16,6 +16,7 @@ import {
   type HeaderPair,
 } from "../../src/contracts.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
+import { parseBuiltClaudeCodeRequest } from "../../src/index.js";
 import {
   expectModuleUnimplemented,
   loadWave2Function,
@@ -105,27 +106,26 @@ describe("security/core-adversarial (Wave 1 RED specification)", () => {
     );
   });
 
-  // NUL is meaningless in every position and stays rejected everywhere.
-  it("rejects NUL injection across string-bearing positions", async () => {
+  /*
+   * P1.T1 split: NUL is body prose in message text, system blocks and tool
+   * descriptions, but
+   * it stays rejected in every position that reaches a header, an identity
+   * field or a metadata identifier — those lanes keep their own strict rules
+   * independent of the graph screen.
+   */
+  it("rejects NUL injection in header, identity and metadata positions", async () => {
     const injection = "\u0000";
     const build = await loadWave2Function<BuildRequest>(
       "build-request",
       "buildClaudeCodeRequest",
     );
     const hostileValues: readonly Record<string, unknown>[] = [
-      { ...baseInput(), accessToken: `token${injection}` },
       { ...baseInput(), model: `claude-sonnet-4-5${injection}` },
       {
         ...baseInput(),
-        messages: [{ role: "user", content: `text${injection}` }],
+        tools: [{ name: `tool${injection}`, input_schema: {} }],
       },
-      { ...baseInput(), system: [`system${injection}`] },
-      {
-        ...baseInput(),
-        tools: [
-          { name: `tool${injection}`, description: "x", input_schema: {} },
-        ],
-      },
+      { ...baseInput(), accessToken: `token${injection}` },
       { ...baseInput(), metadata: { value: `metadata${injection}` } },
       {
         ...baseInput(),
@@ -137,6 +137,32 @@ describe("security/core-adversarial (Wave 1 RED specification)", () => {
     ];
     for (const hostile of hostileValues)
       await expect(build(hostile)).rejects.toThrow();
+  });
+
+  it("accepts NUL in prose without relaxing model or tool identifiers", async () => {
+    const injection = "\u0000";
+    const build = await loadWave2Function<BuildRequest>(
+      "build-request",
+      "buildClaudeCodeRequest",
+    );
+    const proseValues: readonly Record<string, unknown>[] = [
+      {
+        ...baseInput(),
+        messages: [{ role: "user", content: `text${injection}` }],
+      },
+      { ...baseInput(), system: [`system${injection}`] },
+      {
+        ...baseInput(),
+        tools: [
+          { name: "tool", description: `x${injection}`, input_schema: {} },
+        ],
+      },
+    ];
+    for (const prose of proseValues) {
+      const built = await build(prose);
+      expect(built.body.length).toBeGreaterThan(0);
+      expect(parseBuiltClaudeCodeRequest(built).body).toBe(built.body);
+    }
   });
 
   /*

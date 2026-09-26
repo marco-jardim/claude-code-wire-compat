@@ -81,6 +81,8 @@ function capabilities(
 }
 
 describe("request body inspection mutation boundaries", () => {
+  // P1.T1: the C0/DEL set below was rejected with INVALID_INPUT before the
+  // body-prose relaxation; every well-formed scalar is now accepted verbatim.
   it.each([
     ["nul", "\u0000"],
     ["backspace boundary", "\u0008"],
@@ -89,11 +91,10 @@ describe("request body inspection mutation boundaries", () => {
     ["shift out boundary", "\u000e"],
     ["unit separator boundary", "\u001f"],
     ["delete", "\u007f"],
-  ])("rejects the %s control character", (_name, content) => {
-    expectWireCode(
-      () => build({ maxTokens: 1, messages: [{ role: "user", content }] }),
-      "INVALID_INPUT",
-    );
+  ])("accepts the %s control character as body prose", (_name, content) => {
+    expect(
+      build({ maxTokens: 1, messages: [{ role: "user", content }] }),
+    ).toMatchObject({ messages: [{ role: "user", content }] });
   });
 
   it.each(["\u0009", "\u000a", "\u000d", "\u0020", "\u007e"])(

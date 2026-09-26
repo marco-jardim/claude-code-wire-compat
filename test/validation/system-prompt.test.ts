@@ -48,10 +48,10 @@ describe("buildCanonicalSystem validation", () => {
     );
   });
 
-  it("rejects a forbidden control character", () => {
-    expect(() =>
-      buildCanonicalSystem(["invalid\u0001text"], BILLING, IDENTITY),
-    ).toThrow(expect.objectContaining({ code: "INVALID_UNICODE" }));
+  it("accepts a control character as body prose (P1.T1)", () => {
+    expect(
+      buildCanonicalSystem(["invalid\u0001text"], BILLING, IDENTITY)[2],
+    ).toEqual({ type: "text", text: "invalid\u0001text" });
   });
 
   it("rejects a cyclic input graph", () => {

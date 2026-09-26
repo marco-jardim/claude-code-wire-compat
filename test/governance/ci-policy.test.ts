@@ -124,6 +124,104 @@ describe("CI policy", () => {
     expect(publish).toContain("--tag latest");
   });
 
+  it("requires a read-only manifest gate on the same tarball before publication", () => {
+    const steps = publish.split(/\n {6}- /u);
+    const pack = steps.findIndex((step) => step.includes("id: pack"));
+    const gate = steps.findIndex((step) =>
+      step.includes("run: node scripts/verify-release-manifest.mjs"),
+    );
+    const upload = steps.findIndex((step) =>
+      step.includes("gh release upload"),
+    );
+    const publishIndex = steps.findIndex((step) =>
+      step.includes('npm publish "$TARBALL"'),
+    );
+    expect(pack).toBeGreaterThan(0);
+    expect(gate).toBe(pack + 1);
+    expect(publishIndex).toBe(gate + 1);
+    expect(upload).toBeGreaterThan(publishIndex);
+    const gateSource = steps[gate] ?? "";
+    const activeStep = (source: string) =>
+      source
+        .split("\n")
+        .filter((line) => line.trim() && !line.trim().startsWith("#"))
+        .join("\n")
+        .trim();
+    expect(activeStep(gateSource)).toBe(
+      [
+        "name: Verify the packed tarball against the reviewed release manifest",
+        "        env:",
+        "          TARBALL: ${{ steps.pack.outputs.tarball }}",
+        "        shell: bash",
+        '        run: node scripts/verify-release-manifest.mjs "$TARBALL"',
+      ].join("\n"),
+    );
+    expect(activeStep(steps[publishIndex] ?? "")).toBe(
+      [
+        "name: Publish with npm provenance",
+        "        env:",
+        "          NPM_CONFIG_PROVENANCE: true",
+        "        shell: bash",
+        "        run: |",
+        `          VERSION="$(node -p "require('./package.json').version")"`,
+        '          TARBALL="${{ steps.pack.outputs.tarball }}"',
+        '          if [[ "$VERSION" == *-* ]]; then',
+        '            npm publish "$TARBALL" --access public --tag beta',
+        "          else",
+        '            npm publish "$TARBALL" --access public --tag latest',
+        "          fi",
+      ].join("\n"),
+    );
+    expect(activeStep(steps[upload] ?? "")).toBe(
+      [
+        "name: Attach the packed tarball to the GitHub release",
+        "        if: github.event_name == 'release'",
+        "        env:",
+        "          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}",
+        "        shell: bash",
+        "        run: |",
+        '          gh release upload "${{ github.event.release.tag_name }}" \\',
+        '            "${{ steps.pack.outputs.tarball }}" --clobber',
+      ].join("\n"),
+    );
+    expect(gateSource).toContain("TARBALL: ${{ steps.pack.outputs.tarball }}");
+    expect(
+      gateSource.split("\n").filter((line) => /^\s*run:/u.test(line)),
+    ).toEqual([
+      '        run: node scripts/verify-release-manifest.mjs "$TARBALL"',
+    ]);
+    expect(gateSource).not.toMatch(/(?:if:|continue-on-error)/u);
+    const publishSource = steps[publishIndex] ?? "";
+    expect(publishSource).toContain(
+      'TARBALL="${{ steps.pack.outputs.tarball }}"',
+    );
+    expect(publishSource.match(/TARBALL=/gu)).toHaveLength(1);
+    expect(steps[upload]).toContain(
+      '"${{ steps.pack.outputs.tarball }}" --clobber',
+    );
+    const active = publish
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("#"));
+    expect(
+      active.filter((line) => line.includes("npm pack --silent")),
+    ).toHaveLength(1);
+    expect(active.join("\n")).not.toMatch(
+      /release-manifests\/|--write|--update|git commit|git push/u,
+    );
+  });
+
+  it("excludes approval manifests and verification scripts from package contents", () => {
+    const pkg = JSON.parse(packageJson) as { files: string[] };
+    expect(pkg.files).toEqual([
+      "dist",
+      "src",
+      "README.md",
+      "LICENSE",
+      "NOTICE",
+      "CHANGELOG.md",
+    ]);
+  });
+
   it("authenticates publication with OIDC rather than a long-lived token", () => {
     // npm trusted publishing is configured on npmjs.com against this repository
     // and `publish.yml`. The npm CLI only attempts the OIDC exchange when no

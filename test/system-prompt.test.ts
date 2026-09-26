@@ -125,8 +125,6 @@ describe("system-prompt (Wave 1 RED specification)", () => {
   });
 
   it.each([
-    ["control character", "bad\u0001text", "INVALID_UNICODE"],
-    ["NUL", "bad\u0000text", "INVALID_UNICODE"],
     ["lone surrogate", "bad\ud800text", "INVALID_UNICODE"],
     ["excessive size", "x".repeat(2_000_000), "INPUT_TOO_LARGE"],
   ] as const)("rejects %s", async (_name, text, code) => {

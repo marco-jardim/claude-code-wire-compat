@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { MAX_INPUT_SIZE } from "./limits.js";
+
 import type {
   ClaudeCodeRuntimeIdentity,
   SystemInput,
   TextBlock,
 } from "./contracts.js";
 import { ClaudeCodeWireError } from "./contracts.js";
-import { classifySurrogateAt } from "./unicode.js";
+import { inspectText, TEXT_POLICY_PROSE } from "./unicode.js";
+import { violationDetails, type ViolationPathSegment } from "./violation.js";
 
 /**
  * The pinned identity text, byte-exact.
@@ -26,7 +29,6 @@ import { classifySurrogateAt } from "./unicode.js";
 export const IDENTITY_TEXT =
   "You are Claude Code, Anthropic's official CLI for Claude.";
 const MAX_INPUT_DEPTH = 64;
-const MAX_INPUT_SIZE = 1_000_000;
 type UnknownRecord = Readonly<Record<PropertyKey, unknown>>;
 
 function fail(
@@ -36,38 +38,34 @@ function fail(
     | "INPUT_TOO_DEEP"
     | "INPUT_TOO_LARGE"
     | "CYCLIC_INPUT",
+  safeDetails: Readonly<Record<string, string | number | boolean>> = {},
 ): never {
-  throw new ClaudeCodeWireError(code);
+  throw new ClaudeCodeWireError(code, safeDetails);
 }
 
-function validateText(text: string): void {
-  for (let index = 0; index < text.length; index += 1) {
-    const codeUnit = text.charCodeAt(index);
-
-    if (
-      codeUnit === 0 ||
-      (codeUnit < 0x20 &&
-        codeUnit !== 0x09 &&
-        codeUnit !== 0x0a &&
-        codeUnit !== 0x0d) ||
-      (codeUnit >= 0x7f && codeUnit <= 0x9f)
-    ) {
-      fail("INVALID_UNICODE");
-    }
-
-    const classification = classifySurrogateAt(text, index);
-    if (classification === "loneSurrogate") fail("INVALID_UNICODE");
-    if (classification === "surrogatePair") index += 1;
+function validateText(
+  text: string,
+  path: readonly ViolationPathSegment[],
+  inKey: boolean,
+): void {
+  // Body prose policy (P1.T1): the system field follows the same rule as
+  // every other body lane — only lone surrogates are rejected.
+  const violation = inspectText(text, TEXT_POLICY_PROSE);
+  if (violation !== null) {
+    fail(
+      "INVALID_UNICODE",
+      violationDetails(violation, path, text.length, inKey),
+    );
   }
 }
 
 function isUnknownRecord(value: unknown): value is UnknownRecord {
   return value !== null && typeof value === "object";
 }
-
 function validateStructure(value: unknown): void {
   const ancestors = new WeakSet();
   let size = 0;
+  const path: ViolationPathSegment[] = ["system"];
 
   function visit(current: unknown, depth: number): void {
     if (depth > MAX_INPUT_DEPTH) fail("INPUT_TOO_DEEP");
@@ -75,7 +73,7 @@ function validateStructure(value: unknown): void {
     if (typeof current === "string") {
       size += current.length;
       if (size > MAX_INPUT_SIZE) fail("INPUT_TOO_LARGE");
-      validateText(current);
+      validateText(current, path, false);
       return;
     }
 
@@ -84,12 +82,22 @@ function validateStructure(value: unknown): void {
 
     ancestors.add(current);
     for (const key of Reflect.ownKeys(current)) {
+      // Only ARRAY indices become numeric segments (QA F1/F4); object keys
+      // stay strings and digits inside them render as `*`.
+      const segment: ViolationPathSegment =
+        typeof key !== "string"
+          ? "*"
+          : Array.isArray(current) && /^(?:0|[1-9]\d{0,5})$/u.test(key)
+            ? Number(key)
+            : key;
+      path.push(segment);
       if (typeof key === "string") {
         size += key.length;
         if (size > MAX_INPUT_SIZE) fail("INPUT_TOO_LARGE");
-        validateText(key);
+        validateText(key, path, true);
       }
       visit(current[key], depth + 1);
+      path.pop();
     }
     ancestors.delete(current);
   }

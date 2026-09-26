@@ -2,6 +2,65 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0-rc.1]
+
+### Breaking
+
+- **Body prose now accepts every well-formed UTF-16 string.** The graph
+  screeners (`src/build-request.ts`, `src/request-body.ts`,
+  `src/system-prompt.ts`) no longer reject C0 control characters (TAB/LF/CR
+  were already allowed), DEL or the C1 range in body text — message content,
+  `tool_result` content, `tool_use` input, tool descriptions and the `system`
+  field. Lone surrogates remain rejected: raw UTF-8 encoding replaces them,
+  whereas JSON serialization escapes them. Neither is valid scalar text.
+
+  This was a library-local defensive policy with no upstream provenance, and
+  synthetic tool-output probes reproduced local rejection of ESC (ANSI colour),
+  NUL, FF and DEL before fetch. The original incident's exact input remains
+  unknown. The system field's stricter C1
+  rule (U+0085 accepted in a message but rejected in `system`) was the same
+  defect in asymmetric form.
+
+  Bytes for every input accepted before this change are unchanged; no golden
+  fixture or digest was resealed. Headers, metadata identifiers and runtime
+  identity fields keep their strict rules unchanged. Model and tool identifiers
+  retain control screening; header/beta error codes remain compatible with 0.6.0.
+
+  Consumers that relied on the library to scrub control characters must now
+  do so at their own display boundary. A request the remote API rejects now
+  surfaces as a remote error instead of a local pre-flight abort.
+
+  Rollback: pin `0.6.0`, or pre-sanitize content in the consumer.
+
+### Added
+
+- Unicode failures carry safe, additive `violationReason`, `violationPath`,
+  `violationOffset`, `violationCodeUnit`, `violationTextLength` and
+  `violationInKey` details through the public builder and error sanitizer.
+  Dynamic user keys are masked, paths are capped at segment boundaries, and
+  numeric diagnostics are bounded. No caller text excerpts are included.
+- The three body walkers share an internal text validator. These helpers and
+  policy presets are not new public exports. `classifySurrogateAt` remains the
+  single surrogate authority.
+
+The input graph budget counts UTF-8 string bytes and structural overhead, not
+serialized JSON size. A control character may require six JSON bytes. Callers
+must not treat this budget as a serialized request-size guarantee.
+
+### Fixed
+
+- Parsing built requests now screens decoded JSON strings as well as the
+  serialized wrapper, rejecting escaped lone surrogates and controls in
+  non-prose wire roots. Standalone internal inspectors report paths relative
+  to their input when no root hint is supplied.
+- Opaque image/file/URL data, thinking signatures, redacted-thinking data and
+  search-result source identifiers retain control screening; document plain
+  text remains prose. Unknown diagnostic subtrees remain masked recursively.
+
+Building also budgets evidence containing both the serialized body and the
+normalized request. The input-only cap is therefore not a promise that every
+request below it will fit later aggregate budgets; these caps are unchanged.
+
 ## [0.6.0] - 2026-09-24
 
 ### Breaking

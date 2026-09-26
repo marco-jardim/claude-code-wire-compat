@@ -56,8 +56,7 @@ async function expectRejection(input: unknown, code: string): Promise<void> {
 }
 
 describe("additionalBetas injection surface", () => {
-  // The controls that carry no meaning in any position are still stopped by the
-  // input-graph screen, before header assembly, exactly as before.
+  // Beta identifiers retain their original graph-screening error codes.
   it.each([
     ["NUL byte", "evil-beta\u0000"],
     ["DEL", "evil-beta\u007f"],

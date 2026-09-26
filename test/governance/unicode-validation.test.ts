@@ -14,10 +14,9 @@ function typescriptSourceFiles(directory: string): readonly string[] {
 }
 
 const sourcePaths = typescriptSourceFiles(join(root, "src"));
-const guardedModules = [
+const sharedGuardModules = ["metadata.ts", "redaction.ts"] as const;
+const sharedValidatorModules = [
   "build-request.ts",
-  "metadata.ts",
-  "redaction.ts",
   "system-prompt.ts",
   "request-body.ts",
 ] as const;
@@ -34,7 +33,7 @@ describe("Unicode validation governance", () => {
     }
   });
 
-  it.each(guardedModules)(
+  it.each(sharedGuardModules)(
     "uses the NaN-safe shared guard in src/%s",
     (module) => {
       const unicodeSource = readFileSync(
@@ -46,6 +45,31 @@ describe("Unicode validation governance", () => {
       const source = readFileSync(join(root, "src", module), "utf8");
       expect(source).toContain(
         'import { classifySurrogateAt } from "./unicode.js";',
+      );
+    },
+  );
+
+  it.each(sharedValidatorModules)(
+    "routes text screening through the shared validator in src/%s",
+    (module) => {
+      const unicodeSource = readFileSync(
+        join(root, "src", "unicode.ts"),
+        "utf8",
+      );
+      // The single surrogate authority keeps its NaN-safe shape, and the
+      // shared validator is the only caller these modules need.
+      expect(unicodeSource).toContain(">= 0xdc00 &&");
+      expect(unicodeSource.split("export function inspectText(")[1]).toMatch(
+        /classifySurrogateAt\(value,\s*index\)/u,
+      );
+
+      const source = readFileSync(join(root, "src", module), "utf8");
+      expect(source).toContain('from "./unicode.js"');
+      expect(source).toMatch(/inspectText\(\s*(?:value|text),/u);
+      // No open-coded surrogate classification outside src/unicode.ts: the
+      // hex boundaries are the signature of a re-implemented guard.
+      expect(source).not.toMatch(
+        /0xd800|0xdbff|0xdc00|0xdfff|\\u\{?[dD][89a-fA-F]|\bisWellFormed\b|\b(?:55296|56319|56320|57343)\b/iu,
       );
     },
   );

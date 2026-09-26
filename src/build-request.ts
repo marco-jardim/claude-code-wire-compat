@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { MAX_INPUT_SIZE } from "./limits.js";
+
 import { composeBetas, composeBetasWithAudit } from "./betas.js";
 import type {
   BuiltClaudeCodeCountTokensRequest,
@@ -40,11 +42,15 @@ import {
 import { sha256Hex } from "./sha256.js";
 import { buildCanonicalSystem, IDENTITY_TEXT } from "./system-prompt.js";
 import { isThinkingActive, isThinkingDisplayActive } from "./thinking.js";
-import { classifySurrogateAt } from "./unicode.js";
+import {
+  inspectText,
+  TEXT_POLICY_IDENTIFIER,
+  TEXT_POLICY_PROSE,
+} from "./unicode.js";
+import { violationDetails, type ViolationPathSegment } from "./violation.js";
 
 const METHOD = "POST";
 const MAX_INPUT_DEPTH = 100;
-const MAX_INPUT_SIZE = 1_000_000;
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const INPUT_KEYS = new Set([
   "accessToken",
@@ -200,8 +206,9 @@ type UnknownRecord = Readonly<Record<string, unknown>>;
 
 function fail(
   code: ConstructorParameters<typeof ClaudeCodeWireError>[0] = "INVALID_INPUT",
+  safeDetails: Readonly<Record<string, string | number | boolean>> = {},
 ): never {
-  throw new ClaudeCodeWireError(code);
+  throw new ClaudeCodeWireError(code, safeDetails);
 }
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -231,39 +238,51 @@ function assertExactKeys(
 /**
  * Screens one string from the caller's input graph.
  *
- * TAB (0x09), LF (0x0A) and CR (0x0D) are ALLOWED. This function walks the
- * whole input graph, which is overwhelmingly BODY content — message text,
- * system blocks, tool descriptions — where a line break is ordinary prose that
- * `JSON.stringify` escapes on the way out. Rejecting them here made the package
- * unusable for real traffic: no genuine prompt is a single line.
+ * BODY PROSE POLICY (decision P1.T1, 2026-09-25): every well-formed UTF-16
+ * string is accepted. Control characters are valid Unicode scalars;
+ * `JSON.stringify` escapes the C0 range and emits DEL/C1 raw, and
+ * `TextEncoder` encodes every scalar deterministically, so no control
+ * character can desync the body from its hash. Real tool output legitimately
+ * carries ESC (ANSI colour), NUL, FF and DEL; synthetic probes reproduced
+ * rejection before fetch, not the original incident's exact input. The old rule was a
+ * library-local defensive heuristic with no upstream provenance; whether the
+ * remote API rejects any scalar is a remote concern, surfaced as a remote
+ * error, not a local pre-flight abort.
  *
- * The strict rule those three characters used to be caught by is a HEADER rule,
- * and it still lives where it belongs and still applies in full:
- * `assertHeaderText` in `src/headers.ts` rejects every control character,
- * including these three, because a bare LF in a header is request smuggling.
- * `src/metadata.ts` is likewise unchanged: `user_id` and metadata keys are
- * identifiers that travel as JSON inside a header, not prose.
+ * What did NOT move:
  *
- * Every other C0 control (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F) and DEL (0x7F)
- * stay rejected: they have no meaning in prompt text and are a reliable signal
- * of a corrupted or hostile input.
- *
- * LONE SURROGATES stay rejected in every context, deliberately. `TextEncoder`
- * silently replaces them with U+FFFD, so an unpaired surrogate would corrupt
- * the body — and the body hash recorded in evidence — with no error anywhere.
+ * - HEADERS: `assertHeaderText` in `src/headers.ts` still rejects every
+ *   control character, TAB/LF/CR included, because a bare LF in a header is
+ *   request smuggling. `src/metadata.ts` is likewise unchanged: `user_id` and
+ *   metadata keys are identifiers that travel as JSON inside a header, not
+ *   prose, and keep their own strict rule.
+ * - LONE SURROGATES stay rejected in every context, deliberately.
+ *   Raw `TextEncoder` replaces them, whereas JSON serialization escapes them.
+ *   Rejecting them keeps the text contract independent of serialization order.
  */
-function inspectString(value: string): number {
-  for (let index = 0; index < value.length; index += 1) {
-    const unit = value.charCodeAt(index);
-    if (
-      (unit <= 0x1f && unit !== 0x09 && unit !== 0x0a && unit !== 0x0d) ||
-      unit === 0x7f
-    ) {
-      fail("INVALID_UNICODE");
-    }
-    const classification = classifySurrogateAt(value, index);
-    if (classification === "loneSurrogate") fail("INVALID_UNICODE");
-    if (classification === "surrogatePair") index += 1;
+function inspectString(
+  value: string,
+  path: readonly ViolationPathSegment[],
+  inKey: boolean,
+): number {
+  const root = path[0];
+  const prose =
+    root === "messages" ||
+    root === "system" ||
+    root === "tools" ||
+    root === "stopSequences" ||
+    root === "stop_sequences" ||
+    root === "body";
+  const violation = inspectText(
+    value,
+    prose ? TEXT_POLICY_PROSE : TEXT_POLICY_IDENTIFIER,
+  );
+  if (violation !== null) {
+    if (violation.reason === "control-char") fail("INVALID_UNICODE");
+    fail(
+      "INVALID_UNICODE",
+      violationDetails(violation, path, value.length, inKey),
+    );
   }
   return new TextEncoder().encode(value).byteLength;
 }
@@ -271,11 +290,14 @@ function inspectString(value: string): number {
 function inspectGraph(value: unknown): void {
   const active = new WeakSet();
   let size = 0;
+  // Mutable walk stack: pushed/popped per node and only READ (synchronously)
+  // when a failure renders it, so successful requests pay no per-node copy.
+  const path: ViolationPathSegment[] = [];
 
   function visit(current: unknown, depth: number): void {
     if (depth > MAX_INPUT_DEPTH) fail("INPUT_TOO_DEEP");
     if (typeof current === "string") {
-      size += inspectString(current);
+      size += inspectString(current, path, false);
     } else if (
       current === null ||
       typeof current === "boolean" ||
@@ -300,8 +322,16 @@ function inspectGraph(value: unknown): void {
       size += keys.length;
       for (const key of keys) {
         if (typeof key !== "string" || FORBIDDEN_KEYS.has(key)) fail();
-        size += inspectString(key);
+        // Only ARRAY indices become numeric segments; digits inside an object
+        // key are user-controlled text and must stay masked (QA F1).
+        const segment: ViolationPathSegment =
+          Array.isArray(current) && /^(?:0|[1-9]\d{0,5})$/u.test(key)
+            ? Number(key)
+            : key;
+        path.push(segment);
+        size += inspectString(key, path, true);
         visit(ownValue(current, key), depth + 1);
+        path.pop();
       }
       active.delete(current);
     }
@@ -1763,6 +1793,7 @@ export function parseBuiltClaudeCodeRequest(
     const body = ownValue(value, "body");
     if (typeof body !== "string") fail();
     const parsedBody = parseBody(body);
+    inspectGraph(parsedBody);
     const headers = parseHeaders(ownValue(value, "headers"));
     const evidence = parseEvidence(ownValue(value, "evidence"), pinnedProfile);
     // Reading evidence is not trusting evidence. A claim that the seam
