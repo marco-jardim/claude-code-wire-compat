@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.1] - 2026-09-26
+
+### Fixed
+
+- **Long sessions no longer fail locally with `INPUT_TOO_LARGE`.** The
+  aggregate graph budget was 1,000,000 units, a library-local defensive limit
+  with no upstream provenance, so requests for 1M-token-context models were
+  refused before fetch (`INPUT_TOO_LARGE`, `maximumSize=1000000`). The shared
+  budget in `src/limits.ts` is now 33,554,432 units: the Messages API's 32 MB
+  request limit in its binary reading (32 MiB), the larger of the two readings.
+  Each walker measures string lengths plus structural overhead, never more
+  than the serialized size of what it inspects, so a request the API accepts
+  is not refused locally. The builder, count-tokens builder, canonical body,
+  `system` field and the parser's decoded body share this one constant.
+- The canonical-body container ceiling rises from 100,000 to 3,355,443
+  objects and arrays (one per ten budget units, the previous ratio).
+- Graphs that carry the serialized body beside other material get three
+  times the budget (100,663,296): redaction evidence, which holds both the
+  normalized request and its body, and the built-request wrapper handed to
+  `parseBuiltClaudeCodeRequest`. Under a single ceiling, evidence would have
+  capped inputs near 16 MiB. `safeDetails.maximumSize` on an evidence failure
+  now reports 100,663,296.
+- Every size failure now carries `safeDetails.maximumSize` naming the budget
+  that applied; builder, canonical-body and `system` failures previously
+  carried no details. Violation offsets and text lengths in `safeDetails` are
+  now bounded by 33,554,432 instead of 1,000,000.
+
+Building a realistic 30 MB multi-message request takes about two seconds on
+Node 24 and scales linearly. Depth limits, cycle and prototype guards, and
+header, identifier and metadata field limits are unchanged. Bytes for every
+input accepted before this change are unchanged; no golden fixture or digest
+was resealed.
+
+Rollback: pin `0.7.0`.
+
 ## [0.7.0] - 2026-09-26
 
 ### Breaking
