@@ -17,7 +17,8 @@ All notable changes to this project will be documented in this file.
   is not refused locally. The builder, count-tokens builder, canonical body,
   `system` field and the parser's decoded body share this one constant.
 - The canonical-body container ceiling rises from 100,000 to 3,355,443
-  objects and arrays (one per ten budget units, the previous ratio).
+  objects and arrays (one per ten budget units, the previous ratio). Its
+  failure now carries the additive `safeDetails.maximumItems`.
 - Graphs that carry the serialized body beside other material get three
   times the budget (100,663,296): redaction evidence, which holds both the
   normalized request and its body, and the built-request wrapper handed to

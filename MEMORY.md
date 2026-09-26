@@ -35,7 +35,8 @@ Decisions:
    are larger than that.
 4. **Size failures carry `safeDetails.maximumSize`** from every walker, not
    only the evidence walker, so a consumer's message names the budget that
-   fired. The violation-offset sanitizer bound follows `MAX_INPUT_SIZE`
+   fired. The container ceiling reports the additive `maximumItems` instead
+   (review finding on PR #36), so the two limits stay distinguishable. The violation-offset sanitizer bound follows `MAX_INPUT_SIZE`
    (previously 1,000,000).
 
 Measured on Node 24 (Windows, x64) with realistic sessions of tool calls and

@@ -389,7 +389,53 @@ describe("input size ceilings", () => {
       const error = captureSync(() =>
         buildCanonicalBody(inputWith(items), resolvedModel, [], {}, profile),
       );
-      expect(error.code).toBe("INPUT_TOO_LARGE");
+      expect({
+        code: error.code,
+        safeDetails: error.safeDetails,
+      }).toStrictEqual({
+        code: "INPUT_TOO_LARGE",
+        safeDetails: { maximumItems: ITEM_CEILING },
+      });
+    },
+  );
+
+  it(
+    "reports the container ceiling through the public builder",
+    HEAVY,
+    async () => {
+      // Empty objects cost about eight graph units each (index key plus key
+      // count), so the container ceiling fires well inside the size budget.
+      const items = Array.from({ length: ITEM_CEILING }, () => ({}));
+      const input = requestInput([
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_items",
+              name: "bulk",
+              input: { items },
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_items", content: "ok" },
+          ],
+        },
+      ]);
+      expect(graphSize(input)).toBeLessThan(INPUT_CEILING);
+      const error = await captureAsync(() =>
+        buildClaudeCodeRequest(input, CLAUDE_CODE_2_1_280_PROFILE),
+      );
+      expect({
+        code: error.code,
+        safeDetails: error.safeDetails,
+      }).toStrictEqual({
+        code: "INPUT_TOO_LARGE",
+        safeDetails: { maximumItems: ITEM_CEILING },
+      });
     },
   );
 });

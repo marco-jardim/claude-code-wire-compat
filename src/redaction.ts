@@ -402,6 +402,7 @@ export function toSafeErrorDetails(
     "betaFeatureCount",
     "maximumDepth",
     "maximumSize",
+    "maximumItems",
   ] as const;
   const booleanKeys = ["hasSystem", "hasTools", "violationInKey"] as const;
 

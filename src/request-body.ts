@@ -429,7 +429,9 @@ function inspect(
   if (state.active.has(value)) fail("CYCLIC_INPUT");
   state.active.add(value);
   state.items += 1;
-  if (state.items > MAX_ITEMS) fail("INPUT_TOO_LARGE");
+  if (state.items > MAX_ITEMS) {
+    fail("INPUT_TOO_LARGE", { maximumItems: MAX_ITEMS });
+  }
 
   if (Array.isArray(value)) {
     state.size += value.length;
