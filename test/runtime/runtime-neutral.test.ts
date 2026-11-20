@@ -92,6 +92,7 @@ describe("runtime/runtime-neutral (Wave 1 RED specification)", () => {
       "isOpus48Model",
       "isSonnet46Model",
       "modelCapability",
+      "modelCatalogueEntry",
       "parseBuiltClaudeCodeRequest",
       "selectAntiVerbositySection",
       "supportsStructuredOutputs",

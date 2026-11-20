@@ -79,6 +79,7 @@ export {
   isOpus48Model,
   isSonnet46Model,
   modelCapability,
+  modelCatalogueEntry,
   supportsStructuredOutputs,
   supportsWebSearch,
 } from "./model-queries.js";
