@@ -1,12 +1,16 @@
 {
   "sourceCommit": "466d500084b59651798bf38bf24d21f3cb850db6",
   "models": {
+    "outgoing-account-features-2.1.329.json": "claude-opus-5-5",
     "outgoing-canary-context-hint-off-2.1.233.json": "claude-opus-4-8",
     "outgoing-canary-context-hint-off-2.1.280.json": "claude-opus-4-8",
+    "outgoing-canary-context-hint-off-2.1.329.json": "claude-opus-4-8",
     "outgoing-canary-context-hint-off.json": "claude-opus-4-8",
     "outgoing-default-path-2.1.280.json": "claude-opus-5-5",
+    "outgoing-default-path-2.1.329.json": "claude-opus-5-5",
     "outgoing-foreground-2.1.233.json": "claude-sonnet-4-5",
     "outgoing-foreground-2.1.280.json": "claude-sonnet-4-5",
+    "outgoing-foreground-2.1.329.json": "claude-sonnet-4-5",
     "outgoing-foreground.json": "claude-sonnet-4-5"
   },
   "fixtures": {

@@ -1,0 +1,69 @@
+{
+  "$schema": "claude-code-wire-compat/golden/v1",
+  "name": "outgoing-foreground-2.1.329",
+  "profileId": "claude-code-2.1.329-sdk-0.128.0",
+  "url": "https://api.anthropic.com/v1/messages?beta=true",
+  "method": "POST",
+  "headers": [
+    ["Accept", "application/json"],
+    ["Authorization", "Bearer REDACTED_SYNTHETIC_TOKEN"],
+    ["Content-Type", "application/json"],
+    ["User-Agent", "claude-cli/2.1.329 (external, cli)"],
+    ["X-Claude-Code-Session-Id", "00000000-0000-4000-8000-000000000001"],
+    ["X-Stainless-Arch", "x64"],
+    ["X-Stainless-Lang", "js"],
+    ["X-Stainless-OS", "Windows"],
+    ["X-Stainless-Package-Version", "0.128.0"],
+    ["X-Stainless-Retry-Count", "0"],
+    ["X-Stainless-Runtime", "node"],
+    ["X-Stainless-Runtime-Version", "v24.15.0"],
+    ["X-Stainless-Timeout", "600"],
+    [
+      "anthropic-beta",
+      "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,context-management-2025-06-27,prompt-caching-scope-2026-01-05,thinking-token-count-2026-05-13,cache-diagnosis-2026-04-07"
+    ],
+    ["anthropic-dangerous-direct-browser-access", "true"],
+    ["anthropic-version", "2023-06-01"],
+    ["x-app", "cli"],
+    ["x-claude-1p-request-class", "main"],
+    ["x-claude-code-request-class", "main"],
+    ["x-claude-code-sandy-plover", "[]"],
+    ["x-client-request-id", "00000000-0000-4000-8000-000000000002"]
+  ],
+  "body": {
+    "model": "claude-sonnet-4-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hello wire compat"
+      }
+    ],
+    "system": [
+      {
+        "type": "text",
+        "text": "x-anthropic-billing-header: cc_version=2.1.329.dac; cc_entrypoint=cli; cch=00000;"
+      },
+      {
+        "type": "text",
+        "text": "You are Claude Code, Anthropic's official CLI for Claude.",
+        "cache_control": {
+          "type": "ephemeral",
+          "ttl": "1h"
+        }
+      },
+      {
+        "type": "text",
+        "text": "SYNTHETIC INTERACTIVE BASE PROMPT FIXTURE. This deterministic placeholder stands in for host-supplied system prompt text. The wire contract depends on block position and cache_control, not on this content."
+      }
+    ],
+    "metadata": {
+      "user_id": "{\"device_id\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"account_uuid\":\"00000000-0000-4000-8000-000000000000\",\"session_id\":\"00000000-0000-4000-8000-000000000001\"}"
+    },
+    "max_tokens": 8192,
+    "temperature": 1,
+    "diagnostics": {
+      "previous_message_id": null
+    }
+  },
+  "notes": "Generated offline by the pinned compatibility harness with deterministic synthetic inputs."
+}

@@ -3,7 +3,11 @@
 import { readFileSync } from "node:fs";
 
 import type {
+  ClaudeCodeAccountFeatures,
+  ClaudeCodeDispatchId,
   ClaudeCodeRequestInput,
+  ClaudeCodeThreadInput,
+  ClaudeCodeToolUsed,
   JsonValue,
   Message,
   SystemInput,
@@ -17,7 +21,20 @@ export type ReferenceFixtureName =
   | "outgoing-canary-context-hint-off-2.1.233.json"
   | "outgoing-foreground-2.1.280.json"
   | "outgoing-canary-context-hint-off-2.1.280.json"
-  | "outgoing-default-path-2.1.280.json";
+  | "outgoing-default-path-2.1.280.json"
+  | "outgoing-foreground-2.1.329.json"
+  | "outgoing-canary-context-hint-off-2.1.329.json"
+  | "outgoing-default-path-2.1.329.json"
+  | "outgoing-account-features-2.1.329.json";
+
+/**
+ * Beta identifiers the adapter reads back out of a reference fixture. The
+ * fixture's beta list is the only place the 2.1.329 account-served features
+ * (inline tools, a one-hour cache lifetime) are recorded, so the adapter
+ * recovers those inputs from it rather than carrying a side table.
+ */
+const INLINE_TOOLS_BETA = "inline-tools-2026-09-15";
+const EXTENDED_CACHE_TTL_BETA = "extended-cache-ttl-2025-04-11";
 
 export interface ReferenceFixture {
   readonly url: string;
@@ -80,8 +97,23 @@ function readReferenceFixture(name: ReferenceFixtureName): ReferenceFixture {
   });
 }
 
+/**
+ * Header names compare case-insensitively: the 2.1.329 layout carries the
+ * genuine client's mixed casing (`Authorization`, `X-Stainless-OS`), the
+ * earlier layouts are all lower-case.
+ */
+function optionalHeader(
+  fixture: ReferenceFixture,
+  name: string,
+): string | undefined {
+  const wanted = name.toLowerCase();
+  return fixture.headers.find(
+    ([candidate]) => candidate.toLowerCase() === wanted,
+  )?.[1];
+}
+
 function requiredHeader(fixture: ReferenceFixture, name: string): string {
-  const value = fixture.headers.find(([candidate]) => candidate === name)?.[1];
+  const value = optionalHeader(fixture, name);
   if (value === undefined)
     throw new TypeError(`Missing reference header: ${name}`);
   return value;
@@ -130,14 +162,25 @@ function isSystemInput(value: unknown): value is SystemInput {
   );
 }
 
-function isToolDefinition(value: unknown): value is ToolDefinition {
+function isAdvisorTool(value: unknown): value is ToolDefinition {
   return (
     isRecord(value) &&
-    typeof value["name"] === "string" &&
-    (value["description"] === undefined ||
-      typeof value["description"] === "string") &&
-    isRecord(value["input_schema"]) &&
-    isJsonValue(value["input_schema"])
+    value["type"] === "advisor_20260301" &&
+    value["name"] === "advisor" &&
+    typeof value["model"] === "string" &&
+    isJsonValue(value)
+  );
+}
+
+function isToolDefinition(value: unknown): value is ToolDefinition {
+  return (
+    isAdvisorTool(value) ||
+    (isRecord(value) &&
+      typeof value["name"] === "string" &&
+      (value["description"] === undefined ||
+        typeof value["description"] === "string") &&
+      isRecord(value["input_schema"]) &&
+      isJsonValue(value["input_schema"]))
   );
 }
 
@@ -153,6 +196,120 @@ function requiredOs(value: string): "Windows" | "Linux" | "macOS" {
     throw new TypeError("Invalid reference operating system.");
   }
   return value;
+}
+
+function parseToolsUsed(
+  value: string | undefined,
+): readonly ClaudeCodeToolUsed[] {
+  if (value === undefined) return [];
+  const parsed: unknown = JSON.parse(value);
+  if (!Array.isArray(parsed)) {
+    throw new TypeError("Reference tools-used header is not an array.");
+  }
+  return parsed.map((entry): ClaudeCodeToolUsed => {
+    if (!isRecord(entry) || typeof entry["name"] !== "string") {
+      throw new TypeError("Reference tools-used entry is malformed.");
+    }
+    return {
+      name: entry["name"],
+      ...(entry["mcp"] === true ? { mcp: true } : {}),
+      ...(typeof entry["url"] === "string" ? { url: entry["url"] } : {}),
+    };
+  });
+}
+
+function parseDispatchId(
+  value: string | undefined,
+): ClaudeCodeDispatchId | undefined {
+  if (value === undefined) return undefined;
+  if (value !== "v2d" && value !== "v2s" && value !== "v2p") {
+    throw new TypeError("Invalid reference dispatch identifier.");
+  }
+  return value;
+}
+
+function parseThread(value: unknown): ClaudeCodeThreadInput | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new TypeError("Reference thread is malformed.");
+  if (value["type"] === "create") return { type: "create" };
+  const previous = value["previous_message_id"];
+  if (value["type"] === "continue" && typeof previous === "string") {
+    return { type: "continue", previousMessageId: previous };
+  }
+  throw new TypeError("Reference thread is malformed.");
+}
+
+/**
+ * The billing block carries the prompt-id, turn-origin and turn-position
+ * segments the caller supplied. The prompt id is read from its header; the
+ * origin and the position pair only exist in the billing text.
+ */
+function billingTail(system: readonly unknown[]): {
+  readonly turnOrigin?: string;
+  readonly turnPosition?: { promptIndex: number; turnIndex: number };
+} {
+  const billing: unknown = system[0];
+  const text =
+    isRecord(billing) && typeof billing["text"] === "string"
+      ? billing["text"]
+      : "";
+  const origin = /; cc_turn_origin=([a-z_]+);/u.exec(text)?.[1];
+  const position = /; cc_prompt_index=(\d+); cc_turn_index=(\d+);/u.exec(text);
+  return {
+    ...(origin === undefined ? {} : { turnOrigin: origin }),
+    ...(position?.[1] === undefined || position[2] === undefined
+      ? {}
+      : {
+          turnPosition: {
+            promptIndex: Number(position[1]),
+            turnIndex: Number(position[2]),
+          },
+        }),
+  };
+}
+
+/**
+ * Inputs the 2.1.329 wire records outside the fields the earlier fixtures
+ * carry: the prompt-id, tools-used and dispatch headers, the billing tail, the
+ * diagnostics and thread body fields, and the inline-tools and one-hour-cache
+ * betas. Every one is absent from the earlier fixtures, so this adds nothing
+ * to them.
+ */
+function accountServedInputs(
+  fixture: ReferenceFixture,
+  system: readonly unknown[],
+): Partial<ClaudeCodeRequestInput> {
+  const betas = (optionalHeader(fixture, "anthropic-beta") ?? "").split(",");
+  const promptId = optionalHeader(fixture, "x-claude-code-prompt-id");
+  const toolsUsed = parseToolsUsed(
+    optionalHeader(fixture, "x-claude-code-sandy-plover"),
+  );
+  const dispatchId = parseDispatchId(
+    optionalHeader(fixture, "anthropic-dispatch-id"),
+  );
+  const thread = parseThread(fixture.body["thread"]);
+  const diagnostics = fixture.body["diagnostics"];
+  const previousMessageId = isRecord(diagnostics)
+    ? diagnostics["previous_message_id"]
+    : undefined;
+  const features: ClaudeCodeAccountFeatures = {
+    ...(dispatchId === undefined ? {} : { dispatchId }),
+    ...(betas.includes(INLINE_TOOLS_BETA) ? { inlineTools: true } : {}),
+    ...(thread === undefined ? {} : { thread }),
+  };
+  return {
+    ...(promptId === undefined ? {} : { promptId }),
+    ...billingTail(system),
+    ...(toolsUsed.length === 0 ? {} : { toolsUsed }),
+    ...(typeof previousMessageId === "string" ? { previousMessageId } : {}),
+    ...(Object.keys(features).length === 0
+      ? {}
+      : { accountFeatures: features }),
+    ...(betas.includes(EXTENDED_CACHE_TTL_BETA)
+      ? { cacheControl: { ttl: "1h" as const } }
+      : {}),
+    ...(fixture.body["stream"] === true ? { stream: true } : {}),
+  };
 }
 
 export function referenceAdapter(name: ReferenceFixtureName): ReferenceFixture {
@@ -244,11 +401,12 @@ export function syntheticInput(
       effort !== "low" &&
       effort !== "medium" &&
       effort !== "high" &&
+      effort !== "xhigh" &&
       effort !== "max"
     ) {
       throw new TypeError("Reference body has malformed effort configuration.");
     }
     input = { ...input, effort };
   }
-  return input;
+  return { ...input, ...accountServedInputs(fixture, system) };
 }
