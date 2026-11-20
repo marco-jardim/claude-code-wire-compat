@@ -10,6 +10,7 @@ import {
   supportsMidConversationSystem,
   supportsStructuredOutputs,
 } from "./model-capabilities.js";
+import { profileBehaviors } from "./profile-behaviors.js";
 import { BETA_REGISTRY_2_1_233 } from "./profiles/beta-registry-2.1.233.js";
 import { BETA_REGISTRY_2_1_280 } from "./profiles/beta-registry-2.1.280.js";
 import { BETA_REGISTRY_2_1_329 } from "./profiles/beta-registry-2.1.329.js";
@@ -239,6 +240,7 @@ export function composeBetasWithAudit(
   const policy = profile.betaPolicy;
   const experimental = policy.experimentalBetasEnabled;
   const registry = resolveBetaRegistry(profile);
+  const behaviors = profileBehaviors(profile);
 
   if (!input.normalizedId.includes("haiku"))
     out.push(registry.CLAUDE_CODE.header);
@@ -248,7 +250,21 @@ export function composeBetasWithAudit(
   // enable a beta the pinned profile declares unavailable.
   const oneMillionRequested =
     input.use1MContextOverride ?? /\[1m\]/iu.test(input.rawModel);
-  if (policy.oneMillionContextEnabled && oneMillionRequested) {
+  /*
+   * Under `longContextExcludesNative1m` a model whose catalogue entry declares
+   * a native 1M window never gets the beta: the window needs no opt-in, so the
+   * genuine client does not send one. Only the marker conjunct is replaced by
+   * `use1MContextOverride`; this exclusion still applies to an override of
+   * `true`, because the override cannot make a native window need the beta.
+   */
+  const nativeOneMillion =
+    Object.hasOwn(profile.supportedModels, input.normalizedId) &&
+    profile.supportedModels[input.normalizedId]?.context?.native1m === true;
+  if (
+    policy.oneMillionContextEnabled &&
+    oneMillionRequested &&
+    !(behaviors.longContextExcludesNative1m && nativeOneMillion)
+  ) {
     out.push(registry.LONG_CONTEXT.header);
   }
   if (
@@ -266,11 +282,18 @@ export function composeBetasWithAudit(
   ) {
     out.push(registry.REDACT_THINKING.header);
   }
-  if (
+  /*
+   * Site 6. Under `thinkingTokenCountAfterRequestTable` the genuine client
+   * pushes this beta after the per-request sites instead; that push is site 6′
+   * below, with identical gates.
+   */
+  const thinkingTokenCountGates =
     policy.thinkingTokenCountEnabled &&
     experimental &&
-    input.capabilities.interleavedThinking
-  ) {
+    input.capabilities.interleavedThinking;
+  const tokenCountAfterRequestTable =
+    behaviors.thinkingTokenCountAfterRequestTable;
+  if (thinkingTokenCountGates && !tokenCountAfterRequestTable) {
     out.push(registry.THINKING_TOKEN_COUNT.header);
   }
   /*
@@ -348,6 +371,15 @@ export function composeBetasWithAudit(
     midConvToolChange !== undefined
   ) {
     out.push(midConvToolChange.header);
+  }
+
+  /*
+   * Site 6′. The thinking-token-count beta at the position the genuine client
+   * pushes it under `thinkingTokenCountAfterRequestTable`: after the
+   * per-request sites above and before clear-at (11c). Same gates as site 6.
+   */
+  if (thinkingTokenCountGates && tokenCountAfterRequestTable) {
+    out.push(registry.THINKING_TOKEN_COUNT.header);
   }
 
   /*
