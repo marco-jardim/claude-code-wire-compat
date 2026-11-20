@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type {
+  ClaudeCodeDispatchId,
   ClaudeCodeExtraHeaderPolicy,
   ClaudeCodeProtocolProfile,
   HeaderPair,
@@ -105,8 +106,8 @@ const CANONICAL_NAMES: ReadonlySet<string> = new Set(
 
 /**
  * The names a caller may never supply under the genuine layout, lowercased:
- * the whole table (so every capitalisation variant is refused) plus the
- * `anthropic-dispatch-id` name that a later change owns.
+ * the whole table (so every capitalisation variant is refused), which includes
+ * `anthropic-dispatch-id` whether or not the request carries it.
  */
 export const GENUINE_RESERVED_NAMES: ReadonlySet<string> = new Set(
   Object.values(GENUINE_HEADER_NAMES).map((name) => name.toLowerCase()),
@@ -146,6 +147,7 @@ interface ValidatedInput {
   readonly requestKind: RequestKind;
   readonly promptId?: string;
   readonly toolsUsed: readonly ToolsUsedEntry[];
+  readonly dispatchId?: ClaudeCodeDispatchId;
 }
 
 /** Reports the headers placed on the wire plus what the policy discarded. */
@@ -307,11 +309,27 @@ function parseOptionalPromptId(value: unknown): string | undefined {
   return value;
 }
 
+/**
+ * The dispatch id is a closed domain; unlike the prompt id there is no
+ * upstream emission guard that silently drops a bad value, so a stray one is a
+ * caller bug.
+ */
+function parseOptionalDispatchId(
+  value: unknown,
+): ClaudeCodeDispatchId | undefined {
+  if (value === undefined) return undefined;
+  if (value !== "v2d" && value !== "v2s" && value !== "v2p") {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  return value;
+}
+
 function parseInput(input: unknown): ValidatedInput {
   if (!isRecord(input)) {
     throw new ClaudeCodeWireError("INVALID_INPUT");
   }
   const promptId = parseOptionalPromptId(input["promptId"]);
+  const dispatchId = parseOptionalDispatchId(input["dispatchId"]);
   const stainlessHelper = optionalHeaderString(input, "stainlessHelper");
   const claudeRemoteContainerId = optionalHeaderString(
     input,
@@ -348,6 +366,7 @@ function parseInput(input: unknown): ValidatedInput {
         ? []
         : validateToolsUsed(input["toolsUsed"]),
     ...(promptId === undefined ? {} : { promptId }),
+    ...(dispatchId === undefined ? {} : { dispatchId }),
     ...(stainlessHelper === undefined ? {} : { stainlessHelper }),
     ...(claudeRemoteContainerId === undefined
       ? {}
@@ -489,7 +508,7 @@ function assertTokenIsolation(
 /**
  * The built-in pairs of the genuine layout, in no particular order (the caller
  * sorts). `count_tokens` requests carry neither the request-class pair, the
- * prompt id nor the tools-used header.
+ * prompt id, the tools-used header nor the dispatch id.
  */
 function genuineHeaderValues(
   validated: ValidatedInput,
@@ -517,6 +536,14 @@ function genuineHeaderValues(
     [names.clientRequestId, validated.clientRequestId],
   ];
   if (validated.requestKind === "messages") {
+    // Account-served: only on a caller's explicit opt-in, and never on
+    // count-tokens. Sorts between the browser-access and version headers.
+    if (
+      validated.dispatchId !== undefined &&
+      profileBehaviors(validated.profile).accountServedInputs
+    ) {
+      values.push([names.dispatchId, validated.dispatchId]);
+    }
     values.push(
       [names.requestClass1p, "main"],
       [names.requestClass, "main"],
