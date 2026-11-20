@@ -18,8 +18,9 @@ The package targets Node.js 20 or newer and is designed to remain portable to Bu
 
 The pinned profiles are exported:
 
-- `CLAUDE_CODE_2_1_280_PROFILE` — Claude Code 2.1.280 with SDK 0.112.1. This is the profile the request-building entry points use when `profile` is omitted.
-- `CLAUDE_CODE_2_1_233_PROFILE` — the previous pin, Claude Code 2.1.233 with SDK 0.112.1.
+- `CLAUDE_CODE_2_1_329_PROFILE` — Claude Code 2.1.329 with SDK 0.128.0. This is the profile the request-building entry points use when `profile` is omitted.
+- `CLAUDE_CODE_2_1_280_PROFILE` — the previous pin, Claude Code 2.1.280 with SDK 0.112.1.
+- `CLAUDE_CODE_2_1_233_PROFILE` — Claude Code 2.1.233 with SDK 0.112.1.
 - `CLAUDE_CODE_2_1_195_PROFILE` — the oldest pin, Claude Code 2.1.195 with SDK 0.94.0.
 
 The model-query helpers (`modelCapability`, `isEligibleFor1MContext`) and the anti-verbosity helpers (`antiVerbosityText`, `selectAntiVerbositySection`) keep their own separately declared default and are not governed by that seam; a caller relying on them for a newer model must pass the profile explicitly.
@@ -30,9 +31,10 @@ Any of them can be selected explicitly by passing the singleton as the `profile`
 import { CLAUDE_CODE_2_1_195_PROFILE } from "@tormentalabs/claude-code-wire-compat/profiles/claude-code-2.1.195";
 import { CLAUDE_CODE_2_1_233_PROFILE } from "@tormentalabs/claude-code-wire-compat/profiles/claude-code-2.1.233";
 import { CLAUDE_CODE_2_1_280_PROFILE } from "@tormentalabs/claude-code-wire-compat/profiles/claude-code-2.1.280";
+import { CLAUDE_CODE_2_1_329_PROFILE } from "@tormentalabs/claude-code-wire-compat/profiles/claude-code-2.1.329";
 ```
 
-Rollback: a consumer who wants the previous default's bytes must pass `CLAUDE_CODE_2_1_233_PROFILE` explicitly on every call to each entry point that reads the default seam — `buildClaudeCodeRequest`, `buildClaudeCodeCountTokensRequest`, and `parseBuiltClaudeCodeRequest`. Pinning the builders alone is not enough: `parseBuiltClaudeCodeRequest` recomputes the expected headers under the profile it is given, so a request built under the old default and parsed unpinned after upgrading is rejected with `ClaudeCodeWireError` code `INVALID_INPUT`.
+Rollback: a consumer who wants the previous default's bytes must pass `CLAUDE_CODE_2_1_280_PROFILE` explicitly on every call to each entry point that reads the default seam — `buildClaudeCodeRequest`, `buildClaudeCodeCountTokensRequest`, and `parseBuiltClaudeCodeRequest`. Pinning the builders alone is not enough: `parseBuiltClaudeCodeRequest` recomputes the expected headers under the profile it is given, so a request built under the old default and parsed unpinned after upgrading is rejected with `ClaudeCodeWireError` code `INVALID_INPUT`.
 
 The fail-closed rule is unchanged: only these exported singletons are accepted. Any other object, even a structurally identical clone, is rejected with `ClaudeCodeWireError` code `INVALID_INPUT`. This prevents callers from substituting an unpinned protocol profile.
 
@@ -127,11 +129,11 @@ required](./docs/protocol/versions/README.md):
 - [Claude Code 2.1.233](./docs/protocol/versions/claude-code-2.1.233-analysis.md)
   — the previous pin; its profile is still exported and selectable.
 - [Claude Code 2.1.280](./docs/protocol/versions/claude-code-2.1.280-analysis.md)
-  — the release this package's default profile pins; records the build-shape
+  — the previous pin; its profile is still exported and selectable. Records the build-shape
   change that breaks the old carving rule, nine new betas, three new models,
   and the first wire-visible `thinking` sub-fields since 2.1.222.
 - [Claude Code 2.1.329](./docs/protocol/versions/claude-code-2.1.329-analysis.md)
-  — analysis of 2.1.329, not yet ported: no profile exists for it.
+  — the release this package's default profile pins.
 
 ## Development
 

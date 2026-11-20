@@ -65,7 +65,7 @@ const EXPECTED_DIGESTS = {
   "2.1.280": "9a531ed01ddd3440ce5b7f25c6caf5f045a9b4e78d885b5317508e21a22ada90",
   "2.1.329": "d8cd6493322a5b4c31fd8ae5e74a6ce62a394b6d67afe3965b4e6e9dcbb343a5",
 };
-const EXPECTED_DEFAULT_CASE = "2.1.280";
+const EXPECTED_DEFAULT_CASE = "2.1.329";
 const consumerSource = `
 import {
   CLAUDE_CODE_2_1_195_PROFILE,

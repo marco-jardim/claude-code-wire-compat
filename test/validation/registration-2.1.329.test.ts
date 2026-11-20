@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import { resolveBetaRegistry } from "../../src/betas.js";
+import { DEFAULT_PROFILE } from "../../src/build-request.js";
 import {
   BETA_REGISTRY,
   BETA_REGISTRY_2_1_233,
@@ -24,8 +25,8 @@ import type { BuildRedactedEvidenceInput } from "../../src/redaction.js";
  * builder's accepted set, the evidence validator's own id literals and the beta
  * registry map. This file pins that 2.1.329 went through every seam that is
  * observable WITHOUT reading the composed beta list, and that acceptance is by
- * object identity. Whether the 2.1.329 profile is the default is deliberately
- * not asserted here; the default switch is its own commit.
+ * object identity. The default-profile pin below is the single governance pin
+ * on the default seam; it moved here from `registration-2.1.280.test.ts`.
  */
 
 const BASE = {
@@ -148,6 +149,28 @@ describe("2.1.329 registration: evidence id literals", () => {
     await expect(
       buildRedactedEvidence(evidenceInput(nearMiss)),
     ).rejects.toMatchObject(REJECTION);
+  });
+});
+
+describe("default profile: pinned", () => {
+  /*
+   * This pin exists so that moving the default is a deliberate act, not an
+   * accident: any change to the default seam fails here until this line is
+   * changed alongside it.
+   *
+   * The assertion is by identity, not structure, because identity is the
+   * contract `ACCEPTED_PROFILES` enforces: the builder and parser accept a
+   * profile only if it is one of the exported singletons. (A clone as the
+   * default would not fail silently -- `validateProfile` runs on the resolved
+   * default too, so every unpinned build would throw.) Asserting identity here
+   * names the default seam explicitly, rather than relying on the collateral
+   * failure of unrelated tests to reveal that the default changed.
+   *
+   * The only legitimate reason to edit this assertion is a default-profile
+   * switch, which is always its own commit.
+   */
+  it("is the pinned profile singleton itself, by identity", () => {
+    expect(DEFAULT_PROFILE).toBe(CLAUDE_CODE_2_1_329_PROFILE);
   });
 });
 
