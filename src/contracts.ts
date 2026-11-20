@@ -867,6 +867,16 @@ export interface ClaudeCodeTurnPosition {
   readonly turnIndex: number;
 }
 
+/**
+ * One tool the conversation has used, as reported in the
+ * `x-claude-code-sandy-plover` header. See `ClaudeCodeRequestInput.toolsUsed`.
+ */
+export interface ClaudeCodeToolUsed {
+  readonly name: string;
+  readonly mcp?: boolean;
+  readonly url?: string;
+}
+
 export interface ClaudeCodeRequestInput {
   readonly accessToken: string;
   readonly model: string;
@@ -1129,6 +1139,21 @@ export interface ClaudeCodeRequestInput {
    * number-typed keys is `INVALID_INPUT`.
    */
   readonly turnPosition?: ClaudeCodeTurnPosition;
+  /**
+   * Supplies the tools the conversation has used, which the genuine client
+   * reports in the `x-claude-code-sandy-plover` header.
+   *
+   * Emitted only by profiles that carry the header (2.1.329), where it is
+   * always present and defaults to `[]`; older profiles validate and ignore it.
+   * Entry order is the caller's (the genuine client lists non-built-in tools
+   * first, which is the host's job). At most 64 entries. Each entry carries
+   * only `name`, `mcp` and `url`; `name` and `url` are printable ASCII.
+   * Entries with an empty name or a name over 256 bytes are SILENTLY dropped,
+   * mirroring upstream. A serialized value over 7168 bytes is `INVALID_INPUT`
+   * (the genuine client truncates and appends a sentinel; this package refuses
+   * instead because the sentinel is not transcribed).
+   */
+  readonly toolsUsed?: readonly ClaudeCodeToolUsed[];
   /** Injects the Web Crypto provider used to hash the request body. */
   readonly crypto?: Pick<Crypto, "subtle">;
 }

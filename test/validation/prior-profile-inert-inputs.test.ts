@@ -25,6 +25,7 @@ import {
 const NEW_INPUTS = {
   turnOrigin: "human",
   turnPosition: { promptIndex: 1, turnIndex: 1 },
+  toolsUsed: [{ name: "Read" }, { name: "mcp__server__tool", mcp: true }],
 } as const;
 
 describe("2.1.329-only inputs are inert on 2.1.280", () => {
@@ -59,6 +60,30 @@ describe("2.1.329-only inputs are inert on 2.1.280", () => {
     expect(withInputs.evidence).toEqual(plain.evidence);
     expect(withInputs.body).not.toContain("cc_turn_origin");
     expect(withInputs.body).not.toContain("cc_prompt_index");
+  });
+
+  it("emits no 2.1.329 header for the tools-used input or the prompt id", async () => {
+    const plain = await buildClaudeCodeRequest(
+      input,
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
+    const withInputs = await buildClaudeCodeRequest(
+      {
+        ...input,
+        ...NEW_INPUTS,
+        promptId: "00000000-0000-4000-8000-000000000003",
+      },
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
+    const headerNames = withInputs.headers.map(([name]) => name);
+
+    // The prompt id still feeds the billing text on 2.1.280 (an existing
+    // behaviour); only the headers are asserted unchanged here.
+    expect(withInputs.headers).toEqual(plain.headers);
+    expect(headerNames).not.toContain("x-claude-code-sandy-plover");
+    expect(headerNames).not.toContain("x-claude-code-prompt-id");
+    expect(headerNames).not.toContain("Accept");
+    expect(headerNames).toEqual(headerNames.map((name) => name.toLowerCase()));
   });
 
   it("changes only the cch characters when a cch value is added", async () => {
