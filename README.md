@@ -50,7 +50,7 @@ Every input below is optional and is validated on **every** profile, so a malfor
 - `sideQuery`, `agenticQuery` — `sideQuery` composes the side-query beta (the host sets it on session-title requests). `agenticQuery` re-adds the `claude-code` beta for a model the per-model table excludes it from (the haiku models).
 - Per-turn control messages — a `messages` entry of the shape `{role: "system", content: [], output_config: {effort?, timing?}}` is accepted as pass-through on 2.1.329, which is how the genuine client changes effort mid-conversation. Other profiles keep rejecting it. Exported as the type `ClaudeCodeControlMessage`.
 
-Two limits to know about. `inlineTools` is a header-only half port: the genuine client also inserts `role: "system"` messages carrying `tool_addition` blocks into the conversation, and this package does not model them. And header casing survives only on case-preserving transports: the 2.1.329 layout emits `Accept`, `Authorization`, `Content-Type`, `User-Agent`, the `X-Stainless-*` headers and `X-Claude-Code-Session-Id` with their genuine capitalisation and sorts every header by UTF-16 code unit, but Node's `fetch` lowercases header names on the way out, so only a transport that keeps case (Bun, for one) reproduces the capitalisation.
+Two limits to know about. `inlineTools` is a header-only half port: the genuine client also inserts `role: "system"` messages carrying `tool_addition` blocks into the conversation, and this package does not model them. And header casing survives only on case-preserving transports: the 2.1.329 layout emits `Accept`, `Authorization`, `Content-Type`, `User-Agent`, the `X-Stainless-*` headers and `X-Claude-Code-Session-Id` with their genuine capitalisation and sorts every header by UTF-16 code unit, but Node's `fetch` lowercases header names on the way out, so only a transport that keeps case (Bun, for one) reproduces the capitalisation. On 2.1.329, `extraHeaders` named `accept`, `anthropic-dispatch-id` or any `x-claude-*` header the layout owns are reserved and rejected with `DUPLICATE_HEADER` under the default `strict` extra-header policy (`dropConflicting` discards them instead).
 
 Profile data and queries added alongside:
 
@@ -146,7 +146,7 @@ required](./docs/protocol/versions/README.md):
 - [Claude Code 2.1.159](./docs/protocol/versions/claude-code-2.1.159-analysis.md)
 - [Claude Code 2.1.195](./docs/protocol/versions/claude-code-2.1.195-analysis.md)
 - [Claude Code 2.1.233](./docs/protocol/versions/claude-code-2.1.233-analysis.md)
-  — the previous pin; its profile is still exported and selectable.
+  — an earlier pin; its profile is still exported and selectable.
 - [Claude Code 2.1.280](./docs/protocol/versions/claude-code-2.1.280-analysis.md)
   — the previous pin; its profile is still exported and selectable. Records the build-shape
   change that breaks the old carving rule, nine new betas, three new models,

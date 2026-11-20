@@ -1321,6 +1321,14 @@ export interface ClaudeCodeProtocolProfile {
   readonly supportedModels: Readonly<Record<string, ClaudeCodeCatalogueEntry>>;
 }
 
+/**
+ * The stable code of a `ClaudeCodeWireError`.
+ *
+ * `INPUT_TOO_LARGE` carries one of two size details in `safeDetails`:
+ * `maximumSize`, the size budget that applied to the rejected input, or
+ * `maximumItems`, the ceiling on the number of containers (objects and arrays)
+ * in the canonical request body. Some metadata checks carry `field` instead.
+ */
 export type ClaudeCodeWireErrorCode =
   | "INVALID_INPUT"
   | "INVALID_IDENTITY"

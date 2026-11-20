@@ -67,8 +67,10 @@ New versions enter the next cycle.
   its own `PINNED_PROFILE_IDS` string set because it validates untrusted
   evidence.
 - **Beta composition**: `src/betas.ts` resolves the registry per profile via
-  `PROFILE_BETA_REGISTRIES` (keyed by profile id). The 22-step push order (17
-  base sites plus five optional sites added for 2.1.280) is emergent upstream
+  `PROFILE_BETA_REGISTRIES` (keyed by profile id). The push order is 22 steps
+  as of 2.1.280 (17 base sites plus five optional sites added for 2.1.280) and
+  29 push statements in `src/betas.ts` once the seven 2.1.329 sites below are
+  counted; it is emergent upstream
   behaviour and load-bearing — never reorder it. A beta absent from a
   profile's registry skips its step silently. The thinking-display-updates
   site is coupled: when it fires it also removes the previously composed
@@ -115,7 +117,7 @@ New versions enter the next cycle.
   through the builder. The seal guards echoed bytes; the differential guards
   derived fields. Both must fire on a mutation of a derived field.
 - Coverage thresholds in `vitest.config.ts` sit just below the measured
-  baseline (99.04/98.8/100/99.69) — a real drop fails the gate.
+  baseline (98.84/98.64/100/99.48) — a real drop fails the gate.
 - Per-commit gates: `npm run lint && npm run typecheck && npm test && npm run build && npm run format:check`.
   End-of-phase adds `test:coverage`, `pack:check`, `test:pack`,
   `fixtures:check`.

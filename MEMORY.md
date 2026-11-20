@@ -6,6 +6,22 @@ Append-only log of non-obvious maintenance decisions and their reasoning, so
 future work does not re-litigate or accidentally reverse them. Newest entries
 first. Keep entries dated, factual, and in consumer-neutral language.
 
+## 2026-11-20 - Correction: 0.7.1 revert recipe
+
+The Revert paragraph of the 2026-09-26 entry (0.7.1) is incomplete. Decision 4
+of that entry added a second size detail, and the paragraph's list of things to
+drop names only the `maximumSize` details. Reverting 0.7.1 must also drop:
+
+- the `maximumItems` detail in `src/request-body.ts`
+  (`fail("INPUT_TOO_LARGE", { maximumItems: MAX_ITEMS })`), which reverts to a
+  bare `fail("INPUT_TOO_LARGE")`; and
+- its allow-list entry in `toSafeErrorDetails` (`src/redaction.ts`, the
+  `maximumItems` member of `numericKeys`), which would otherwise stay as a dead
+  key that the sanitizer still lets through.
+
+The 2026-09-26 entry itself is left as written; follow this correction together
+with its Revert paragraph.
+
 ## 2026-11-20 — release 0.8.0 folds the never-published rc.1
 
 Context: `0.8.0-rc.1` was prepared but never published or tagged, and no
