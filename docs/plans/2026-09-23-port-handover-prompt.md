@@ -10,7 +10,7 @@ to be read by a top-tier orchestrating agent that will delegate the work.
 ## Your mission
 
 Execute, end to end, the port plan at
-`D:\git\claude-code-wire-compat\docs\plans\2026-09-23-claude-code-2.1.280-port-plan.md`
+`docs\plans\2026-09-23-claude-code-2.1.280-port-plan.md`
 (1,924 lines, 8 waves, 19 phases). It ports the Claude Code 2.1.280 wire
 profile into this package so that a pinned caller — and, after an isolated
 default switch, an unpinned caller — receives requests byte-indistinguishable
@@ -22,7 +22,7 @@ rules, and everything the previous sessions learned the hard way.
 
 ## Environment
 
-- **Working directory and repository root: `D:\git\claude-code-wire-compat`.**
+- **Working directory and repository root: `<repo-root>`.**
   They are the same path. `git worktree list` shows exactly one entry; there is
   **no separate worktree** and no checkout outside the base directory. Every
   path in every dispatch must be absolute and must start with that prefix.
@@ -30,8 +30,8 @@ rules, and everything the previous sessions learned the hard way.
   `Get-FileHash -Algorithm SHA256`, `Stop-Process`. Use `$env:TEMP`, never
   `/tmp`.
 - Sibling repositories, used only in Wave 7, each its own worktree:
-  `D:\git\opencode-anthropic-fix` (`.mjs` + JSDoc, **no TypeScript**,
-  vitest 4.0.18) and `D:\git\opencode-model-router` (TypeScript ESM, no build
+  `..\opencode-anthropic-fix` (`.mjs` + JSDoc, **no TypeScript**,
+  vitest 4.0.18) and `..\opencode-model-router` (TypeScript ESM, no build
   step, vitest). Wave 7 phases may run in parallel with each other because they
   are different worktrees.
 - **Linear is not used in this project.** A repository-wide search for
@@ -187,7 +187,7 @@ table gives the right search string per topic.
 ### If you need new evidence from the binary
 
 The carved bundle and the probe tooling are still on disk in
-`C:\Users\Marquinho\AppData\Local\Temp\opencode\cc-2.1.280\`:
+`%USERPROFILE%\AppData\Local\Temp\opencode\cc-2.1.280\`:
 
 | Artefact                                    | Bytes       | SHA-256                                                            |
 | ------------------------------------------- | ----------- | ------------------------------------------------------------------ |
@@ -263,7 +263,7 @@ the same external script.
   an exhaustive survey. If one returns `NEED MORE`, split it rather than
   raising the cap blindly.
 - Subagents do not inherit the environment. Every dispatch needs an
-  `ENVIRONMENT` section naming `D:\git\claude-code-wire-compat`, `win32`,
+  `ENVIRONMENT` section naming `<repo-root>`, `win32`,
   `pwsh`, and "do not ask permission to access files here".
 
 ### Tooling traps in this repository

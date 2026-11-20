@@ -1,7 +1,7 @@
 # Plano: Acompanhamento de Upstream — Claude Code 2.1.195 → 2.1.222
 
 - **Repositório:** `@tormentalabs/claude-code-wire-compat`
-- **Working directory:** `D:\git\claude-code-wire-compat`
+- **Working directory:** `<repo-root>`
 - **Plataforma:** win32 · Shell: pwsh
 - **Branch base:** `main` @ `6c25056`
 - **Versão do pacote na abertura do plano:** `0.1.0`
@@ -73,7 +73,7 @@ npm run test:pack
 npx vitest run test/drift
 ```
 
-`npm run drift:check` é gate **local** e só roda se o checkout irmão `D:\git\opencode-anthropic-fix` existir. Quando ausente ele sai com código 2 e `SOURCE_UNAVAILABLE` — isso é comportamento correto e **não deve ser suprimido nem contornado** (`CONTRIBUTING.md:15`).
+`npm run drift:check` é gate **local** e só roda se o checkout irmão `..\opencode-anthropic-fix` existir. Quando ausente ele sai com código 2 e `SOURCE_UNAVAILABLE` — isso é comportamento correto e **não deve ser suprimido nem contornado** (`CONTRIBUTING.md:15`).
 
 ---
 
@@ -329,7 +329,7 @@ READS:  package.json, .github/workflows/*, git
 - [ ] `npm run test:pack` → exit 0, registrar os 3 digests (node/bun/workerd)
 - [ ] `npx vitest run test/drift` → exit 0
 - [ ] `npm run drift:check` → registrar se é exit 0 ou exit 2 `SOURCE_UNAVAILABLE`
-- [ ] Confirmar que `D:\git\opencode-anthropic-fix` existe ou não; registrar
+- [ ] Confirmar que `..\opencode-anthropic-fix` existe ou não; registrar
 
 **Se qualquer gate falhar na baseline: PARE.** É problema crítico — a árvore está vermelha antes de começarmos.
 
