@@ -25,7 +25,7 @@
   analysis was written)
 - **Supersedes**: nothing.
 - **Status**: ported in this branch (`port/claude-code-2.1.329`) and the
-  package's default profile since the `0.8.0-rc.1` prerelease (2026-11-19). The
+  package's default profile since release `0.8.0` (2026-11-20). The
   profile is `claude-code-2.1.329-sdk-0.128.0` and `2.1.280` stays exported for
   rollback. The decisions taken are in `MEMORY.md` (2026-11-19 entries) and
   what was deliberately left out is in `docs/source-trace.md` under "2.1.329 —

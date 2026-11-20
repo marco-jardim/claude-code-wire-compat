@@ -6,6 +6,22 @@ Append-only log of non-obvious maintenance decisions and their reasoning, so
 future work does not re-litigate or accidentally reverse them. Newest entries
 first. Keep entries dated, factual, and in consumer-neutral language.
 
+## 2026-11-20 — release 0.8.0 folds the never-published rc.1
+
+Context: `0.8.0-rc.1` was prepared but never published or tagged, and no
+consumer ever resolved it from the registry.
+
+Decisions:
+
+1. **The release is `0.8.0` stable, not a second prerelease.** The rc.1
+   changelog section is folded into the dated `## [0.8.0] - 2026-11-20` entry;
+   the Breaking section and the rollback (pin `CLAUDE_CODE_2_1_280_PROFILE`)
+   are unchanged. This supersedes the 2026-11-19 entry's "ships as a
+   prerelease" sentence; the rest of that entry stands.
+2. **The reviewed manifest is `release-manifests/0.8.0.json`.** Its `commit`
+   field is audit metadata (the commit the artefact was built from), not an
+   equality check, so the release commit and its manifest can land together.
+
 ## 2026-11-19 — claude-code 2.1.329: the default switches, with a rollback
 
 Context: the port is complete (profile, behaviours, fixtures, frozen digest),

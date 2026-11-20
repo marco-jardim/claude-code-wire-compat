@@ -2,10 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.8.0-rc.1]
+## [0.8.0] - 2026-11-20
 
-Prerelease. Ports Claude Code 2.1.329 (SDK 0.128.0) and makes it the default
-profile. Do not publish to `latest`.
+Ports Claude Code 2.1.329 (SDK 0.128.0) and makes it the default profile. The
+`0.8.0-rc.1` prerelease was never published; its notes are folded into this
+release.
 
 ### Breaking
 
