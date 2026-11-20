@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import type {
   BuiltClaudeCodeRequest,
+  ClaudeCodeProtocolProfile,
   ClaudeCodeRequestInput,
   HeaderPair,
 } from "../../src/contracts.js";
@@ -15,6 +16,7 @@ import {
   parseBuiltClaudeCodeRequest,
 } from "../../src/build-request.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
+import { CLAUDE_CODE_2_1_280_PROFILE } from "../../src/profiles/claude-code-2.1.280.js";
 
 const TOKEN = "sentinel-token-build-9c31de";
 const SESSION_ID = "00000000-0000-4000-8000-000000000001";
@@ -107,8 +109,11 @@ function cloneBuilt(
   return { ...built, ...changes };
 }
 
-function expectParseInvalid(value: unknown): void {
-  expect(() => parseBuiltClaudeCodeRequest(value)).toThrow(
+function expectParseInvalid(
+  value: unknown,
+  profile: ClaudeCodeProtocolProfile = DEFAULT_PROFILE,
+): void {
+  expect(() => parseBuiltClaudeCodeRequest(value, profile)).toThrow(
     expect.objectContaining({ code: "INVALID_INPUT" }),
   );
 }
@@ -506,7 +511,12 @@ describe("parseBuiltClaudeCodeRequest validation", () => {
   });
 
   it("rejects zero or multiple session-id headers", async () => {
-    const built = await buildClaudeCodeRequest(validInput());
+    // The lowercase session-id name is the legacy header layout; the 2.1.329
+    // layout spells it `X-Claude-Code-Session-Id`, so the profile is named.
+    const built = await buildClaudeCodeRequest(
+      validInput(),
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
     const withoutSession = built.headers.filter(
       ([name]) => name !== "x-claude-code-session-id",
     );
@@ -514,7 +524,13 @@ describe("parseBuiltClaudeCodeRequest validation", () => {
       ...built.headers,
       ["x-claude-code-session-id", SESSION_ID],
     ];
-    expectParseInvalid(cloneBuilt(built, { headers: withoutSession }));
-    expectParseInvalid(cloneBuilt(built, { headers: duplicateSession }));
+    expectParseInvalid(
+      cloneBuilt(built, { headers: withoutSession }),
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
+    expectParseInvalid(
+      cloneBuilt(built, { headers: duplicateSession }),
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
   });
 });

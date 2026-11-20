@@ -5,9 +5,11 @@ import { describe, expect, it } from "vitest";
 import { BETA_REGISTRY } from "../../src/beta-registry.js";
 import { BETA_REGISTRY_2_1_233 } from "../../src/profiles/beta-registry-2.1.233.js";
 import { BETA_REGISTRY_2_1_280 } from "../../src/profiles/beta-registry-2.1.280.js";
+import { BETA_REGISTRY_2_1_329 } from "../../src/profiles/beta-registry-2.1.329.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../../src/profiles/claude-code-2.1.195.js";
 import { CLAUDE_CODE_2_1_233_PROFILE } from "../../src/profiles/claude-code-2.1.233.js";
 import { CLAUDE_CODE_2_1_280_PROFILE } from "../../src/profiles/claude-code-2.1.280.js";
+import { CLAUDE_CODE_2_1_329_PROFILE } from "../../src/profiles/claude-code-2.1.329.js";
 import type { ProfileUnderTest } from "../support/profile-matrix.js";
 import {
   assertValidProfileRegistry,
@@ -37,6 +39,7 @@ describe("profile matrix registry", () => {
     { label: "2.1.195", profile: CLAUDE_CODE_2_1_195_PROFILE },
     { label: "2.1.233", profile: CLAUDE_CODE_2_1_233_PROFILE },
     { label: "2.1.280", profile: CLAUDE_CODE_2_1_280_PROFILE },
+    { label: "2.1.329", profile: CLAUDE_CODE_2_1_329_PROFILE },
   ])("mirrors the $label profile metadata verbatim", ({ profile }) => {
     const entry = entryById(profile.id);
 
@@ -69,6 +72,11 @@ describe("profile matrix registry", () => {
       profile: CLAUDE_CODE_2_1_280_PROFILE,
       betaRegistry: BETA_REGISTRY_2_1_280,
     },
+    {
+      label: "2.1.329",
+      profile: CLAUDE_CODE_2_1_329_PROFILE,
+      betaRegistry: BETA_REGISTRY_2_1_329,
+    },
   ])(
     "carries $label counts derived from the real registry and catalogue",
     ({ profile, betaRegistry }) => {
@@ -100,6 +108,12 @@ describe("profile matrix registry", () => {
       betaCount: 40,
       modelCount: 20,
     },
+    {
+      label: "2.1.329",
+      profile: CLAUDE_CODE_2_1_329_PROFILE,
+      betaCount: 45,
+      modelCount: 24,
+    },
   ])(
     "pins the observed $label beta and model counts",
     ({ profile, betaCount, modelCount }) => {
@@ -115,6 +129,7 @@ describe("profile matrix registry", () => {
       CLAUDE_CODE_2_1_195_PROFILE.id,
       CLAUDE_CODE_2_1_233_PROFILE.id,
       CLAUDE_CODE_2_1_280_PROFILE.id,
+      CLAUDE_CODE_2_1_329_PROFILE.id,
     ]);
   });
 });

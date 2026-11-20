@@ -48,9 +48,12 @@ New versions enter the next cycle.
 ## Architecture breadcrumbs
 
 - **Profiles are data**: `src/profiles/claude-code-<v>.ts` (scalars + model
-  catalogue: 14 models for 2.1.195, 17 for 2.1.233, 20 for 2.1.280, pinned
-  in `test/tooling/profile-matrix.test.ts`) and `src/profiles/beta-registry-<v>.ts` (ordered beta
-  registry). Extracted from the binary, never invented.
+  catalogue: 14 models for 2.1.195, 17 for 2.1.233, 20 for 2.1.280, 24 for
+  2.1.329, pinned in `test/tooling/profile-matrix.test.ts`) and
+  `src/profiles/beta-registry-<v>.ts` (ordered beta registry: 28, 31 and 40
+  entries for the first three profiles, 45 for 2.1.329). Extracted from the
+  binary, never invented. The 2.1.329 profile also carries optional data-only
+  fields (`runtimeVersion`, `oauthAuthorizeScopes`) that older profiles omit.
 - **Behaviour is flags**: `src/profile-behaviors.ts` holds every per-version
   behaviour decision behind named flags with a single demarcated
   `profile.id` comparison. `test/governance/version-dispatch.test.ts` fails
@@ -70,6 +73,16 @@ New versions enter the next cycle.
   profile's registry skips its step silently. The thinking-display-updates
   site is coupled: when it fires it also removes the previously composed
   redact-thinking identifier, so that site both pushes and removes.
+  2.1.329 adds sites without moving any existing one, each on an optional
+  registry key: 6′ (thinking-token-count again, after the per-request sites and
+  before clear-at 11c, under `thinkingTokenCountAfterRequestTable`; site 6
+  then stands down), 11d (inline-tools, right after 11b), 11e (tool-provenance,
+  opt-in, between 11d and 11f), 11f (advisor-tool, before 6′), the side-query
+  site (after clear-at 11c, before effort 12), the agentic-query re-push of
+  `claude-code-20250219` (right after the per-model table, before the
+  per-request sites) and 18 (message-threads, after cache-diagnosis). The
+  mid-conversation-system header is gone from that registry (optional key),
+  but 11b and 11c still key on its condition.
 - **Fingerprint**: salt `59cf53e54c78` + characters 4/7/20 of the first user
   text + version string, SHA-256, first 3 hex chars. Known-answer vectors
   must be computed independently outside this package (a vector produced by
@@ -84,6 +97,10 @@ New versions enter the next cycle.
   string=`d7b` (both too short to reach any sampled index, so their hashed
   material is identical), and `"\u{1F642}wire compat probe"`=`76f` (a
   leading non-BMP character, proving UTF-16 code-unit indexing).
+  2.1.329 → `offline cch probe`=`100`, `hello wire compat`=`dac`,
+  `canary probe`=`776`, the pangram=`945`, `hi`=`3c4`, the empty
+  string=`3c4`, `"\u{1F642}wire compat probe"`=`878`, and the LIVE vector
+  `hello`=`e8c` (the fingerprint of a genuine 2.1.329 capture).
 
 ## Proof obligations (what "green" means)
 
@@ -91,7 +108,8 @@ New versions enter the next cycle.
   from a packed tarball. Every frozen digest must never move:
   2.1.195 = `6b9609b29463c890544845dd94acf560206b6f8165538faafd8886750037d277`,
   2.1.233 = `4e06af42310d63549a4fa9af60ff0c9b13e95d7864624c6b7bf94d45ce9a3997`,
-  2.1.280 = `9a531ed01ddd3440ce5b7f25c6caf5f045a9b4e78d885b5317508e21a22ada90`.
+  2.1.280 = `9a531ed01ddd3440ce5b7f25c6caf5f045a9b4e78d885b5317508e21a22ada90`,
+  2.1.329 = `d8cd6493322a5b4c31fd8ae5e74a6ce62a394b6d67afe3965b4e6e9dcbb343a5`.
 - `npm run fixtures:check` — byte seal over `test/fixtures/golden/`.
 - `test/conformance/differential.test.ts` — behavioural replay of fixtures
   through the builder. The seal guards echoed bytes; the differential guards
@@ -164,6 +182,10 @@ Binary extraction:
   most 2.1.233 additions (cache-evict, per-turn-effort, server-side
   fallback, auto-mode classifier) never emit in the main request path under
   defaults — see the analysis docs before modelling a new beta as emitted.
+- From 2.1.329 the module banner text changed (the second line is now
+  `// (c) Anthropic PBC. All rights reserved. …` instead of the Beta-product
+  line), so the `.modules.js` predicate must use the banner of the build being
+  carved; the old banner selects zero modules.
 
 Process:
 

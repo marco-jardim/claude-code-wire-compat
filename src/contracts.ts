@@ -282,6 +282,31 @@ export interface Message {
   readonly role: "user" | "assistant";
   readonly content: MessageContent;
 }
+
+/** The effort statement a per-turn control message carries. */
+export interface ClaudeCodeControlMessageOutputConfig {
+  readonly effort?: ClaudeCodeEffort;
+  readonly timing?: {
+    readonly type: "now";
+    readonly now: string | number;
+  };
+}
+
+/**
+ * A mid-conversation control message: the wire shape the genuine 2.1.329 client
+ * uses to change effort (or report timing) between turns without rewriting the
+ * cached prefix. It is a `role: "system"` entry of `messages` carrying
+ * `output_config` and, for a pure statement, empty `content`.
+ *
+ * Accepted only by profiles whose behaviour set honours it (2.1.329); every
+ * other profile rejects it with `INVALID_INPUT`, exactly as before. It is
+ * passed through verbatim after validation and never derived by this package.
+ */
+export interface ClaudeCodeControlMessage {
+  readonly role: "system";
+  readonly content: MessageContent;
+  readonly output_config: ClaudeCodeControlMessageOutputConfig;
+}
 export type SystemInput = string | TextBlock;
 
 export interface ToolInputSchema {
@@ -832,11 +857,62 @@ export interface ClaudeCodeMetadataOverrides {
  */
 export type ClaudeCodeExtraHeaderPolicy = "strict" | "dropConflicting";
 
+/**
+ * Where a request sits in the conversation, as the genuine client counts it:
+ * which prompt of the session and which model turn within that prompt. See
+ * `ClaudeCodeRequestInput.turnPosition`.
+ */
+export interface ClaudeCodeTurnPosition {
+  readonly promptIndex: number;
+  readonly turnIndex: number;
+}
+
+/**
+ * One tool the conversation has used, as reported in the
+ * `x-claude-code-sandy-plover` header. See `ClaudeCodeRequestInput.toolsUsed`.
+ */
+export interface ClaudeCodeToolUsed {
+  readonly name: string;
+  readonly mcp?: boolean;
+  readonly url?: string;
+}
+
+/**
+ * The values of the `anthropic-dispatch-id` header the genuine client sends
+ * when the account is served the dispatch experiment. See
+ * `ClaudeCodeAccountFeatures.dispatchId`.
+ */
+export type ClaudeCodeDispatchId = "v2d" | "v2s" | "v2p";
+
+/**
+ * Conversation-thread state for the message-threads feature. See
+ * `ClaudeCodeAccountFeatures.thread`.
+ */
+export type ClaudeCodeThreadInput =
+  | { readonly type: "create" }
+  | { readonly type: "continue"; readonly previousMessageId: string };
+
+/**
+ * Features the genuine client turns on only for accounts the server has
+ * enrolled. The package cannot observe that enrolment, so each member is an
+ * explicit opt-in by the caller. See `ClaudeCodeRequestInput.accountFeatures`.
+ */
+export interface ClaudeCodeAccountFeatures {
+  /** Value of the `anthropic-dispatch-id` header. */
+  readonly dispatchId?: ClaudeCodeDispatchId;
+  /** Opts into the inline-tools beta. */
+  readonly inlineTools?: boolean;
+  /** Opts into the tool-provenance beta (off by default, as in the genuine client's OAuth traffic). */
+  readonly toolProvenance?: boolean;
+  /** Message-thread state. */
+  readonly thread?: ClaudeCodeThreadInput;
+}
+
 export interface ClaudeCodeRequestInput {
   readonly accessToken: string;
   readonly model: string;
   readonly maxTokens: number;
-  readonly messages: readonly Message[];
+  readonly messages: readonly (Message | ClaudeCodeControlMessage)[];
   readonly system?: readonly SystemInput[];
   readonly tools?: readonly ToolDefinition[];
   readonly cacheControl?: ClaudeCodeCacheControlInput | null;
@@ -1063,6 +1139,96 @@ export interface ClaudeCodeRequestInput {
    * mirroring upstream. A non-string value is still `INVALID_INPUT`.
    */
   readonly promptId?: string;
+  /**
+   * Supplies the value of the `cch=` segment of the canonical billing block.
+   *
+   * Exactly five lowercase hexadecimal characters; anything else is
+   * `INVALID_INPUT`. Honoured by every profile. When omitted the segment keeps
+   * the placeholder `00000`, so a request built without it is byte-identical to
+   * one built before this field existed. Computing the value is the caller's
+   * business: this package only places it. Ignored when `suppressBillingBlock`
+   * is set, because there is no block to carry it.
+   */
+  readonly cch?: string;
+  /**
+   * Supplies the `cc_turn_origin` segment of the canonical billing block: who
+   * started the turn (for example `human`).
+   *
+   * Emitted only by profiles that carry the segment (2.1.329); older profiles
+   * ignore it. A value that does not match `/^[a-z][a-z_]{0,31}$/` is SILENTLY
+   * omitted, mirroring upstream. A non-string value is `INVALID_INPUT`.
+   */
+  readonly turnOrigin?: string;
+  /**
+   * Supplies the `cc_prompt_index` and `cc_turn_index` segments of the
+   * canonical billing block.
+   *
+   * Emitted only by profiles that carry the segments (2.1.329); older profiles
+   * ignore it. Both indexes must be integers (`promptIndex` from 0, `turnIndex`
+   * from 1, neither above ten million) or the pair is SILENTLY omitted,
+   * mirroring upstream. A value that is not an object with exactly those two
+   * number-typed keys is `INVALID_INPUT`.
+   */
+  readonly turnPosition?: ClaudeCodeTurnPosition;
+  /**
+   * Supplies the tools the conversation has used, which the genuine client
+   * reports in the `x-claude-code-sandy-plover` header.
+   *
+   * Emitted only by profiles that carry the header (2.1.329), where it is
+   * always present and defaults to `[]`; older profiles validate and ignore it.
+   * Entry order is the caller's (the genuine client lists non-built-in tools
+   * first, which is the host's job). At most 64 entries. Each entry carries
+   * only `name`, `mcp` and `url`; `name` and `url` are printable ASCII.
+   * Entries with an empty name or a name over 256 bytes are SILENTLY dropped,
+   * mirroring upstream. A serialized value over 7168 bytes is `INVALID_INPUT`
+   * (the genuine client truncates and appends a sentinel; this package refuses
+   * instead because the sentinel is not transcribed).
+   */
+  readonly toolsUsed?: readonly ClaudeCodeToolUsed[];
+  /**
+   * Supplies the id of the previous response message of this conversation,
+   * which the genuine client echoes in the body's `diagnostics` object
+   * (`diagnostics.previous_message_id`) alongside the cache-diagnosis beta.
+   *
+   * Emitted only by profiles that carry the body field (2.1.329), where
+   * `diagnostics` is always present when the beta is composed: `null` when this
+   * field is omitted or `null` (the first request), the id otherwise. Older
+   * profiles validate and ignore it. A string that does not match
+   * `/^msg_[A-Za-z0-9_]{1,64}$/` is `INVALID_INPUT`, as is a collision with an
+   * `experimentalBodyFields.diagnostics` key.
+   */
+  readonly previousMessageId?: string | null;
+  /**
+   * Opts into features the genuine client enables per account (server-served).
+   *
+   * Validated on every profile (unknown keys and values outside the closed
+   * domains are `INVALID_INPUT`); only profiles that honour account-served
+   * inputs (2.1.329) act on it, and older profiles ignore it entirely. There:
+   * `dispatchId` adds the `anthropic-dispatch-id` header to messages requests
+   * (never to count-tokens); `inlineTools` composes the inline-tools beta when
+   * the mid-conversation tool-change beta is composed; `toolProvenance`
+   * composes the tool-provenance beta (OAuth only); `thread` composes the
+   * message-threads beta and adds the body's `thread` object (`{type:
+   * "create"}` or `{type: "continue", previous_message_id}`), which is dropped
+   * again when `suppressBetas` removes that beta.
+   */
+  readonly accountFeatures?: ClaudeCodeAccountFeatures;
+  /**
+   * Marks the request as a side query (the plugin sets it on session-title
+   * requests), which composes the claude-code-side-query beta.
+   *
+   * Validated on every profile (a non-boolean is `INVALID_INPUT`); honoured
+   * only by profiles that honour account-served inputs (2.1.329).
+   */
+  readonly sideQuery?: boolean;
+  /**
+   * Marks the request as an agentic query, which composes the claude-code beta
+   * for a model the per-model table excludes it from (the haiku models).
+   *
+   * Validated on every profile (a non-boolean is `INVALID_INPUT`); honoured
+   * only by profiles that honour account-served inputs (2.1.329).
+   */
+  readonly agenticQuery?: boolean;
   /** Injects the Web Crypto provider used to hash the request body. */
   readonly crypto?: Pick<Crypto, "subtle">;
 }
@@ -1085,7 +1251,6 @@ export type ClaudeCodeCountTokensInput = Pick<
   ClaudeCodeRequestInput,
   | "accessToken"
   | "model"
-  | "messages"
   | "tools"
   | "runtime"
   | "clientRequestId"
@@ -1100,7 +1265,10 @@ export type ClaudeCodeCountTokensInput = Pick<
   | "anthropicAdditionalProtection"
   | "extraHeaders"
   | "extraHeaderPolicy"
->;
+> & {
+  /** The count-tokens endpoint has no control-message seam. */
+  readonly messages: readonly Message[];
+};
 
 export interface BuiltClaudeCodeCountTokensRequest extends Omit<
   BuiltClaudeCodeRequest,
@@ -1136,6 +1304,20 @@ export interface ClaudeCodeProtocolProfile {
   readonly anthropicVersion: "2023-06-01";
   readonly contextHintEnabled: boolean;
   readonly betaPolicy: ClaudeCodeBetaPolicy;
+  /**
+   * The `X-Stainless-Runtime-Version` the genuine client of this release
+   * reports. Optional profile DATA: only profiles that record it carry it, so
+   * older profiles are unaffected. This package never applies it -- the caller
+   * still supplies `runtime.runtimeVersion` -- it exists so a host can read the
+   * value the genuine binary sent.
+   */
+  readonly runtimeVersion?: string;
+  /**
+   * The OAuth scopes the genuine client requests on its authorize URL, in the
+   * order it lists them. Optional profile DATA for a host that builds the
+   * authorize URL; this package builds none.
+   */
+  readonly oauthAuthorizeScopes?: readonly string[];
   readonly supportedModels: Readonly<Record<string, ClaudeCodeCatalogueEntry>>;
 }
 

@@ -2,6 +2,7 @@
 
 import { BETA_REGISTRY } from "./beta-registry.js";
 import type {
+  ClaudeCodeAccountFeatures,
   ClaudeCodeCapabilities,
   ClaudeCodeProtocolProfile,
 } from "./contracts.js";
@@ -10,11 +11,14 @@ import {
   supportsMidConversationSystem,
   supportsStructuredOutputs,
 } from "./model-capabilities.js";
+import { profileBehaviors } from "./profile-behaviors.js";
 import { BETA_REGISTRY_2_1_233 } from "./profiles/beta-registry-2.1.233.js";
 import { BETA_REGISTRY_2_1_280 } from "./profiles/beta-registry-2.1.280.js";
+import { BETA_REGISTRY_2_1_329 } from "./profiles/beta-registry-2.1.329.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 import { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
 import { CLAUDE_CODE_2_1_280_PROFILE } from "./profiles/claude-code-2.1.280.js";
+import { CLAUDE_CODE_2_1_329_PROFILE } from "./profiles/claude-code-2.1.329.js";
 
 /*
  * Provenance. The emitted order is a port of the genuine client's base beta set
@@ -59,6 +63,21 @@ interface BetaRegistryEntry {
  * registry absence does not keep its site inert there; what does is the
  * catalogue, because no 2.1.233 model declares the backing capability. The two
  * mechanisms are not interchangeable and both are load-bearing.
+ *
+ * The account-served members (`INLINE_TOOLS`, `TOOL_PROVENANCE`,
+ * `ADVISOR_TOOL`, `CLAUDE_CODE_SIDE_QUERY`, `MESSAGE_THREADS`) are a third
+ * case: several older registries DO declare them, so registry presence cannot
+ * keep their sites inert. Their sites additionally require the profile's
+ * `accountServedInputs` behaviour, which only 2.1.329 sets, and a caller input
+ * that states the feature explicitly.
+ *
+ * `MID_CONVERSATION_SYSTEM` is the one key that went from required to optional.
+ * Registries up to 2.1.280 carry it with a header. A later registry may carry
+ * it header-less upstream (the slot exists but no identifier is sent), in which
+ * case it is simply omitted from that registry. The push site then emits no
+ * header, while the two sites that read "the mid-conversation-system site is
+ * active" (11b and 11c) keep keying on the activity outcome and not on the
+ * registry entry, exactly as upstream keys on the composed state.
  */
 export interface ComposableBetaRegistry {
   readonly CLAUDE_CODE: BetaRegistryEntry;
@@ -70,10 +89,15 @@ export interface ComposableBetaRegistry {
   readonly CONTEXT_MANAGEMENT: BetaRegistryEntry;
   readonly STRUCTURED_OUTPUTS: BetaRegistryEntry;
   readonly PROMPT_CACHING_SCOPE: BetaRegistryEntry;
-  readonly MID_CONVERSATION_SYSTEM: BetaRegistryEntry;
+  readonly MID_CONVERSATION_SYSTEM?: BetaRegistryEntry;
   readonly PER_MESSAGE_EFFORT?: BetaRegistryEntry;
   readonly MID_CONV_TOOL_CHANGE?: BetaRegistryEntry;
+  readonly INLINE_TOOLS?: BetaRegistryEntry;
+  readonly TOOL_PROVENANCE?: BetaRegistryEntry;
+  readonly ADVISOR_TOOL?: BetaRegistryEntry;
   readonly MID_CONVERSATION_SYSTEM_CLEAR_AT?: BetaRegistryEntry;
+  readonly CLAUDE_CODE_SIDE_QUERY?: BetaRegistryEntry;
+  readonly MESSAGE_THREADS?: BetaRegistryEntry;
   readonly EFFORT: BetaRegistryEntry;
   readonly THINKING_BINDING_CONTROLS?: BetaRegistryEntry;
   readonly THINKING_DISPLAY_UPDATES?: BetaRegistryEntry;
@@ -90,6 +114,7 @@ const PROFILE_BETA_REGISTRIES: ReadonlyMap<string, ComposableBetaRegistry> =
     [CLAUDE_CODE_2_1_195_PROFILE.id, BETA_REGISTRY],
     [CLAUDE_CODE_2_1_233_PROFILE.id, BETA_REGISTRY_2_1_233],
     [CLAUDE_CODE_2_1_280_PROFILE.id, BETA_REGISTRY_2_1_280],
+    [CLAUDE_CODE_2_1_329_PROFILE.id, BETA_REGISTRY_2_1_329],
   ]);
 
 /**
@@ -155,6 +180,29 @@ export interface ComposeBetasInput {
    * `[1m]` model marker. See `docs/source-trace.md`, governance ledger L10.
    */
   readonly use1MContextOverride?: boolean;
+  /**
+   * Validated caller opt-ins for features the genuine client enables per
+   * account. Read only under the profile's `accountServedInputs` behaviour.
+   */
+  readonly accountFeatures?: ClaudeCodeAccountFeatures;
+  /**
+   * Whether the request's tools include the advisor tool
+   * (`type: "advisor_20260301"`). Compute it at the call site from the caller's
+   * tool list; read only under `accountServedInputs`.
+   */
+  readonly hasAdvisorTool?: boolean;
+  /**
+   * Marks a side query (the plugin uses it for session-title requests), which
+   * adds the claude-code-side-query beta. Read only under
+   * `accountServedInputs`.
+   */
+  readonly sideQuery?: boolean;
+  /**
+   * Marks an agentic query, which restores the claude-code beta for a model
+   * the per-model table excludes it from (haiku). Read only under
+   * `accountServedInputs`.
+   */
+  readonly agenticQuery?: boolean;
 }
 
 /**
@@ -179,7 +227,34 @@ export interface ComposedBetas {
    * `output_config.effort` in the body.
    */
   readonly thinkingDisplayOverride?: "updates";
+  /**
+   * Whether the context-management site (push site 7) fired, i.e. the
+   * experimental gate held and the model declares the capability. Body-side
+   * half of a beta/body pair, like `thinkingDisplayOverride`: the body builder
+   * generates `context_management` from it under
+   * `generatedContextManagement`. Not touched by `suppressBetas`: suppressing
+   * the identifier removes the HEADER only (MEMORY #4).
+   */
+  readonly contextManagementComposed: boolean;
+  /**
+   * Whether the cache-diagnosis site fired (the profile policy enables it).
+   * Body-side half of the pair: the body builder emits `diagnostics` from it
+   * under `cacheDiagnosisBody`. Not touched by `suppressBetas`.
+   */
+  readonly cacheDiagnosisComposed: boolean;
+  /**
+   * The thread the body should carry, present only when the message-threads
+   * site fired AND the identifier survived `suppressBetas`. Unlike the other
+   * body-side halves, a caller who suppresses this beta also loses the body
+   * field: sending `thread` without its beta is a request the server rejects.
+   */
+  readonly thread?: ClaudeCodeThreadBody;
 }
+
+/** The wire shape of the body's `thread` object. */
+export type ClaudeCodeThreadBody =
+  | { readonly type: "create" }
+  | { readonly type: "continue"; readonly previous_message_id: string };
 
 /**
  * Bounds a caller-supplied beta list (`additionalBetas` and `suppressBetas`
@@ -228,6 +303,11 @@ export function composeBetasWithAudit(
   const policy = profile.betaPolicy;
   const experimental = policy.experimentalBetasEnabled;
   const registry = resolveBetaRegistry(profile);
+  const behaviors = profileBehaviors(profile);
+  // Account-served and per-query caller inputs act only where the profile's
+  // behaviour set declares them; every other profile ignores them entirely.
+  const honoured = behaviors.accountServedInputs;
+  const accountFeatures = input.accountFeatures;
 
   if (!input.normalizedId.includes("haiku"))
     out.push(registry.CLAUDE_CODE.header);
@@ -237,7 +317,21 @@ export function composeBetasWithAudit(
   // enable a beta the pinned profile declares unavailable.
   const oneMillionRequested =
     input.use1MContextOverride ?? /\[1m\]/iu.test(input.rawModel);
-  if (policy.oneMillionContextEnabled && oneMillionRequested) {
+  /*
+   * Under `longContextExcludesNative1m` a model whose catalogue entry declares
+   * a native 1M window never gets the beta: the window needs no opt-in, so the
+   * genuine client does not send one. Only the marker conjunct is replaced by
+   * `use1MContextOverride`; this exclusion still applies to an override of
+   * `true`, because the override cannot make a native window need the beta.
+   */
+  const nativeOneMillion =
+    Object.hasOwn(profile.supportedModels, input.normalizedId) &&
+    profile.supportedModels[input.normalizedId]?.context?.native1m === true;
+  if (
+    policy.oneMillionContextEnabled &&
+    oneMillionRequested &&
+    !(behaviors.longContextExcludesNative1m && nativeOneMillion)
+  ) {
     out.push(registry.LONG_CONTEXT.header);
   }
   if (
@@ -255,11 +349,18 @@ export function composeBetasWithAudit(
   ) {
     out.push(registry.REDACT_THINKING.header);
   }
-  if (
+  /*
+   * Site 6. Under `thinkingTokenCountAfterRequestTable` the genuine client
+   * pushes this beta after the per-request sites instead; that push is site 6′
+   * below, with identical gates.
+   */
+  const thinkingTokenCountGates =
     policy.thinkingTokenCountEnabled &&
     experimental &&
-    input.capabilities.interleavedThinking
-  ) {
+    input.capabilities.interleavedThinking;
+  const tokenCountAfterRequestTable =
+    behaviors.thinkingTokenCountAfterRequestTable;
+  if (thinkingTokenCountGates && !tokenCountAfterRequestTable) {
     out.push(registry.THINKING_TOKEN_COUNT.header);
   }
   /*
@@ -278,8 +379,9 @@ export function composeBetasWithAudit(
   ) {
     out.push(narrationSummaries.header);
   }
-  if (experimental && input.capabilities.contextManagement)
-    out.push(registry.CONTEXT_MANAGEMENT.header);
+  const contextManagementComposed =
+    experimental && input.capabilities.contextManagement;
+  if (contextManagementComposed) out.push(registry.CONTEXT_MANAGEMENT.header);
   if (
     experimental &&
     supportsStructuredOutputs(input.normalizedId) &&
@@ -292,17 +394,36 @@ export function composeBetasWithAudit(
   if (experimental) out.push(registry.PROMPT_CACHING_SCOPE.header);
 
   /*
-   * Upstream `jR`. The local boolean below records that this site PUSHED, which
-   * is what sites 11b and 11c gate on -- upstream reads `Ee.includes(jR)`, the
-   * composed array, not the registry. Asking the registry instead would fire
-   * those two sites for a model this one skipped.
+   * Upstream `jR`. The local boolean below records that this site is ACTIVE for
+   * the model, which is what sites 11b and 11c gate on -- upstream reads
+   * `Ee.includes(jR)`, the composed state, not the registry. Asking the
+   * registry instead would fire those two sites for a model this one skipped.
+   * The header is pushed only when the registry carries one; a registry whose
+   * slot is header-less leaves the site active and the list unchanged.
    */
-  const midConversationSystemFired = supportsMidConversationSystem(
+  const midConversationSystemActive = supportsMidConversationSystem(
     input.normalizedId,
     profile,
   );
-  if (midConversationSystemFired) {
-    out.push(registry.MID_CONVERSATION_SYSTEM.header);
+  const midConversationSystem = registry.MID_CONVERSATION_SYSTEM;
+  if (midConversationSystemActive && midConversationSystem !== undefined) {
+    out.push(midConversationSystem.header);
+  }
+
+  /*
+   * Agentic-query marker. Upstream `uwr(e, {isAgenticQuery})` appends the
+   * claude-code beta to the per-model table when the model's table excludes it
+   * (the haiku models): `if (r?.isAgenticQuery && !h.includes(qkt)) h.push(qkt)`.
+   * The push lands after the per-model entries -- the mid-conversation marker
+   * above is the table's last one -- and before every per-request site below.
+   */
+  if (
+    honoured &&
+    input.agenticQuery === true &&
+    input.normalizedId.includes("haiku") &&
+    !out.includes(registry.CLAUDE_CODE.header)
+  ) {
+    out.push(registry.CLAUDE_CODE.header);
   }
 
   /*
@@ -327,13 +448,68 @@ export function composeBetasWithAudit(
    * document's divergence record.
    */
   const midConvToolChange = registry.MID_CONV_TOOL_CHANGE;
-  if (
+  const midConvToolChangeFired =
     experimental &&
-    midConversationSystemFired &&
+    midConversationSystemActive &&
     input.capabilities.midConvToolChange &&
-    midConvToolChange !== undefined
-  ) {
+    midConvToolChange !== undefined;
+  if (midConvToolChangeFired) {
     out.push(midConvToolChange.header);
+  }
+
+  /*
+   * Site 11d. The inline-tools beta, which the genuine client sends when the
+   * account is served the feature (server-served, so the caller states it) and
+   * the mid-conversation tool-change beta just fired: it keys on that composed
+   * outcome, which is why it sits directly after site 11b. The coupled body
+   * half (`role: "system"` messages carrying `tool_addition` blocks) is the
+   * caller's to supply; this site is header-only.
+   */
+  const inlineTools = registry.INLINE_TOOLS;
+  if (
+    honoured &&
+    accountFeatures?.inlineTools === true &&
+    experimental &&
+    midConvToolChangeFired &&
+    inlineTools !== undefined
+  ) {
+    out.push(inlineTools.header);
+  }
+
+  /*
+   * Site 11e. The tool-provenance beta. OPT-IN: both genuine OAuth captures
+   * omit it, so it is never composed by default. Upstream's own conjuncts are
+   * the experimental gate and OAuth authentication; the coupled
+   * `ownership_metadata` body field is recorded as not ported.
+   */
+  const toolProvenance = registry.TOOL_PROVENANCE;
+  if (
+    honoured &&
+    accountFeatures?.toolProvenance === true &&
+    experimental &&
+    policy.oauthAuthenticated &&
+    toolProvenance !== undefined
+  ) {
+    out.push(toolProvenance.header);
+  }
+
+  /*
+   * Site 11f. The advisor-tool beta, pushed when the request carries the
+   * advisor tool itself. No experimental gate: the tool's presence in the
+   * request is the whole condition.
+   */
+  const advisorTool = registry.ADVISOR_TOOL;
+  if (honoured && input.hasAdvisorTool === true && advisorTool !== undefined) {
+    out.push(advisorTool.header);
+  }
+
+  /*
+   * Site 6′. The thinking-token-count beta at the position the genuine client
+   * pushes it under `thinkingTokenCountAfterRequestTable`: after the
+   * per-request sites above and before clear-at (11c). Same gates as site 6.
+   */
+  if (thinkingTokenCountGates && tokenCountAfterRequestTable) {
+    out.push(registry.THINKING_TOKEN_COUNT.header);
   }
 
   /*
@@ -350,16 +526,30 @@ export function composeBetasWithAudit(
    * holds because `Vr` is a per-session latch, and a stateless package composes
    * every request as a first request. `Mee`'s other terms are fixed on the
    * first-party path. What is left is `Ee.includes(jR)`, which is precisely the
-   * `midConversationSystemFired` outcome recorded at site 11.
+   * `midConversationSystemActive` outcome recorded at site 11.
    */
   const midConversationSystemClearAt =
     registry.MID_CONVERSATION_SYSTEM_CLEAR_AT;
   if (
     experimental &&
-    midConversationSystemFired &&
+    midConversationSystemActive &&
     midConversationSystemClearAt !== undefined
   ) {
     out.push(midConversationSystemClearAt.header);
+  }
+
+  /*
+   * Side-query marker. Upstream pushes the claude-code-side-query beta in the
+   * per-attempt group, before effort (`eUo`). The plugin sets the input on
+   * session-title requests only.
+   */
+  const claudeCodeSideQuery = registry.CLAUDE_CODE_SIDE_QUERY;
+  if (
+    honoured &&
+    input.sideQuery === true &&
+    claudeCodeSideQuery !== undefined
+  ) {
+    out.push(claudeCodeSideQuery.header);
   }
 
   // Site 12.
@@ -449,14 +639,40 @@ export function composeBetasWithAudit(
     out.push(registry.EXTENDED_CACHE_TTL.header);
   }
   if (profile.contextHintEnabled) out.push(registry.CONTEXT_HINT.header);
+  const cacheDiagnosisComposed = policy.cacheDiagnosisEnabled;
   if (
-    policy.cacheDiagnosisEnabled &&
+    cacheDiagnosisComposed &&
     !out.includes(registry.CACHE_DIAGNOSIS.header)
   ) {
     out.push(registry.CACHE_DIAGNOSIS.header);
   }
 
-  // No advisor-tool beta: upstream has no observed unconditional push site.
+  /*
+   * Site 18. The message-threads beta, after cache-diagnosis. Account-served,
+   * so the caller states the thread. Body-side half of a beta/body pair: the
+   * site also decides the body's `thread` object, which is dropped when the
+   * caller suppresses the identifier (see below).
+   */
+  const messageThreads = registry.MESSAGE_THREADS;
+  let threadBody: ClaudeCodeThreadBody | undefined;
+  if (
+    honoured &&
+    accountFeatures?.thread !== undefined &&
+    experimental &&
+    messageThreads !== undefined
+  ) {
+    out.push(messageThreads.header);
+    threadBody =
+      accountFeatures.thread.type === "create"
+        ? { type: "create" }
+        : {
+            type: "continue",
+            previous_message_id: accountFeatures.thread.previousMessageId,
+          };
+  }
+
+  // The advisor-tool beta is pushed at site 11f, under `accountServedInputs`;
+  // no profile composes it unconditionally.
 
   // Package extension. Canonical, upstream-derived identifiers always precede
   // caller-supplied ones, and a caller entry that duplicates an already-emitted
@@ -480,6 +696,9 @@ export function composeBetasWithAudit(
       ...(thinkingDisplayOverride === undefined
         ? {}
         : { thinkingDisplayOverride }),
+      contextManagementComposed,
+      cacheDiagnosisComposed,
+      ...(threadBody === undefined ? {} : { thread: threadBody }),
     });
   }
   const suppressed = new Set(validateAdditionalBetas(input.suppressBetas));
@@ -497,5 +716,16 @@ export function composeBetasWithAudit(
     ...(thinkingDisplayOverride === undefined
       ? {}
       : { thinkingDisplayOverride }),
+    // Same reasoning: the body-side halves of the context-management and
+    // cache-diagnosis pairs survive the suppression filter.
+    contextManagementComposed,
+    cacheDiagnosisComposed,
+    // The one body half the filter DOES reach: `thread` without its beta
+    // header is not a request the server accepts, so a suppressed
+    // message-threads identifier takes the body field with it.
+    ...(threadBody === undefined ||
+    (messageThreads !== undefined && suppressed.has(messageThreads.header))
+      ? {}
+      : { thread: threadBody }),
   });
 }

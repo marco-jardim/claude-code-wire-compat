@@ -10,6 +10,7 @@ import {
   buildClaudeCodeRequest,
   CLAUDE_CODE_2_1_233_PROFILE,
   CLAUDE_CODE_2_1_280_PROFILE,
+  CLAUDE_CODE_2_1_329_PROFILE,
 } from "../../src/index.js";
 
 /*
@@ -105,5 +106,50 @@ describe("shared model-id normalizer ladder", () => {
     // Positive anchor: the negative assertion above cannot pass on an empty
     // header.
     expect(value).toContain("oauth-2025-04-20");
+  });
+});
+
+/*
+ * The 2.1.329 port adds four rungs (`claude-sonnet-5-5`, `claude-haiku-5-5`,
+ * `claude-fable-5-2`, `claude-mythos-5-2`) to the normalizer, but only behind
+ * the `extendedModelIdLadder` flag, which only 2.1.329 sets. These cases prove
+ * the previous pins still fold exactly as before.
+ */
+describe("extended normalizer rungs stay gated", () => {
+  async function build(
+    model: string,
+    profile: typeof CLAUDE_CODE_2_1_280_PROFILE,
+  ): Promise<{ readonly betas: string; readonly maxTokens: unknown }> {
+    const built = await buildClaudeCodeRequest(
+      {
+        accessToken: "shared-ladder-token",
+        model,
+        maxTokens: 128000,
+        messages: [{ role: "user", content: "hello wire compat" }],
+        runtime,
+        clientRequestId: "shared-ladder-request-3",
+        thinking: { type: "adaptive" },
+      },
+      profile,
+    );
+    const body = JSON.parse(built.body) as { max_tokens?: unknown };
+    return { betas: betaHeader(built), maxTokens: body.max_tokens };
+  }
+
+  it("keeps claude-sonnet-5-5 on the claude-sonnet-5 list under 2.1.280", async () => {
+    const folded = await build(
+      "claude-sonnet-5-5",
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
+    const sibling = await build("claude-sonnet-5", CLAUDE_CODE_2_1_280_PROFILE);
+
+    expect(folded).toEqual(sibling);
+    expect(folded.maxTokens).toBe(64000);
+  });
+
+  it("resolves claude-sonnet-5-5 to its own row under 2.1.329", async () => {
+    const own = await build("claude-sonnet-5-5", CLAUDE_CODE_2_1_329_PROFILE);
+
+    expect(own.maxTokens).toBe(128000);
   });
 });

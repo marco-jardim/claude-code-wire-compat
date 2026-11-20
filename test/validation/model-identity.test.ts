@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { ClaudeCodeWireError } from "../../src/contracts.js";
 import {
   modelFamilyOf,
+  modelIdLadder,
   normalizeModelId,
   stripModelMarkers,
 } from "../../src/model-identity.js";
@@ -114,6 +115,7 @@ describe("model identity", () => {
       "claude-code-2.1.195-sdk-0.94.0": false,
       "claude-code-2.1.233-sdk-0.112.1": true,
       "claude-code-2.1.280-sdk-0.112.1": true,
+      "claude-code-2.1.329-sdk-0.128.0": true,
     });
 
   describeEachProfile("catalogue coupling", (entry) => {
@@ -153,7 +155,7 @@ describe("model identity", () => {
         entry.profile.supportedModels,
       )) {
         expect(modelFamilyOf(id)).toBe(definition.family);
-        expect(normalizeModelId(id)).toBe(id);
+        expect(normalizeModelId(id, modelIdLadder(entry.profile))).toBe(id);
       }
     });
   });

@@ -6,6 +6,7 @@ import {
   CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
   CLAUDE_CODE_2_1_280_PROFILE,
+  CLAUDE_CODE_2_1_329_PROFILE,
   buildClaudeCodeRequest,
   parseBuiltClaudeCodeRequest,
 } from "../../src/index.js";
@@ -56,6 +57,22 @@ const FIXTURES: readonly FixtureCase[] = [
     name: "outgoing-default-path-2.1.280.json",
     profile: CLAUDE_CODE_2_1_280_PROFILE,
   },
+  {
+    name: "outgoing-foreground-2.1.329.json",
+    profile: CLAUDE_CODE_2_1_329_PROFILE,
+  },
+  {
+    name: "outgoing-canary-context-hint-off-2.1.329.json",
+    profile: CLAUDE_CODE_2_1_329_PROFILE,
+  },
+  {
+    name: "outgoing-default-path-2.1.329.json",
+    profile: CLAUDE_CODE_2_1_329_PROFILE,
+  },
+  {
+    name: "outgoing-account-features-2.1.329.json",
+    profile: CLAUDE_CODE_2_1_329_PROFILE,
+  },
 ];
 
 // Transcribed from the 2.1.280 analysis document's default-path derivation,
@@ -78,8 +95,74 @@ const DEFAULT_PATH_BETAS: readonly string[] = [
   "cache-diagnosis-2026-04-07",
 ];
 
+// The 2.1.329 default path, transcribed from the port plan's push-site order
+// (`.temp/cc329/plans/library-port-plan.md` C18c), NOT captured from the
+// builder. Unlike 2.1.280 there is no mid-conversation-system header, the
+// thinking-token-count identifier follows the per-request table, and no
+// extended-cache-ttl identifier is present because the input leaves the cache
+// lifetime at its default.
+const DEFAULT_PATH_BETAS_2_1_329: readonly string[] = [
+  "claude-code-20250219",
+  "oauth-2025-04-20",
+  "interleaved-thinking-2025-05-14",
+  "context-management-2025-06-27",
+  "prompt-caching-scope-2026-01-05",
+  "per-turn-control-2026-07-01",
+  "mid-conversation-tool-changes-2026-07-01",
+  "thinking-token-count-2026-05-13",
+  "mid-conversation-system-clear-at-2026-08-21",
+  "effort-2025-11-24",
+  "thinking-binding-controls-2026-08-01",
+  "thinking-display-updates-2026-08-18",
+  "cache-diagnosis-2026-04-07",
+];
+
+// Wire order of the genuine 2.1.329 interactive request (live capture
+// `inter329-205`): capitalised names first, then the lower-case ones, sorted by
+// UTF-16 code unit. The capture's transport headers are not the library's.
+const DEFAULT_PATH_HEADER_NAMES_2_1_329: readonly string[] = [
+  "Accept",
+  "Authorization",
+  "Content-Type",
+  "User-Agent",
+  "X-Claude-Code-Session-Id",
+  "X-Stainless-Arch",
+  "X-Stainless-Lang",
+  "X-Stainless-OS",
+  "X-Stainless-Package-Version",
+  "X-Stainless-Retry-Count",
+  "X-Stainless-Runtime",
+  "X-Stainless-Runtime-Version",
+  "X-Stainless-Timeout",
+  "anthropic-beta",
+  "anthropic-dangerous-direct-browser-access",
+  "anthropic-version",
+  "x-app",
+  "x-claude-1p-request-class",
+  "x-claude-code-prompt-id",
+  "x-claude-code-request-class",
+  "x-claude-code-sandy-plover",
+  "x-client-request-id",
+];
+
+// Body key order of the same capture, restricted to the keys this input emits.
+const DEFAULT_PATH_BODY_KEYS_2_1_329: readonly string[] = [
+  "model",
+  "messages",
+  "system",
+  "metadata",
+  "max_tokens",
+  "thinking",
+  "context_management",
+  "output_config",
+  "diagnostics",
+];
+
+// Names are lower-cased because the 2.1.329 layout carries the genuine client's
+// mixed casing. A `Map` and `toEqual` also ignore insertion order, and so does
+// this lookup: the exact names and their order are asserted separately.
 function logicalHeaders(headers: readonly (readonly [string, string])[]) {
-  return new Map(headers);
+  return new Map(headers.map(([name, value]) => [name.toLowerCase(), value]));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -132,6 +215,49 @@ describe("fixture-backed differential conformance", () => {
       logicalHeaders(reference.headers),
     );
     expect(parseRequestBody(built.body)).toEqual(reference.body);
+  });
+
+  // `toEqual` on a `Map` or an object ignores order, so the wire order of the
+  // header names (with their exact casing) and of the body keys is asserted on
+  // its own. Both are part of what makes a request indistinguishable.
+  it.each(FIXTURES)(
+    "preserves header name order and body key order for $name",
+    async ({ name, profile }) => {
+      const reference = referenceAdapter(name);
+      const built = await expectEvidenceSafe(
+        syntheticInput(reference),
+        profile,
+      );
+      expect(built.headers.map(([headerName]) => headerName)).toEqual(
+        reference.headers.map(([headerName]) => headerName),
+      );
+      expect(Object.keys(parseRequestBody(built.body))).toEqual(
+        Object.keys(reference.body),
+      );
+    },
+  );
+
+  it("claude-opus-5-5 2.1.329 default path: transcribed beta, header-name and body-key literals", async () => {
+    const reference = referenceAdapter("outgoing-default-path-2.1.329.json");
+    const built = await expectEvidenceSafe(
+      syntheticInput(reference),
+      CLAUDE_CODE_2_1_329_PROFILE,
+    );
+    const betaHeader = built.headers.find(
+      ([headerName]) => headerName === "anthropic-beta",
+    )?.[1];
+    expect(betaHeader).toBeDefined();
+    expect((betaHeader ?? "").split(",")).toEqual(DEFAULT_PATH_BETAS_2_1_329);
+    expect(built.headers.map(([headerName]) => headerName)).toEqual(
+      DEFAULT_PATH_HEADER_NAMES_2_1_329,
+    );
+    const body = parseRequestBody(built.body);
+    expect(Object.keys(body)).toEqual(DEFAULT_PATH_BODY_KEYS_2_1_329);
+    expect(body["thinking"]).toEqual({ type: "adaptive", display: "updates" });
+    expect(body["context_management"]).toEqual({
+      edits: [{ type: "clear_thinking_20251015", keep: "all" }],
+    });
+    expect(body["diagnostics"]).toEqual({ previous_message_id: null });
   });
 
   it("claude-opus-5-5 default path: header equals the 14-identifier literal and thinking carries display updates", async () => {

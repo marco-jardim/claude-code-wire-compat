@@ -2608,3 +2608,6 @@ as "thinking active ∧ `experimentalBetasEnabled`", omitting `ja()` and the
      that been the push, `cache-diagnosis-2026-04-07` would have preceded
      `effort-2025-11-24` on the wire and package site 17 would have been the
      wrong home for it.
+
+> **2026-11-19:** Corrections from the 2.1.329 analysis are recorded in its §13
+> (`docs/protocol/versions/claude-code-2.1.329-analysis.md`).

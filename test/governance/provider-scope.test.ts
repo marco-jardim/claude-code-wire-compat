@@ -74,6 +74,23 @@ const REFERENCE_IDENTIFIERS: ReadonlyMap<string, string> = new Map([
       "anthropic-only, so the set is exported for documentary value and " +
       "consumed by NOTHING in `src/`; no provider can select it.",
   ],
+  [
+    "vertex_fast_mode",
+    "A catalogue capability string transcribed verbatim from the genuine " +
+      "2.1.329 model catalogue (`claude-fable-5-2` and `claude-mythos-5-2`). " +
+      "It is data in a free list of capability names: nothing in `src/` " +
+      "reads it, maps it, or branches on a provider because of it, and this " +
+      "package neither models nor emits any non-first-party provider path. " +
+      "Dropping it would falsify the transcription.",
+  ],
+  [
+    "BEDROCK_UNSUPPORTED_BETAS_2_1_329",
+    "Static reference data, not a selectable branch. The 2.1.329 transcription " +
+      "of the same set, taken from upstream `Bkr` and unchanged from 2.1.280: " +
+      "interleaved thinking, 1M context and the tool-search tool. This package " +
+      "is anthropic-only, so the set is exported for documentary value and " +
+      "consumed by NOTHING in `src/`; no provider can select it.",
+  ],
 ]);
 
 /**

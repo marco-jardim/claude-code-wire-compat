@@ -54,8 +54,8 @@ const vectors = [
 ].flatMap(([, hex]) => (hex === undefined ? [] : [hex]));
 
 describe("AGENTS.md hand-copied literals", () => {
-  it("extracts exactly three frozen digests from EXPECTED_DIGESTS", () => {
-    expect(digests).toHaveLength(3);
+  it("extracts exactly four frozen digests from EXPECTED_DIGESTS", () => {
+    expect(digests).toHaveLength(4);
   });
 
   it("restates every frozen packed-consumer digest against its version", () => {

@@ -6,6 +6,273 @@ Append-only log of non-obvious maintenance decisions and their reasoning, so
 future work does not re-litigate or accidentally reverse them. Newest entries
 first. Keep entries dated, factual, and in consumer-neutral language.
 
+## 2026-11-20 — release 0.8.0 folds the never-published rc.1
+
+Context: `0.8.0-rc.1` was prepared but never published or tagged, and no
+consumer ever resolved it from the registry.
+
+Decisions:
+
+1. **The release is `0.8.0` stable, not a second prerelease.** The rc.1
+   changelog section is folded into the dated `## [0.8.0] - 2026-11-20` entry;
+   the Breaking section and the rollback (pin `CLAUDE_CODE_2_1_280_PROFILE`)
+   are unchanged. This supersedes the 2026-11-19 entry's "ships as a
+   prerelease" sentence; the rest of that entry stands.
+2. **The reviewed manifest is `release-manifests/0.8.0.json`.** Its `commit`
+   field is audit metadata (the commit the artefact was built from), not an
+   equality check, so the release commit and its manifest can land together.
+
+## 2026-11-19 — claude-code 2.1.329: the default switches, with a rollback
+
+Context: the port is complete (profile, behaviours, fixtures, frozen digest),
+and the default-profile seam in `src/build-request.ts` was switched to
+`CLAUDE_CODE_2_1_329_PROFILE` as its own one-line commit, after the
+packed-consumer canary and the digest freeze, per the runbook.
+
+Decisions:
+
+1. **The switch is breaking for an unpinned caller.** What changes on the wire:
+   header names and order (genuine capitalisation, a sorted layout), a new
+   `Accept` header, the request-class and sandy-plover headers, the retired
+   `mid-conversation-system-2026-04-07` header, the position of
+   `thinking-token-count`, the generated `context_management`, the
+   `diagnostics` body field and the genuine body key order. It ships as a
+   prerelease (`0.8.0-rc.1`) so the plugin can consume a packed tarball before
+   any stable release.
+2. **Rollback is explicit pinning.** A consumer who wants the 2.1.280 bytes
+   passes `CLAUDE_CODE_2_1_280_PROFILE` on every call to every entry point that
+   reads the default seam (`buildClaudeCodeRequest`,
+   `buildClaudeCodeCountTokensRequest`, `parseBuiltClaudeCodeRequest`).
+   Pinning the builders alone is not enough, because the parser recomputes the
+   expected headers under the profile it is given.
+3. **The model-query and anti-verbosity helpers keep their own default.** The
+   switch does not govern them; a caller relying on them for a 2.1.329-only
+   model passes the profile explicitly.
+
+## 2026-11-19 — claude-code 2.1.329: per-turn control messages are accepted as pass-through
+
+Context: the genuine client changes effort mid-conversation by inserting a
+`role: "system"` entry into `messages`: an `api_system` message with empty
+content and an `outputConfig`, which reaches the wire as
+`{role: "system", content: [], output_config: {effort?, timing?}}`, in that key
+order (transcribed from the bundle; see the analysis document).
+
+Decisions:
+
+1. **Messages validation accepts exactly that shape on 2.1.329** and passes it
+   through untouched; it is exported as the type `ClaudeCodeControlMessage`.
+   Every other profile keeps refusing it, byte for byte as before.
+2. **The package does not generate these messages.** Turn ledgers are
+   conversation state the package does not hold, so the host inserts them. The
+   `per-turn-control-2026-07-01` beta still composes from the model capability
+   as it did at 2.1.280.
+3. **No other mid-conversation `role: "system"` message is modelled.** In
+   particular the `tool_addition` messages are not (see the inline-tools entry).
+
+## 2026-11-19 — claude-code 2.1.329: inline-tools is header-only
+
+Context: the genuine client sends the `inline-tools` beta when an account flag
+is on and the mid-conversation tool-change beta is composed, and it couples the
+beta to the body: `role: "system"` messages carrying `tool_addition` blocks are
+inserted into the conversation where a tool appears.
+
+Decisions:
+
+1. **Only the header half is ported.** `accountFeatures.inlineTools` composes
+   the beta (when the mid-conversation tool-change beta fired); the body half
+   is conversation state above the request-builder seam. A host that sets the
+   flag without inserting those messages sends a request the genuine client
+   would not send. The flag is therefore off by default, and the golden
+   account-features fixture records the header half only.
+2. **Whether to model the messages is open.** It needs a conversation-aware
+   input the package does not have; this is recorded in `docs/source-trace.md`
+   under "2.1.329 — recorded, not ported".
+
+## 2026-11-19 — claude-code 2.1.329: the sandy-plover header and its caps
+
+Context: `x-claude-code-sandy-plover` carries the tools the conversation has
+used, as a JSON array. It is present on every messages request under the 2.1.329
+layout (`[]` when nothing was used) and absent from count-tokens requests.
+
+Decisions:
+
+1. **Caller input `toolsUsed`**, validated on every profile and honoured only
+   on 2.1.329. Entries carry `name`, then `mcp` (only when true), then `url`,
+   serialised in that key order with no spaces.
+2. **Caps follow the upstream guards.** At most 64 entries; an entry whose name
+   is empty or over 256 bytes is dropped silently, as upstream drops it; the
+   serialised value may not exceed 7168 bytes.
+3. **Over the byte cap the package refuses (`INVALID_INPUT`, `maximumSize`)
+   instead of truncating.** The genuine client truncates and appends a
+   sentinel; the sentinel's value was not resolved from the bundle, and
+   inventing it would be worse than refusing.
+4. **Ordering is the host's job.** The genuine client lists non-built-in tools
+   first; the package preserves the caller's order.
+
+## 2026-11-19 — claude-code 2.1.329: the header layout, and header case on the transport
+
+Context: the genuine 2.1.329 client sends a mixed-case, sorted header set,
+confirmed by the live interactive capture; the earlier layouts were all
+lower-case. The layout is behind the `genuineHeaderLayout` flag.
+
+Decisions:
+
+1. **Layout.** `Accept`, `Authorization`, `Content-Type`, `User-Agent`,
+   `X-Claude-Code-Session-Id` and the `X-Stainless-*` family keep their genuine
+   capitalisation; every `anthropic-*`, `x-app`, `x-claude-*` and
+   `x-client-request-id` header stays lower-case. All pairs, caller extras
+   included, are sorted by UTF-16 code unit (not by a locale collation).
+2. **New headers.** `Accept: application/json`, `x-claude-1p-request-class` and
+   `x-claude-code-request-class` (both `main`), `x-claude-code-prompt-id` (only
+   when the prompt id matches the canonical shape), `x-claude-code-sandy-plover`
+   and, opt-in, `anthropic-dispatch-id`. Count-tokens requests omit the
+   request-class, prompt-id, sandy-plover and dispatch-id headers; that
+   omission is inferred, not captured, and stays unresolved.
+3. **Header case survives only on case-preserving transports.** A runtime whose
+   `fetch` lowercases header names (Node's does) erases the capitalisation on
+   the way out; Bun keeps it. The package cannot control that, and the parser
+   and token-isolation checks compare names case-insensitively.
+4. **The reserved-header set grows only for the new layout**: `accept`,
+   `anthropic-dispatch-id` and the four `x-claude-*` names are reserved there;
+   the legacy set is unchanged, so an old caller's extra headers still pass.
+
+## 2026-11-19 — claude-code 2.1.329: tool-provenance is opt-in
+
+Context: the first reading of the bundle placed `tool-provenance-2026-10-26` on
+the default OAuth path, on the evidence of its registry slot.
+
+Decisions:
+
+1. **Both genuine OAuth captures omit the beta**, so the earlier derivation was
+   wrong; the analysis document carries the amendment. Like the other
+   account-served features it is gated by a server-served flag the package
+   cannot read.
+2. **`accountFeatures.toolProvenance === true` composes it**, and only for an
+   OAuth caller with the experimental betas honoured. Off by default.
+3. **The `ownership_metadata` body coupling is recorded as not ported**, for the
+   same reason as the inline-tools body half: it is conversation state.
+
+## 2026-11-19 — claude-code 2.1.329: the `cch` seam and the two-pass recipe
+
+Context: the genuine client substitutes a per-request five-hex-character `cch`
+into the body after serialisation, below the JavaScript, so the algorithm is not
+recoverable from the bundle. This entry extends the earlier resolution of the
+open question (both options).
+
+Decisions:
+
+1. **`cch` is an optional input on every profile**: exactly five lowercase hex
+   characters or `INVALID_INPUT`. Omitted, the placeholder `00000` remains and
+   every request is byte-identical to one built before the field existed
+   (pinned by the prior-profile snapshots). It is ignored under
+   `suppressBillingBlock`.
+2. **Still no native hash in this package.** The seam only places a value.
+3. **Two-pass recipe for a host that hashes the body.** Build once without
+   `cch` to get the body bytes with the placeholder; compute the host's value
+   over those bytes the way the genuine client does; build again with that
+   `cch`. The two bodies differ in exactly the five placeholder characters, so
+   the hash input is stable and the second build can be sent as is. A host that
+   does not hash sends the placeholder, which is the modelled default.
+4. **Related billing segments.** `turnOrigin` and `turnPosition` supply
+   `cc_turn_origin`, `cc_prompt_index` and `cc_turn_index` on 2.1.329; invalid
+   values are dropped silently, as upstream does. The live interactive billing
+   text is reproduced byte for byte by a known-answer test.
+
+## 2026-11-19 — claude-code 2.1.329: behaviour defaults stay on the pre-329 side
+
+Context: behaviour sets are chosen by a single demarcated `profile.id`
+comparison in `src/profile-behaviors.ts`. 2.1.329 gets its own set
+(`WIRE_FAITHFUL_BEHAVIORS`); 2.1.195 keeps the legacy set.
+
+Decisions:
+
+1. **The fall-through is the pre-329 catalogue-era set.** Any other id,
+   including a `profileOverride` id that rebinds the registry to 2.1.195's, is
+   treated as before the port and keeps its current bytes. A flag that was only
+   evidenced from the 2.1.329 binary must never default to on for an id the
+   evidence does not cover.
+2. **Flags added by the port:** `midConversationSystemFromCatalogue`,
+   `thinkingTokenCountAfterRequestTable`, `longContextExcludesNative1m`,
+   `extendedModelIdLadder`, `genuineHeaderLayout`, `billingTurnSegments`,
+   `generatedContextManagement`, `cacheDiagnosisBody`, `genuineBodyKeyOrder`
+   and `accountServedInputs`. The 2.1.280 audit entry's "no new flag" does not
+   carry over: this port moves bytes the earlier ones could not.
+3. **Registry keys that are optional need no flag.** The retired
+   mid-conversation-system header, tool-provenance, inline-tools, advisor-tool
+   and message-threads are absent from the registries that lack them, and their
+   push sites are silently inert there.
+4. **The frozen digests did not move**, and the prior-profile snapshot suite
+   keeps proving it for every scenario that could have been touched.
+
+## 2026-11-19 — claude-code 2.1.329: the normalizer ladder is gated, reversing the 2026-09-23 "no gate" precedent
+
+Context: the 2026-09-23 entry "the shared model-id normalizer reaches the
+previous pin" chose one shared ladder, because no older analysis transcribed
+that client's own normalizer and gating would have meant inferring an absence
+from silence. 2.1.329 changes the evidence base.
+
+Decisions:
+
+1. **The 2.1.329 ladder is transcribed from its own binary** (`NK`, view lines
+   113702-113708): `claude-fable-5-2` before `claude-fable-5-1`,
+   `claude-mythos-5-2` before `claude-mythos-5-1`, `claude-sonnet-5-5` before
+   `claude-sonnet-5`, `claude-haiku-5-5` before `claude-haiku-4-5`. The fable
+   and mythos rungs use the upstream undated-id guard (`V2e`): an occurrence
+   directly followed by three digits is a date suffix on the shorter id.
+2. **The 2.1.280 ladder was also transcribed from its own binary**, and it lacks
+   those four rungs. So under 2.1.280 `claude-sonnet-5-5` still folds to
+   `claude-sonnet-5` (max tokens 64000), exactly as that client does. That is
+   evidence, where the 2026-09-23 case was an inference, and it is why gating is
+   now correct instead of a guess.
+3. **Mechanism.** `normalizeModelId(model, ladder)` takes `"base"` (default) or
+   `"extended"`; `modelIdLadder(profile)` reads the `extendedModelIdLadder`
+   behaviour flag. Callers that hold a profile use its ladder; profile-less
+   identity predicates use `"extended"`, because they have no profile to ask.
+4. **Consequences.** `isFable5Model` and `isMythos5Model` now hold for the 5-2
+   ids, `isAdaptiveThinkingModel` is true for `claude-haiku-5-5`, and
+   `modelCatalogueEntry(model, profile)` returns the entry that profile's own
+   normalizer resolves to (folding-consistent). The 2026-09-23 entry still
+   describes the base ladder correctly and is not rewritten; only its "no gate"
+   conclusion is superseded, for the extended rungs only.
+
+## 2026-11-19 — claude-code 2.1.329 analysed; no port yet; open decisions recorded
+
+Context: the 2.1.329 release was analysed against the pinned 2.1.280 profile,
+with local TLS-intercepted captures of the genuine 2.1.280 and 2.1.329 binaries
+(`-p` mode, API-key auth, so not the interactive OAuth path). Analysis only: no
+profile was ported, nothing under `src/` changed, the default profile and every
+frozen digest are untouched. Full findings:
+`docs/protocol/versions/claude-code-2.1.329-analysis.md`.
+
+Recorded, with the decision still pending:
+
+1. **`cch` is not static on the genuine wire.** Both captures carry a
+   per-request 5-hex value while the bundle only writes `cch=00000`; the
+   substitution happens below the JS. This contradicts the earlier static-`cch`
+   record in `docs/source-trace.md`. It does **not** reverse the policy not to
+   port a native hash: the algorithm is not recoverable from the JS. Options
+   (keep `00000` as a known difference, or add a host seam) await a decision.
+2. **Pre-existing 2.1.280 omissions are confirmed live**: the
+   `x-claude-code-request-class` header, the `cc_turn_origin` billing segment,
+   generated `context_management`, `diagnostics`, `anthropic-dispatch-id`, the
+   genuine body key order and header capitalisation. Fixing any of them for
+   2.1.280 moves its frozen digest, so a backport is a separate, deliberate
+   decision; a 2.1.329-only fix does not touch the frozen digests.
+3. **Account-served features**: `anthropic-dispatch-id`,
+   `message-threads` with `thread`, `inline-tools` and `advisor-tool` are sent
+   because of per-account remote flags, not code defaults. Model them, if at
+   all, as opt-in caller inputs.
+4. **`mid-conversation-system-2026-04-07` graduated to GA.** The header is
+   retired (the registry slot is header-less) but the condition stays live and
+   still gates clear-at and tool-changes. Recommended port: an optional registry
+   key plus a behaviour flag `midConversationSystemFromCatalogue`.
+
+Resolved the same day by the maintainer: (1) both options, so `cch=00000`
+stays the default and an optional host seam may supply the per-request value;
+(2) the omissions are fixed for the 2.1.329 profile only, and no frozen digest
+moves; (3) the account-served features become opt-in caller inputs, off by
+default; (4) the mid-conversation port follows the recommendation.
+
 ## 2026-09-26 - Input ceilings follow the 32 MiB API request limit (0.7.1)
 
 Context: long sessions on 1M-token models failed before fetch with

@@ -99,6 +99,22 @@ version number for a different platform. Rediscover the region every time.
 The carved file is a multi-hundred-megabyte text file. Keep it outside the
 repository working tree; it must never be committed.
 
+> **Amendment 2026-11-19 (2.1.329 analysis).** Two lessons for carving and
+> for live captures:
+>
+> 1. **The module banner changed.** Through 2.1.280 the second line of a module
+>    is `// Claude Code is a Beta product per Anthropic's Commercial Terms of Service.`
+>    From 2.1.329 it is
+>    `// (c) Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements outlined here: https://code.claude.com/docs/en/legal-and-compliance.`
+>    The `.modules.js` banner predicate must therefore be chosen per build:
+>    inspect the second line of the most common run prefix first. Applying the
+>    old banner to 2.1.329 selects zero modules, and the dump is silently empty.
+> 2. **Live TLS-intercepted captures work with the Bun-compiled binary.** Run
+>    mitmproxy as an HTTPS forward proxy and start the genuine binary with
+>    `HTTPS_PROXY` and `NODE_EXTRA_CA_CERTS` pointing at the proxy CA. Note that
+>    an intercepting proxy disables 2.1.329's default request-body gzip, so a
+>    capture taken this way does not exercise gzip or its padding.
+
 ## Step 1 — run the extractor
 
 ```
@@ -346,3 +362,28 @@ task, which is exactly what Steps 1 through 3 exist to structure.
 >    committed together with it. The seal refuses a dirty tree outside its own
 >    two write targets, so a new fixture must be committed before it can be
 >    sealed. The fixture-and-seal step is therefore two commits, not one.
+
+> **Amendment 2026-11-19 (2.1.329 port).** Two procedural lessons:
+>
+> 1. **A future port must name its own id in `src/profile-behaviors.ts`.** The
+>    fall-through of the demarcated `profile.id` block returns the pre-329 set on
+>    purpose, so that a profile the evidence does not cover (a `profileOverride`
+>    id, an older pin) keeps its bytes. A new profile that is not named there
+>    silently inherits the old behaviour, and nothing fails. Add its `if` line
+>    and its behaviour set in the same commit that registers the profile, and
+>    decide each flag from the new binary, not by inheriting the previous
+>    profile's value.
+> 2. **Snapshot the prior profiles' wire output before the first behaviour
+>    change, and treat that snapshot as two further rows of the Step 4 gate
+>    checklist** (`test/validation/prior-profile-snapshots.test.ts` and
+>    `test/validation/prior-profile-inert-inputs.test.ts`, each needing an
+>    update whenever a port adds a scenario or an input). The 2.1.329 port
+>    landed `test/validation/prior-profile-snapshots.test.ts` (a hash of the
+>    request, headers, body and evidence per scenario for every earlier profile)
+>    and `test/validation/prior-profile-inert-inputs.test.ts` (every new input
+>    is inert on the previous profile) before any mechanism commit, so each later
+>    commit proved the older profiles had not moved. The packed-consumer digests
+>    cannot see this: they probe one model. When a port adds scenarios (a new
+>    model id, a new input), add the matching snapshot row for every prior
+>    profile, and add the new profile to `test/support/profile-matrix.ts` and the
+>    row counts in `test/tooling/profile-matrix.test.ts` in the same sweep.

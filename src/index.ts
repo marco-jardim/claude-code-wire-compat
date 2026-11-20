@@ -18,11 +18,15 @@ export type {
   AntiVerbositySection,
   BuiltClaudeCodeCountTokensRequest,
   BuiltClaudeCodeRequest,
+  ClaudeCodeAccountFeatures,
   ClaudeCodeBetaOverrides,
   ClaudeCodeBetaPolicy,
   ClaudeCodeCapabilities,
   ClaudeCodeCapabilityDecisions,
   ClaudeCodeCatalogueEntry,
+  ClaudeCodeControlMessage,
+  ClaudeCodeControlMessageOutputConfig,
+  ClaudeCodeDispatchId,
   ClaudeCodeEffort,
   ClaudeCodeExtraHeaderPolicy,
   ClaudeCodeMetadataOverrides,
@@ -31,6 +35,9 @@ export type {
   ClaudeCodeCountTokensInput,
   ClaudeCodeRequestInput,
   ClaudeCodeRuntimeIdentity,
+  ClaudeCodeThreadInput,
+  ClaudeCodeToolUsed,
+  ClaudeCodeTurnPosition,
   ClaudeCodeWireErrorCode,
   HeaderPair,
   JsonPrimitive,
@@ -77,12 +84,15 @@ export {
   isOpus48Model,
   isSonnet46Model,
   modelCapability,
+  modelCatalogueEntry,
   supportsStructuredOutputs,
   supportsWebSearch,
 } from "./model-queries.js";
 
 export { BETA_REGISTRY_2_1_233 } from "./profiles/beta-registry-2.1.233.js";
 export { BETA_REGISTRY_2_1_280 } from "./profiles/beta-registry-2.1.280.js";
+export { BETA_REGISTRY_2_1_329 } from "./profiles/beta-registry-2.1.329.js";
 export { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 export { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
 export { CLAUDE_CODE_2_1_280_PROFILE } from "./profiles/claude-code-2.1.280.js";
+export { CLAUDE_CODE_2_1_329_PROFILE } from "./profiles/claude-code-2.1.329.js";

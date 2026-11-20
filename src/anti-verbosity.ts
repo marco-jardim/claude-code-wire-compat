@@ -6,7 +6,7 @@ import type {
   ClaudeCodeProtocolProfile,
 } from "./contracts.js";
 import { ClaudeCodeWireError } from "./contracts.js";
-import { normalizeModelId } from "./model-identity.js";
+import { modelIdLadder, normalizeModelId } from "./model-identity.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
 /**
@@ -155,7 +155,7 @@ function usesTextOutputSection(
   profile: ClaudeCodeProtocolProfile,
 ): boolean {
   if (EAP_PATTERN.test(rawModel)) return false;
-  const id = normalizeModelId(rawModel);
+  const id = normalizeModelId(rawModel, modelIdLadder(profile));
   if (catalogueCapability(id, "lean_prompt", profile)) return false;
   return (
     id.includes("claude-3-") ||
@@ -184,7 +184,12 @@ export function selectAntiVerbositySection(
   if (typeof rawModel !== "string" || rawModel.length === 0) {
     throw new ClaudeCodeWireError("INVALID_INPUT");
   }
-  if (hasFableMitigations(normalizeModelId(rawModel), profile)) {
+  if (
+    hasFableMitigations(
+      normalizeModelId(rawModel, modelIdLadder(profile)),
+      profile,
+    )
+  ) {
     return "communicating-with-the-user";
   }
   return usesTextOutputSection(rawModel, profile) ? "text-output" : "lean";

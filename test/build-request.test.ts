@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import type { BuiltClaudeCodeRequest, HeaderPair } from "../src/contracts.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "../src/profiles/claude-code-2.1.195.js";
+import { CLAUDE_CODE_2_1_280_PROFILE } from "../src/profiles/claude-code-2.1.280.js";
 import {
   expectModuleUnimplemented,
   loadWave2Function,
@@ -225,7 +226,13 @@ describe("build-request (Wave 1 RED specification)", () => {
       "build-request",
       "parseBuiltClaudeCodeRequest",
     );
-    const built = await build(syntheticInput(readGolden(GOLDENS[0])));
+    // The lowercase session-id header name below is the legacy header layout,
+    // so the profile is named rather than inherited from the default: the
+    // 2.1.329 layout spells it `X-Claude-Code-Session-Id`.
+    const built = await build(
+      syntheticInput(readGolden(GOLDENS[0])),
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
     const wrongSessionHeaders = built.headers.map(
       ([name, value]): HeaderPair => [
         name,
@@ -244,7 +251,9 @@ describe("build-request (Wave 1 RED specification)", () => {
       },
       { ...built, headers: wrongSessionHeaders },
     ];
-    for (const variant of variants) expect(() => parse(variant)).toThrow();
+    for (const variant of variants) {
+      expect(() => parse(variant, CLAUDE_CODE_2_1_280_PROFILE)).toThrow();
+    }
   });
 
   it("never mutates input and deeply freezes its result", async () => {

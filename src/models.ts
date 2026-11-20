@@ -9,6 +9,7 @@ import { ClaudeCodeWireError } from "./contracts.js";
 import { deriveCapabilities } from "./model-capabilities.js";
 import {
   modelFamilyOf,
+  modelIdLadder,
   normalizeModelId,
   stripModelMarkers,
 } from "./model-identity.js";
@@ -30,7 +31,7 @@ export function resolveModel(
   }
 
   const wireId = stripModelMarkers(model);
-  const id = normalizeModelId(model);
+  const id = normalizeModelId(model, modelIdLadder(profile));
   const entry = Object.hasOwn(profile.supportedModels, id)
     ? profile.supportedModels[id]
     : undefined;

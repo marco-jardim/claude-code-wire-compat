@@ -42,7 +42,7 @@ const consumerDirectories = consumerNames.map((name) =>
  * comparison this script makes is `default` against `EXPECTED_DEFAULT_CASE`;
  * digests of different named profiles are never compared with each other.
  */
-const CASE_NAMES = ["default", "2.1.195", "2.1.233", "2.1.280"];
+const CASE_NAMES = ["default", "2.1.195", "2.1.233", "2.1.280", "2.1.329"];
 /*
  * The frozen digests the explicit cases must reproduce. A mismatch means a
  * code change altered the wire output of a profile that was supposed to be
@@ -63,13 +63,15 @@ const EXPECTED_DIGESTS = {
   "2.1.195": "6b9609b29463c890544845dd94acf560206b6f8165538faafd8886750037d277",
   "2.1.233": "4e06af42310d63549a4fa9af60ff0c9b13e95d7864624c6b7bf94d45ce9a3997",
   "2.1.280": "9a531ed01ddd3440ce5b7f25c6caf5f045a9b4e78d885b5317508e21a22ada90",
+  "2.1.329": "d8cd6493322a5b4c31fd8ae5e74a6ce62a394b6d67afe3965b4e6e9dcbb343a5",
 };
-const EXPECTED_DEFAULT_CASE = "2.1.280";
+const EXPECTED_DEFAULT_CASE = "2.1.329";
 const consumerSource = `
 import {
   CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
   CLAUDE_CODE_2_1_280_PROFILE,
+  CLAUDE_CODE_2_1_329_PROFILE,
   buildClaudeCodeRequest,
 } from "@tormentalabs/claude-code-wire-compat";
 
@@ -150,6 +152,7 @@ export const report = {
     "2.1.195": await digestFor(CLAUDE_CODE_2_1_195_PROFILE),
     "2.1.233": await digestFor(CLAUDE_CODE_2_1_233_PROFILE),
     "2.1.280": await digestFor(CLAUDE_CODE_2_1_280_PROFILE),
+    "2.1.329": await digestFor(CLAUDE_CODE_2_1_329_PROFILE),
   },
 };
 `;

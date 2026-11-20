@@ -14,6 +14,7 @@ import type {
 import { DEFAULT_PROFILE } from "../../src/build-request.js";
 import {
   buildClaudeCodeRequest,
+  CLAUDE_CODE_2_1_280_PROFILE,
   ClaudeCodeWireError,
   parseBuiltClaudeCodeRequest,
 } from "../../src/index.js";
@@ -124,9 +125,12 @@ async function expectBuildError(
   throw new TypeError(`Expected ${code}.`);
 }
 
-function expectParseError(value: unknown): void {
+function expectParseError(
+  value: unknown,
+  profile: ClaudeCodeProtocolProfile = DEFAULT_PROFILE,
+): void {
   try {
-    parseBuiltClaudeCodeRequest(value);
+    parseBuiltClaudeCodeRequest(value, profile);
   } catch (error: unknown) {
     expect(error).toBeInstanceOf(ClaudeCodeWireError);
     if (!(error instanceof ClaudeCodeWireError)) {
@@ -721,7 +725,15 @@ describe("build-request surviving input-validation mutants", () => {
 
     const crypto = { subtle: { digest: cryptoDigest } };
     const built = await buildClaudeCodeRequest(withField("crypto", crypto));
-    expect(built.headers).toContainEqual(["authorization", `Bearer ${TOKEN}`]);
+    // Case-insensitive: the header layout, and so the spelling of the name,
+    // depends on the profile in use.
+    expect(
+      built.headers.some(
+        ([name, headerValue]) =>
+          name.toLowerCase() === "authorization" &&
+          headerValue === `Bearer ${TOKEN}`,
+      ),
+    ).toBe(true);
   });
 
   it("ignores a symbol-keyed token encountered only during leak scanning", async () => {
@@ -1112,7 +1124,11 @@ describe("build-request surviving parser mutants", () => {
   });
 
   it("rejects absent, duplicate, reordered, and altered canonical headers", async () => {
-    const built = await buildClaudeCodeRequest(validInput());
+    // Lowercase header names are the legacy layout, so the profile is named.
+    const built = await buildClaudeCodeRequest(
+      validInput(),
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
     const withoutSession = built.headers.filter(
       ([name]) => name !== "x-claude-code-session-id",
     );
@@ -1129,16 +1145,26 @@ describe("build-request surviving parser mutants", () => {
     reordered[0] = second;
     reordered[1] = first;
     for (const headers of [withoutSession, duplicateSession, reordered]) {
-      expectParseError(cloneBuilt(built, { headers }));
+      expectParseError(
+        cloneBuilt(built, { headers }),
+        CLAUDE_CODE_2_1_280_PROFILE,
+      );
     }
   });
 
   it("rejects a header list without the required timeout marker", async () => {
-    const built = await buildClaudeCodeRequest(validInput());
+    // Lowercase header names are the legacy layout, so the profile is named.
+    const built = await buildClaudeCodeRequest(
+      validInput(),
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
     const headers = built.headers.filter(
       ([name]) => name !== "x-stainless-timeout",
     );
-    expectParseError(cloneBuilt(built, { headers }));
+    expectParseError(
+      cloneBuilt(built, { headers }),
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
   });
 
   it.each([

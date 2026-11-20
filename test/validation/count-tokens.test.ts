@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildClaudeCodeCountTokensRequest,
   CLAUDE_CODE_2_1_195_PROFILE,
+  CLAUDE_CODE_2_1_280_PROFILE,
   parseBuiltClaudeCodeRequest,
 } from "../../src/index.js";
 
@@ -374,15 +375,20 @@ describe("buildClaudeCodeCountTokensRequest extraHeaderPolicy", () => {
   );
 
   it("drops the conflicting extras and keeps the rest under dropConflicting", async () => {
-    const built = await buildClaudeCodeCountTokensRequest({
-      ...base,
-      extraHeaders: [
-        ["Content-Type", "text/plain"],
-        ["x-tenant", "acme"],
-        ["connection", "close"],
-      ],
-      extraHeaderPolicy: "dropConflicting",
-    });
+    // The lowercase canonical names asserted below are the legacy header
+    // layout, so the profile is named rather than inherited from the default.
+    const built = await buildClaudeCodeCountTokensRequest(
+      {
+        ...base,
+        extraHeaders: [
+          ["Content-Type", "text/plain"],
+          ["x-tenant", "acme"],
+          ["connection", "close"],
+        ],
+        extraHeaderPolicy: "dropConflicting",
+      },
+      CLAUDE_CODE_2_1_280_PROFILE,
+    );
     const names = built.headers.map(([name]) => name);
 
     expect(headerValue(built.headers, "x-tenant")).toBe("acme");

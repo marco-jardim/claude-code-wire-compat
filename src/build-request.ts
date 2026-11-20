@@ -2,10 +2,12 @@
 
 import { MAX_COMPOSITE_SIZE, MAX_INPUT_SIZE } from "./limits.js";
 
+import { validateAccountFeatures } from "./account-features.js";
 import { composeBetas, composeBetasWithAudit } from "./betas.js";
 import type {
   BuiltClaudeCodeCountTokensRequest,
   BuiltClaudeCodeRequest,
+  ClaudeCodeAccountFeatures,
   ClaudeCodeBetaOverrides,
   ClaudeCodeCapabilities,
   ClaudeCodeCapabilityDecisions,
@@ -14,6 +16,7 @@ import type {
   ClaudeCodeProtocolProfile,
   ClaudeCodeCountTokensInput,
   ClaudeCodeRequestInput,
+  ClaudeCodeTurnPosition,
   HeaderPair,
   RedactedRequestEvidence,
 } from "./contracts.js";
@@ -23,25 +26,36 @@ import {
   filterCountTokensBetas,
   TOKEN_COUNTING_BETA,
 } from "./count-tokens.js";
-import { createBillingBlock } from "./fingerprint.js";
-import { buildOrderedHeaderPlan, buildOrderedHeaders } from "./headers.js";
+import { CCH_PATTERN, createBillingBlock } from "./fingerprint.js";
+import {
+  buildOrderedHeaderPlan,
+  buildOrderedHeaders,
+  GENUINE_HEADER_NAMES,
+  GENUINE_RESERVED_NAMES,
+  headerNamesFor,
+} from "./headers.js";
 import {
   buildCorrelatedMetadata,
   validateRuntimeIdentity,
 } from "./metadata.js";
 import { resolveModel } from "./models.js";
+import { profileBehaviors } from "./profile-behaviors.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 import { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
 import { CLAUDE_CODE_2_1_280_PROFILE } from "./profiles/claude-code-2.1.280.js";
+import { CLAUDE_CODE_2_1_329_PROFILE } from "./profiles/claude-code-2.1.329.js";
 import type { NormalizedRequestInput } from "./redaction.js";
 import { buildRedactedEvidence, toSafeErrorDetails } from "./redaction.js";
 import {
   buildCanonicalBody,
   canonicalCountTokensLists,
+  validatePreviousMessageId,
 } from "./request-body.js";
 import { sha256Hex } from "./sha256.js";
 import { buildCanonicalSystem, IDENTITY_TEXT } from "./system-prompt.js";
 import { isThinkingActive, isThinkingDisplayActive } from "./thinking.js";
+import type { ToolsUsedEntry } from "./tools-used.js";
+import { parseToolsUsedHeaderValue, validateToolsUsed } from "./tools-used.js";
 import {
   inspectText,
   TEXT_POLICY_IDENTIFIER,
@@ -97,8 +111,17 @@ const INPUT_KEYS = new Set([
   "extraHeaderPolicy",
   "previousRequestId",
   "promptId",
+  "cch",
+  "turnOrigin",
+  "turnPosition",
+  "toolsUsed",
+  "previousMessageId",
+  "accountFeatures",
+  "sideQuery",
+  "agenticQuery",
   "crypto",
 ]);
+const TURN_POSITION_KEYS = new Set(["promptIndex", "turnIndex"]);
 const BETA_OVERRIDE_KEYS = new Set(["use1MContext"]);
 const METADATA_OVERRIDE_KEYS = new Set(["userId", "userIdFields"]);
 const COUNT_TOKENS_INPUT_KEYS = new Set([
@@ -377,6 +400,7 @@ const ACCEPTED_PROFILES: ReadonlySet<ClaudeCodeProtocolProfile> = new Set([
   CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
   CLAUDE_CODE_2_1_280_PROFILE,
+  CLAUDE_CODE_2_1_329_PROFILE,
 ]);
 
 /**
@@ -394,7 +418,7 @@ const ACCEPTED_PROFILES: ReadonlySet<ClaudeCodeProtocolProfile> = new Set([
  * from `src/index.ts`: the public runtime surface stays closed.
  */
 export const DEFAULT_PROFILE: ClaudeCodeProtocolProfile =
-  CLAUDE_CODE_2_1_280_PROFILE;
+  CLAUDE_CODE_2_1_329_PROFILE;
 
 function validateProfile(
   profile: ClaudeCodeProtocolProfile,
@@ -787,10 +811,14 @@ function applyEffectiveProfileHeaders(
 ): readonly HeaderPair[] {
   return Object.freeze(
     headers.map(([name, value]): HeaderPair => {
-      if (name === "user-agent") {
+      // Case-insensitive so both layouts' spellings match (`user-agent`,
+      // `User-Agent`). Legacy output is unchanged: every legacy name is
+      // lowercase, and a caller extra can never carry either name.
+      const folded = name.toLowerCase();
+      if (folded === "user-agent") {
         return Object.freeze([name, profile.userAgent]);
       }
-      if (name === "x-stainless-package-version") {
+      if (folded === "x-stainless-package-version") {
         return Object.freeze([name, profile.sdkVersion]);
       }
       return Object.freeze([name, value]);
@@ -810,6 +838,14 @@ function validateInput(input: ClaudeCodeRequestInput): {
   readonly preserveThinkingBlockCacheControl: boolean;
   readonly previousRequestId: string | undefined;
   readonly promptId: string | undefined;
+  readonly cch: string | undefined;
+  readonly turnOrigin: string | undefined;
+  readonly turnPosition: ClaudeCodeTurnPosition | undefined;
+  readonly toolsUsed: readonly ToolsUsedEntry[] | undefined;
+  readonly previousMessageId: string | null | undefined;
+  readonly accountFeatures: ClaudeCodeAccountFeatures | undefined;
+  readonly sideQuery: boolean;
+  readonly agenticQuery: boolean;
 } {
   if (!isRecord(input)) fail();
   assertExactKeys(input, INPUT_KEYS);
@@ -876,6 +912,36 @@ function validateInput(input: ClaudeCodeRequestInput): {
   const promptId = Object.hasOwn(input, "promptId")
     ? validateBillingChainId(ownValue(input, "promptId"))
     : undefined;
+  const cch = Object.hasOwn(input, "cch")
+    ? validateCch(ownValue(input, "cch"))
+    : undefined;
+  const turnOrigin = Object.hasOwn(input, "turnOrigin")
+    ? validateBillingChainId(ownValue(input, "turnOrigin"))
+    : undefined;
+  const turnPosition = Object.hasOwn(input, "turnPosition")
+    ? validateTurnPosition(ownValue(input, "turnPosition"))
+    : undefined;
+  // Validated on every profile; only the 2.1.329 header layout emits it.
+  const toolsUsed = Object.hasOwn(input, "toolsUsed")
+    ? validateToolsUsed(ownValue(input, "toolsUsed"))
+    : undefined;
+  // Validated on every profile; only the 2.1.329 body carries it.
+  const previousMessageId = Object.hasOwn(input, "previousMessageId")
+    ? validatePreviousMessageId(ownValue(input, "previousMessageId"))
+    : undefined;
+  // Validated on every profile; only profiles honouring account-served inputs
+  // act on it.
+  const accountFeatures = Object.hasOwn(input, "accountFeatures")
+    ? validateAccountFeatures(ownValue(input, "accountFeatures"))
+    : undefined;
+  // Validated on every profile; only profiles honouring account-served inputs
+  // act on them.
+  const sideQuery = Object.hasOwn(input, "sideQuery")
+    ? validateStrictBoolean(ownValue(input, "sideQuery"))
+    : false;
+  const agenticQuery = Object.hasOwn(input, "agenticQuery")
+    ? validateStrictBoolean(ownValue(input, "agenticQuery"))
+    : false;
   return {
     source: input,
     clientRequestId,
@@ -888,7 +954,62 @@ function validateInput(input: ClaudeCodeRequestInput): {
     preserveThinkingBlockCacheControl,
     previousRequestId,
     promptId,
+    cch,
+    turnOrigin,
+    turnPosition,
+    toolsUsed,
+    previousMessageId,
+    accountFeatures,
+    sideQuery,
+    agenticQuery,
   };
+}
+
+function validateStrictBoolean(value: unknown): boolean {
+  if (typeof value !== "boolean") fail();
+  return value;
+}
+
+/**
+ * Whether the caller's tool list carries the advisor tool. A defensive scan:
+ * the tool list is validated in full later, by the body builder, so a malformed
+ * entry here is simply not the advisor tool.
+ */
+function hasAdvisorTool(tools: unknown): boolean {
+  return (
+    Array.isArray(tools) &&
+    tools.some(
+      (tool: unknown): boolean =>
+        isRecord(tool) &&
+        Object.hasOwn(tool, "type") &&
+        tool["type"] === "advisor_20260301",
+    )
+  );
+}
+
+/**
+ * Unlike the chaining ids, the `cch` value is validated HERE, and a malformed
+ * one is `INVALID_INPUT`: it is a value the caller computed to replace a
+ * placeholder, not conversation state upstream would silently drop, so a
+ * wrong one is a caller bug that must not pass quietly.
+ */
+function validateCch(value: unknown): string {
+  if (typeof value !== "string" || !CCH_PATTERN.test(value)) fail();
+  return value;
+}
+
+/**
+ * Type and shape check only. The RANGE of both indexes is deliberately not
+ * checked here: upstream guards them at the point of emission and drops the
+ * pair silently, and `createBillingBlock` owns that guard.
+ */
+function validateTurnPosition(value: unknown): ClaudeCodeTurnPosition {
+  if (!isRecord(value)) fail();
+  assertExactKeys(value, TURN_POSITION_KEYS);
+  const promptIndex = ownValue(value, "promptIndex");
+  const turnIndex = ownValue(value, "turnIndex");
+  if (typeof promptIndex !== "number" || typeof turnIndex !== "number") fail();
+  return { promptIndex, turnIndex };
 }
 
 /**
@@ -1327,12 +1448,67 @@ function parsedBodySessionId(body: UnknownRecord): string {
   return sessionId;
 }
 
-function headerValue(headers: readonly HeaderPair[], name: string): string {
-  const matches = headers.filter(([candidate]) => candidate === name);
+/**
+ * Reads the one header called `name`. Under the genuine layout the match folds
+ * case, so a request whose names were re-cased is still READ; whether it is
+ * ACCEPTED is decided later by the exact byte comparison against the rebuilt
+ * list. Two matches (for example a forged lowercase `user-agent` beside the
+ * real `User-Agent`) are refused here.
+ */
+function headerValue(
+  headers: readonly HeaderPair[],
+  name: string,
+  foldCase = false,
+): string {
+  const wanted = foldCase ? name.toLowerCase() : name;
+  const matches = headers.filter(
+    ([candidate]) =>
+      (foldCase ? candidate.toLowerCase() : candidate) === wanted,
+  );
   if (matches.length !== 1) fail();
   const match = matches[0];
   if (match === undefined) fail();
   return match[1];
+}
+
+/**
+ * The genuine-layout counterpart of `splitDynamicAndExtraHeaders`. The list is
+ * sorted rather than positional, so the dynamic headers are looked up by their
+ * (lowercase) names and the caller extras are whatever carries no name the
+ * layout owns. A header with an owned name that the rebuild does not account
+ * for makes the exact comparison fail, so nothing owned can hide among extras.
+ */
+function splitGenuineHeaders(headers: readonly HeaderPair[]): {
+  readonly stainlessHelper: string | undefined;
+  readonly claudeRemoteContainerId: string | undefined;
+  readonly claudeRemoteSessionId: string | undefined;
+  readonly clientApp: string | undefined;
+  readonly anthropicAdditionalProtection: string | undefined;
+  readonly promptId: string | undefined;
+  readonly toolsUsed: readonly ToolsUsedEntry[] | undefined;
+  readonly dispatchId: string | undefined;
+  readonly extraHeaders: readonly HeaderPair[];
+} {
+  const names = GENUINE_HEADER_NAMES;
+  const first = (name: string): string | undefined =>
+    headers.find(([candidate]) => candidate === name)?.[1];
+  const toolsUsedValue = first(names.sandyPlover);
+  return {
+    stainlessHelper: first(names.stainlessHelper),
+    claudeRemoteContainerId: first(names.remoteContainerId),
+    claudeRemoteSessionId: first(names.remoteSessionId),
+    clientApp: first(names.clientApp),
+    anthropicAdditionalProtection: first(names.additionalProtection),
+    promptId: first(names.promptId),
+    dispatchId: first(names.dispatchId),
+    toolsUsed:
+      toolsUsedValue === undefined
+        ? undefined
+        : parseToolsUsedHeaderValue(toolsUsedValue),
+    extraHeaders: headers.filter(
+      ([name]) => !GENUINE_RESERVED_NAMES.has(name.toLowerCase()),
+    ),
+  };
 }
 
 function splitDynamicAndExtraHeaders(headers: readonly HeaderPair[]): {
@@ -1513,6 +1689,9 @@ export async function buildClaudeCodeCountTokensRequest(
       extraHeaders: validated.source.extraHeaders ?? [],
       extraHeaderPolicy: validated.extraHeaderPolicy ?? "strict",
       profile: pinnedProfile,
+      // The genuine layout omits the request-class, prompt-id and tools-used
+      // headers here (and, later, the dispatch id).
+      requestKind: "count_tokens",
     });
     const headers = applyEffectiveProfileHeaders(
       headerPlan.headers,
@@ -1618,6 +1797,13 @@ export async function buildClaudeCodeRequest(
         ...(validated.promptId !== undefined && {
           promptId: validated.promptId,
         }),
+        ...(validated.cch !== undefined && { cch: validated.cch }),
+        ...(validated.turnOrigin !== undefined && {
+          turnOrigin: validated.turnOrigin,
+        }),
+        ...(validated.turnPosition !== undefined && {
+          turnPosition: validated.turnPosition,
+        }),
       },
     );
     const metadata = buildCorrelatedMetadata(
@@ -1667,6 +1853,12 @@ export async function buildClaudeCodeRequest(
         ...(validated.betaOverrides?.use1MContext === undefined
           ? {}
           : { use1MContextOverride: validated.betaOverrides.use1MContext }),
+        ...(validated.accountFeatures === undefined
+          ? {}
+          : { accountFeatures: validated.accountFeatures }),
+        hasAdvisorTool: hasAdvisorTool(validated.source.tools),
+        sideQuery: validated.sideQuery,
+        agenticQuery: validated.agenticQuery,
       },
       effectiveProfile,
     );
@@ -1677,6 +1869,16 @@ export async function buildClaudeCodeRequest(
       metadata,
       effectiveProfile,
       composedBetas.thinkingDisplayOverride,
+      {
+        contextManagementComposed: composedBetas.contextManagementComposed,
+        cacheDiagnosisComposed: composedBetas.cacheDiagnosisComposed,
+        ...(validated.previousMessageId === undefined
+          ? {}
+          : { previousMessageId: validated.previousMessageId }),
+        ...(composedBetas.thread === undefined
+          ? {}
+          : { thread: composedBetas.thread }),
+      },
     );
     const betas = composedBetas.betas;
     const headerPlan = buildOrderedHeaderPlan({
@@ -1695,6 +1897,16 @@ export async function buildClaudeCodeRequest(
       extraHeaders: validated.source.extraHeaders ?? [],
       extraHeaderPolicy: validated.extraHeaderPolicy ?? "strict",
       profile: pinnedProfile,
+      requestKind: "messages",
+      ...(validated.promptId === undefined
+        ? {}
+        : { promptId: validated.promptId }),
+      ...(validated.toolsUsed === undefined
+        ? {}
+        : { toolsUsed: validated.toolsUsed }),
+      ...(validated.accountFeatures?.dispatchId === undefined
+        ? {}
+        : { dispatchId: validated.accountFeatures.dispatchId }),
     });
     const headers = applyEffectiveProfileHeaders(
       headerPlan.headers,
@@ -1809,26 +2021,33 @@ export function parseBuiltClaudeCodeRequest(
     ) {
       fail();
     }
-    const sessionId = headerValue(headers, "x-claude-code-session-id");
-    const additionalHeaders = splitDynamicAndExtraHeaders(headers);
+    // The layout decides which spelling of each name is read (legacy: exact
+    // lowercase; genuine: folded, table of capitalised names).
+    const genuine = profileBehaviors(pinnedProfile).genuineHeaderLayout;
+    const names = headerNamesFor(pinnedProfile);
+    const read = (name: string): string => headerValue(headers, name, genuine);
+    const sessionId = read(names.sessionId);
+    const additionalHeaders = genuine
+      ? splitGenuineHeaders(headers)
+      : {
+          ...splitDynamicAndExtraHeaders(headers),
+          promptId: undefined,
+          toolsUsed: undefined,
+          dispatchId: undefined,
+        };
     const expectedHeaders = buildOrderedHeaders({
-      accessToken: headerValue(headers, "authorization").replace(
-        /^Bearer /u,
-        "",
-      ),
+      accessToken: read(names.authorization).replace(/^Bearer /u, ""),
       runtime: {
         sessionId,
-        runtime: headerValue(headers, "x-stainless-runtime"),
-        runtimeVersion: headerValue(headers, "x-stainless-runtime-version"),
-        os: headerValue(headers, "x-stainless-os"),
-        arch: headerValue(headers, "x-stainless-arch"),
+        runtime: read(names.runtime),
+        runtimeVersion: read(names.runtimeVersion),
+        os: read(names.os),
+        arch: read(names.arch),
       },
-      clientRequestId: headerValue(headers, "x-client-request-id"),
+      clientRequestId: read(names.clientRequestId),
       betaFeatures: evidence.betaFeatures,
-      app: headerValue(headers, "x-app"),
-      stainlessRetryCount: Number(
-        headerValue(headers, "x-stainless-retry-count"),
-      ),
+      app: read(names.app),
+      stainlessRetryCount: Number(read(names.retryCount)),
       stainlessHelper: additionalHeaders.stainlessHelper,
       claudeRemoteContainerId: additionalHeaders.claudeRemoteContainerId,
       claudeRemoteSessionId: additionalHeaders.claudeRemoteSessionId,
@@ -1837,6 +2056,10 @@ export function parseBuiltClaudeCodeRequest(
         additionalHeaders.anthropicAdditionalProtection,
       extraHeaders: additionalHeaders.extraHeaders,
       profile: pinnedProfile,
+      requestKind: "messages",
+      promptId: additionalHeaders.promptId,
+      toolsUsed: additionalHeaders.toolsUsed,
+      dispatchId: additionalHeaders.dispatchId,
     });
     if (JSON.stringify(headers) !== JSON.stringify(expectedHeaders)) fail();
     if (

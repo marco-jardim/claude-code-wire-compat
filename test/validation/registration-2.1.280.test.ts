@@ -189,27 +189,12 @@ describe("default profile: always an accepted profile", () => {
   });
 });
 
-describe("default profile: pinned", () => {
-  /*
-   * This pin exists so that moving the default is a deliberate act, not an
-   * accident: any change to the default seam fails here until this line is
-   * changed alongside it.
-   *
-   * The assertion is by identity, not structure, because identity is the
-   * contract `ACCEPTED_PROFILES` enforces: the builder and parser accept a
-   * profile only if it is one of the exported singletons. (A clone as the
-   * default would not fail silently -- `validateProfile` runs on the resolved
-   * default too, so every unpinned build would throw.) Asserting identity here
-   * names the default seam explicitly, rather than relying on the collateral
-   * failure of unrelated tests to reveal that the default changed.
-   *
-   * The only legitimate reason to edit this assertion is a default-profile
-   * switch, which is always its own commit.
-   */
-  it("is the pinned profile singleton itself, by identity", () => {
-    expect(DEFAULT_PROFILE).toBe(CLAUDE_CODE_2_1_280_PROFILE);
-  });
-});
+/*
+ * The governance pin on the default seam moved to
+ * `registration-2.1.329.test.ts` with the switch to 2.1.329. It is deliberately
+ * not restated here: two pins on one seam would make every future switch edit
+ * both.
+ */
 
 /*
  * Beta registry binding.

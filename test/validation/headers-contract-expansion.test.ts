@@ -4,10 +4,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildClaudeCodeRequest,
+  CLAUDE_CODE_2_1_280_PROFILE,
   parseBuiltClaudeCodeRequest,
 } from "../../src/index.js";
 import type { ClaudeCodeRequestInput, HeaderPair } from "../../src/index.js";
 
+// Every case names its profile instead of inheriting the default: the
+// lowercase canonical header names and the request-tail positions asserted
+// below describe the legacy header layout. The 2.1.329 layout is covered by
+// `headers-2.1.329-layout.test.ts`.
+const PROFILE = CLAUDE_CODE_2_1_280_PROFILE;
 const ACCESS_TOKEN = "sentinel-token-headers-wp-f";
 const BASE_INPUT: ClaudeCodeRequestInput = {
   accessToken: ACCESS_TOKEN,
@@ -36,7 +42,7 @@ function input(
 async function headers(
   overrides: Readonly<Record<string, unknown>> = {},
 ): Promise<readonly HeaderPair[]> {
-  return (await buildClaudeCodeRequest(input(overrides))).headers;
+  return (await buildClaudeCodeRequest(input(overrides), PROFILE)).headers;
 }
 
 function valueOf(
@@ -50,9 +56,9 @@ async function expectCode(
   overrides: Readonly<Record<string, unknown>>,
   code: string,
 ): Promise<void> {
-  await expect(buildClaudeCodeRequest(input(overrides))).rejects.toEqual(
-    expect.objectContaining({ code }),
-  );
+  await expect(
+    buildClaudeCodeRequest(input(overrides), PROFILE),
+  ).rejects.toEqual(expect.objectContaining({ code }));
 }
 
 describe("expanded header controls", () => {
@@ -124,9 +130,12 @@ describe("expanded header controls", () => {
       ["x-alpha", "first"],
       ["x-cc-atis", "opaque"],
     ] as const;
-    const built = await buildClaudeCodeRequest(input({ extraHeaders }));
+    const built = await buildClaudeCodeRequest(
+      input({ extraHeaders }),
+      PROFILE,
+    );
     expect(built.headers.slice(-3)).toEqual(extraHeaders);
-    expect(parseBuiltClaudeCodeRequest(built)).toEqual(built);
+    expect(parseBuiltClaudeCodeRequest(built, PROFILE)).toEqual(built);
   });
 
   it.each([

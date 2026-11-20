@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { ClaudeCodeModelFamily } from "./contracts.js";
+import type {
+  ClaudeCodeModelFamily,
+  ClaudeCodeProtocolProfile,
+} from "./contracts.js";
+import { profileBehaviors } from "./profile-behaviors.js";
 
 /** Ports upstream `dp` (binary offset 226644497). */
 export function stripModelMarkers(model: string): string {
@@ -21,6 +25,40 @@ function dottedToDashedVersion(model: string): string {
   return model.replace(/(\d)\.(\d)/g, "$1-$2");
 }
 
+/** Which normalizer rungs apply; see `normalizeModelId`. */
+export type ModelIdLadder = "base" | "extended";
+
+/**
+ * Resolves the ladder a profile's own normalizer follows, from the behaviour
+ * flag rather than from the profile id.
+ */
+export function modelIdLadder(
+  profile: ClaudeCodeProtocolProfile,
+): ModelIdLadder {
+  return profileBehaviors(profile).extendedModelIdLadder ? "extended" : "base";
+}
+
+/**
+ * Ports upstream `V2e` (2.1.329 bundle, view line 101880, byte offset
+ * 5753662): whether `needle` occurs in `haystack` as an undated id. When the
+ * needle ends in a `-`/`_` plus a digit, an occurrence directly followed by
+ * three more digits is a date suffix on the shorter id (`claude-fable-5-` +
+ * `20260101`) and does not count.
+ */
+function matchesUndated(haystack: string, needle: string): boolean {
+  const endsInDigit = /[-_]\d$/.test(needle);
+  for (
+    let at = haystack.indexOf(needle);
+    at !== -1;
+    at = haystack.indexOf(needle, at + 1)
+  ) {
+    if (!endsInDigit || !/^\d{3}/.test(haystack.slice(at + needle.length))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Ports upstream `$_` (binary offset 226639025); in the 2.1.280 bundle the
  * function is `GF` at byte offset 7413751. The two offsets are in different
@@ -29,11 +67,27 @@ function dottedToDashedVersion(model: string): string {
  *
  * Rung order is load-bearing: each test is a substring test, so a longer id
  * must precede the shorter id it contains or the shorter rung swallows it.
+ *
+ * Two ladders. `"base"` is the ladder every profile through 2.1.280 follows.
+ * `"extended"` adds four rungs transcribed from the 2.1.329 bundle (`NK`, view
+ * lines 113702-113708): `claude-fable-5-2`, `claude-mythos-5-2`,
+ * `claude-sonnet-5-5` and `claude-haiku-5-5`, each placed before the shorter id
+ * it contains. Which ladder a profile follows is decided by `modelIdLadder`.
  */
-export function normalizeModelId(model: string): string {
+export function normalizeModelId(
+  model: string,
+  ladder: ModelIdLadder = "base",
+): string {
   model = dottedToDashedVersion(model.toLowerCase());
+  const extended = ladder === "extended";
+  if (extended && matchesUndated(model, "claude-fable-5-2")) {
+    return "claude-fable-5-2";
+  }
   if (model.includes("claude-fable-5-1")) return "claude-fable-5-1";
   if (model.includes("claude-fable-5")) return "claude-fable-5";
+  if (extended && matchesUndated(model, "claude-mythos-5-2")) {
+    return "claude-mythos-5-2";
+  }
   if (model.includes("claude-mythos-5-1")) return "claude-mythos-5-1";
   if (model.includes("claude-mythos-5")) return "claude-mythos-5";
   if (model.includes("claude-opus-5-5")) return "claude-opus-5-5";
@@ -44,10 +98,16 @@ export function normalizeModelId(model: string): string {
   if (model.includes("claude-opus-4-5")) return "claude-opus-4-5";
   if (model.includes("claude-opus-4-1")) return "claude-opus-4-1";
   if (/claude-opus-4(?!-\d(?!\d))/.test(model)) return "claude-opus-4-0";
+  if (extended && model.includes("claude-sonnet-5-5")) {
+    return "claude-sonnet-5-5";
+  }
   if (model.includes("claude-sonnet-5")) return "claude-sonnet-5";
   if (model.includes("claude-sonnet-4-6")) return "claude-sonnet-4-6";
   if (model.includes("claude-sonnet-4-5")) return "claude-sonnet-4-5";
   if (/claude-sonnet-4(?!-\d(?!\d))/.test(model)) return "claude-sonnet-4-0";
+  if (extended && model.includes("claude-haiku-5-5")) {
+    return "claude-haiku-5-5";
+  }
   if (model.includes("claude-haiku-4-5")) return "claude-haiku-4-5";
   if (model.includes("claude-3-7-sonnet")) return "claude-3-7-sonnet";
   if (model.includes("claude-3-5-sonnet")) return "claude-3-5-sonnet";

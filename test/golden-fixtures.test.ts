@@ -15,6 +15,10 @@ const FIXTURE_FILENAMES = [
   "outgoing-foreground-2.1.280.json",
   "outgoing-canary-context-hint-off-2.1.280.json",
   "outgoing-default-path-2.1.280.json",
+  "outgoing-foreground-2.1.329.json",
+  "outgoing-canary-context-hint-off-2.1.329.json",
+  "outgoing-default-path-2.1.329.json",
+  "outgoing-account-features-2.1.329.json",
 ] as const;
 const ALL_FIXTURE_FILENAMES = [
   ...FIXTURE_FILENAMES,
@@ -28,7 +32,17 @@ interface FixtureProvenance {
   readonly profileId: string;
   /** Claude Code release the fixture pins on the wire. */
   readonly cliVersion: string;
+  /**
+   * The exact billing block text the fixture pins. The three-character
+   * fingerprint is the independently computed known answer for the fixture's
+   * first user message, and the 2.1.329 fixtures that carry a prompt id also
+   * carry its segments.
+   */
+  readonly billing: string;
 }
+
+const BILLING_PREFIX = "x-anthropic-billing-header: cc_version=";
+const PROMPT_ID_SEGMENT = "cc_prompt_id=00000000-0000-4000-8000-000000000003;";
 
 /**
  * Each outgoing fixture pins one profile: version-dependent values are derived
@@ -39,36 +53,64 @@ const FIXTURE_PROVENANCE: Readonly<Record<FixtureFilename, FixtureProvenance>> =
     "outgoing-foreground.json": {
       profileId: "claude-code-2.1.195-sdk-0.94.0",
       cliVersion: "2.1.195",
+      billing: `${BILLING_PREFIX}2.1.195.0f6; cc_entrypoint=cli; cch=00000;`,
     },
     "outgoing-canary-context-hint-off.json": {
       profileId: "claude-code-2.1.195-sdk-0.94.0",
       cliVersion: "2.1.195",
+      billing: `${BILLING_PREFIX}2.1.195.12f; cc_entrypoint=cli; cch=00000;`,
     },
     "outgoing-foreground-2.1.233.json": {
       profileId: "claude-code-2.1.233-sdk-0.112.1",
       cliVersion: "2.1.233",
+      billing: `${BILLING_PREFIX}2.1.233.413; cc_entrypoint=cli; cch=00000;`,
     },
     "outgoing-canary-context-hint-off-2.1.233.json": {
       profileId: "claude-code-2.1.233-sdk-0.112.1",
       cliVersion: "2.1.233",
+      billing: `${BILLING_PREFIX}2.1.233.cea; cc_entrypoint=cli; cch=00000;`,
     },
     "outgoing-foreground-2.1.280.json": {
       profileId: "claude-code-2.1.280-sdk-0.112.1",
       cliVersion: "2.1.280",
+      billing: `${BILLING_PREFIX}2.1.280.de6; cc_entrypoint=cli; cch=00000;`,
     },
     "outgoing-canary-context-hint-off-2.1.280.json": {
       profileId: "claude-code-2.1.280-sdk-0.112.1",
       cliVersion: "2.1.280",
+      billing: `${BILLING_PREFIX}2.1.280.395; cc_entrypoint=cli; cch=00000;`,
     },
     "outgoing-default-path-2.1.280.json": {
       profileId: "claude-code-2.1.280-sdk-0.112.1",
       cliVersion: "2.1.280",
+      billing: `${BILLING_PREFIX}2.1.280.de6; cc_entrypoint=cli; cch=00000;`,
+    },
+    "outgoing-foreground-2.1.329.json": {
+      profileId: "claude-code-2.1.329-sdk-0.128.0",
+      cliVersion: "2.1.329",
+      billing: `${BILLING_PREFIX}2.1.329.dac; cc_entrypoint=cli; cch=00000;`,
+    },
+    "outgoing-canary-context-hint-off-2.1.329.json": {
+      profileId: "claude-code-2.1.329-sdk-0.128.0",
+      cliVersion: "2.1.329",
+      billing: `${BILLING_PREFIX}2.1.329.776; cc_entrypoint=cli; cch=00000;`,
+    },
+    "outgoing-default-path-2.1.329.json": {
+      profileId: "claude-code-2.1.329-sdk-0.128.0",
+      cliVersion: "2.1.329",
+      billing: `${BILLING_PREFIX}2.1.329.dac; cc_entrypoint=cli; cch=00000; ${PROMPT_ID_SEGMENT} cc_turn_origin=human; cc_prompt_index=1; cc_turn_index=1;`,
+    },
+    "outgoing-account-features-2.1.329.json": {
+      profileId: "claude-code-2.1.329-sdk-0.128.0",
+      cliVersion: "2.1.329",
+      billing: `${BILLING_PREFIX}2.1.329.dac; cc_entrypoint=cli; cch=00000; ${PROMPT_ID_SEGMENT}`,
     },
   };
 const ALLOWED_UUIDS = new Set([
   "00000000-0000-4000-8000-000000000000",
   "00000000-0000-4000-8000-000000000001",
   "00000000-0000-4000-8000-000000000002",
+  "00000000-0000-4000-8000-000000000003",
 ]);
 
 type Header = readonly [name: string, value: string];
@@ -199,9 +241,12 @@ describe("golden fixtures", () => {
     expect(fixture.method).toBe("POST");
     expect(fixture.url).toBe(MESSAGES_URL);
     expect(fixture.profileId).toBe(provenance.profileId);
-    expect(fixture.headers.find(([name]) => name === "user-agent")?.[1]).toBe(
-      `claude-cli/${provenance.cliVersion} (external, cli)`,
-    );
+    // The 2.1.329 layout carries genuine header casing (`User-Agent`).
+    expect(
+      fixture.headers.find(
+        ([name]) => name.toLowerCase() === "user-agent",
+      )?.[1],
+    ).toBe(`claude-cli/${provenance.cliVersion} (external, cli)`);
   });
 
   it("matches every sealed fixture hash in the manifest", () => {
@@ -256,14 +301,9 @@ describe("golden fixtures", () => {
       const fixture = parseGolden(JSON.stringify(raw));
       const billing = fixture.body.system[0];
       const identity = fixture.body.system[1];
-      const { cliVersion } = FIXTURE_PROVENANCE[filename];
+      const { billing: expectedBilling } = FIXTURE_PROVENANCE[filename];
       expect(billing?.text).toContain("cch=00000;");
-      expect(billing?.text).toMatch(
-        new RegExp(
-          `^x-anthropic-billing-header: cc_version=${cliVersion.replaceAll(".", "\\.")}\\.[0-9a-f]{3}; cc_entrypoint=cli; cch=00000;$`,
-          "u",
-        ),
-      );
+      expect(billing?.text).toBe(expectedBilling);
       expect(Object.hasOwn(rawBilling, "cache_control")).toBe(false);
       expect(Object.hasOwn(rawIdentity, "cache_control")).toBe(true);
       expect(identity?.text).toBe(IDENTITY);

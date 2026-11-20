@@ -80,6 +80,25 @@ a gap — while the new `claude-mythos-5-1` carries twelve capabilities but neit
 nor `refusal_fallback`, unlike the otherwise similar `claude-fable-5-1`. The eleven-capability entry
 is `claude-fable-5`.
 
+### Profile `claude-code-2.1.329-sdk-0.128.0`
+
+| Field           | Pinned value                                             |
+| --------------- | -------------------------------------------------------- |
+| Profile id      | `claude-code-2.1.329-sdk-0.128.0`                        |
+| Claude Code CLI | `2.1.329`                                                |
+| Anthropic SDK   | `0.128.0`                                                |
+| Build time      | `2026-11-19T16:23:05Z`                                   |
+| Git SHA         | `6a49dd29d929a6fe40c060bbccfeb5a7f037c958`               |
+| Analysis        | `docs/protocol/versions/claude-code-2.1.329-analysis.md` |
+| Profile module  | `src/profiles/claude-code-2.1.329.ts`                    |
+
+The catalogue holds 24 entries. The extractor report lists three further bare dated ids
+(`claude-haiku-4-5-20251001`, `claude-opus-4-1-20250805`, `claude-opus-4-5-20251101`) with no family,
+capabilities or limits; they belong to a second model list picked up by the multi-module dump and are
+excluded, as three spurious entries were at 2.1.280. Capability strings are copied verbatim from the
+report, including those the package does not map. The profile additionally carries two optional,
+data-only fields recorded from a live genuine session: `runtimeVersion` and `oauthAuthorizeScopes`.
+
 ### Drift monitoring is the tracking runbook, not an external checkout
 
 An earlier revision of this document described an offline drift verifier that compared the pinned
@@ -168,6 +187,19 @@ Two rows are deliberately **not** omissions, and say so. `L7t` is recorded becau
 | `lean_prompt` system-prompt selection                                           | system prompt authorship      | Not ported. §11.3, search `selects which system prompt is sent`. It selects which system prompt the client sends; this package authors no system prompts and forwards the caller's verbatim. It is a real input-token lever upstream, so its absence matters to a caller who expected the client to choose for them.                                                                                                                                                                                                                                                                                                                                                                                        |
 | `clear_at` body construction                                                    | conversation state            | Not ported. §9.3, search `is on the wire`. The wire shape and the gate that emits the beta are recorded, but what `clear_at` does to billing or caching server-side is not evidenced by the bundle, and the value derives from conversation state this package does not hold.                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `context_hint` body field                                                       | per-request token measurement | **Partly modelled**, not a clean omission. §9.2, search `target_tokens_saved`. `src/request-body.ts` emits `context_hint: {enabled: true}` whenever the profile sets `contextHintEnabled`; the 2.1.280 profile sets it `false`, so this profile emits nothing. `target_tokens_saved` is not modelled at all, because its value comes from a per-request token measurement this package does not perform.                                                                                                                                                                                                                                                                                                    |
+
+### 2.1.329 — recorded, not ported
+
+Eight upstream behaviours observed while porting 2.1.329 are recorded here so the next porter does not rediscover them as bugs. Section references are to `docs/protocol/versions/claude-code-2.1.329-analysis.md`. The behaviours the port **did** model (the header layout, the turn segments in the billing block, generated `context_management`, `diagnostics`, the account-served inputs, per-turn control messages, the retired mid-conversation-system header) are described in `MEMORY.md` under the 2026-11-19 entries, not here.
+
+- **`tool_choice` forced-refusal demotion.** Upstream decides whether a forced `tool_choice` is accepted by reading a server-served capability (`acceptsForcedToolChoice`, view line 154029, byte 19042742). The value is served per account and model by the remote client-data cache, which this package never reads, so the package cannot reproduce the decision. The 2.1.280 behaviour (demotion only under extended thinking) is unchanged and remains the documented model.
+- **Safeguards, afk-mode and dangerous-tool-use.** The betas exist in the registry, and `dangerous-tool-use` and `afk-mode` appear in the third-party allowlist, but the sites that emit them depend on host permission state (auto-mode, bypass-permissions) the package does not hold. They never compose here (the 2.1.329 profile keeps `afkModeEnabled` false); a host that needs one pushes it through `additionalBetas`. The body `safeguards` field the live print-mode capture shows (a `dangerous_tool_use` entry) is in the same position and is not emitted.
+- **Gzip and padding.** The genuine client gzips request bodies of 4096 characters and up by default, and pads a gzipped body. The package returns the body as a string for the host to send and models neither (analysis §6.6), so compression and padding are host-side differences.
+- **The advanced-tool-use beta for deferred tools.** The live capture carries `advanced-tool-use-2025-11-20` as a separate push when tool search is active and tools are deferred (`defer_loading: true`). Deferral is decided from the host's tool set and a server-served flag; the package's `tool_search` registry slot reuses the tool-search header and the package does not infer deferral, so the separate push is not emitted. Pass the identifier through `additionalBetas` when the host defers tools.
+- **Fingerprint non-meta input divergence.** The genuine client computes the three-character fingerprint from the first typed, non-meta prompt's first text block; the package hashes the first user text it is given. A host that prepends meta messages (reminders, injected context) to `messages` therefore gets a different value than the genuine client would. A candidate fix is an explicit `fingerprintText` input; it is not added because no consumer has needed it yet.
+- **The `context-1m` `iO` conjunct beyond `native1m`.** Upstream gates the `context-1m` beta on a further predicate (`iO`) in addition to the catalogue's native-1M flag. The package ports the native-1M part (a natively-1M model no longer gets the beta). What the predicate excludes beyond that is unresolved in the analysis (§5.4), so nothing further is modelled.
+- **`clamp_long_context_without_beta`.** A catalogue field that clamps the context window of a model when the long-context beta is absent. It affects client-side window accounting, not any request field, so it is not carried (the same precedent as `maximum_window` and `effort_cost_index`).
+- **Mid-conversation `tool_addition` messages.** The inline-tools beta is coupled to `role: "system"` messages carrying `tool_addition` blocks (live capture, `oauthp329-119` body). They are conversation state above the request-builder seam. Only the header half is ported (`accountFeatures.inlineTools`); see `MEMORY.md`. The one `role: "system"` message the package does accept is the per-turn control message.
 
 ## Build configuration decision
 
@@ -312,12 +344,16 @@ supersedes, if any.
 | Fixture                                                              | Model                 | SHA-256                                                            |
 | -------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------ |
 | `test/fixtures/golden/decision-context-hint-rejected.json`           | n/a (decision record) | `6957d363e1e9512eb1a8d2c7170fa208b92e28460e7fb3b8576aa3814cdf4582` |
+| `test/fixtures/golden/outgoing-account-features-2.1.329.json`        | `claude-opus-5-5`     | `044fedfe93c3be6b9e4498831dc469fdb023f3384cb1745dcc30db0cfb41bb63` |
 | `test/fixtures/golden/outgoing-canary-context-hint-off-2.1.233.json` | `claude-opus-4-8`     | `03d89e63545585041ebfba41ddcdb878efc24d3033e55130d96eab3b3c1fd6f6` |
 | `test/fixtures/golden/outgoing-canary-context-hint-off-2.1.280.json` | `claude-opus-4-8`     | `523633ec0aac5d9d602f46289abd091a74c9f6b66dd50499eeb41a0841e53ac8` |
+| `test/fixtures/golden/outgoing-canary-context-hint-off-2.1.329.json` | `claude-opus-4-8`     | `11f34c2c960eef4292f1e3f367775a420e13b3652335178af3fd866139f4bba4` |
 | `test/fixtures/golden/outgoing-canary-context-hint-off.json`         | `claude-opus-4-8`     | `af9fa1a299ba9b3cf493e1e5b2e0bb8b935e1089c2679ead615fe87c459bf3db` |
 | `test/fixtures/golden/outgoing-default-path-2.1.280.json`            | `claude-opus-5-5`     | `b4cf334ba5e5c073ec9558d986258ae6bd47c5a946cb87002558187e66f3afff` |
+| `test/fixtures/golden/outgoing-default-path-2.1.329.json`            | `claude-opus-5-5`     | `c73ec745d58a4866a0aaf06cd81c0147adb1523113ea23e742df5b931a216594` |
 | `test/fixtures/golden/outgoing-foreground-2.1.233.json`              | `claude-sonnet-4-5`   | `5926a3403f87e3b1c023c76075e0844266b5cb910f038bad5802deba45e14feb` |
 | `test/fixtures/golden/outgoing-foreground-2.1.280.json`              | `claude-sonnet-4-5`   | `246ebe18f51ab5bcf9f30edbe083d3eddc6b28e59688ebc1727b778a86581550` |
+| `test/fixtures/golden/outgoing-foreground-2.1.329.json`              | `claude-sonnet-4-5`   | `d2a3864ff18018e336e6c81afa881dd5a88d6db81076b77c4faacf7d425e56cf` |
 | `test/fixtures/golden/outgoing-foreground.json`                      | `claude-sonnet-4-5`   | `62748f01fcc20ae48f40dc4b628a094db5e06cd809d64d0c9163c0e69b0a98ea` |
 
 `test/fixtures/golden/manifest.json` is the machine-readable copy of these hashes and is the
@@ -400,6 +436,8 @@ Neither segment is ever emitted. `cc_workload` describes a background workload a
 `lib/mimicry/system-prompt.mjs:145-148` emits the static body-field marker `cch=00000;` for supported first-party providers, and `index.mjs:3141-3146` explicitly preserves that marker because mutating the first system block would invalidate prompt caching.
 
 The `index.mjs:5569` comment claiming cch attestation was “RE-ENABLED” is **STALE**. Lines 5569-5572 describe the compiled Bun binary's separate attestation-header mechanism, not this request-body system field. `_xxh64Raw` is declared at `index.mjs:5575` and assigned at `index.mjs:5577`; repository search finds no executable read of it (the other textual occurrences are documentation examples). Therefore xxHash **MUST NOT** be ported. Lock this exclusion in `test/system-prompt.test.ts` and `test/security/core-adversarial.test.ts`.
+
+> **2026-11-19 — observation, not a reversal.** Live captures of the genuine 2.1.280 and 2.1.329 binaries show a per-request 5-hex `cch` value on the wire, while the JavaScript only ever writes `cch=00000`; the substitution happens below the JS. This contradicts the "static" premise above for the genuine client. See `docs/protocol/versions/claude-code-2.1.329-analysis.md` §4.1 and §6.2.
 
 ## Environment-dependent inputs (must become injected inputs)
 

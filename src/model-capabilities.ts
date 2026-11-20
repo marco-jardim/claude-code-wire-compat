@@ -253,24 +253,33 @@ export function supportsStructuredOutputs(normalizedId: string): boolean {
  * excludes `claude-opus-4-8`. Do not merge them.
  * This beta-only gate is intentionally absent from `ClaudeCodeCapabilities`.
  *
- * Catalogue-first WHEN a profile is supplied and that profile catalogues the
- * id: `mid_conv_system` exists as a catalogue string, and from 2.1.222+ the
+ * Catalogue-first WHEN a profile is supplied, that profile's behaviour set
+ * reads the catalogue for this question
+ * (`midConversationSystemFromCatalogue`), and the profile catalogues the id:
+ * `mid_conv_system` exists as a catalogue string, and from 2.1.222+ the
  * catalogue is what upstream reads. The switch is behaviour-preserving for
  * 2.1.195, which is the point of the equivalence pinning in
  * `test/validation/capability-equivalence.test.ts`: in the 2.1.195 catalogue
  * exactly `claude-opus-4-8` and `claude-fable-5` carry the string, and those
  * are exactly the two ids the exclusion list below admits.
  *
- * Without a profile -- or for an id the profile does not catalogue, such as
- * `claude-mythos-5` under 2.1.195 -- the predicate remains authoritative.
+ * Without a profile, for a profile whose behaviour set does not read the
+ * catalogue here (2.1.329 retired the string: no catalogue entry carries it),
+ * or for an id the profile does not catalogue, such as `claude-mythos-5` under
+ * 2.1.195 -- the predicate remains authoritative.
  */
 export function supportsMidConversationSystem(
   normalizedId: string,
   profile?: ClaudeCodeProtocolProfile,
 ): boolean {
-  const entry = profile?.supportedModels[normalizedId];
-  if (entry !== undefined) {
-    return entry.capabilities.includes("mid_conv_system");
+  if (
+    profile !== undefined &&
+    profileBehaviors(profile).midConversationSystemFromCatalogue
+  ) {
+    const entry = profile.supportedModels[normalizedId];
+    if (entry !== undefined) {
+      return entry.capabilities.includes("mid_conv_system");
+    }
   }
   return !(
     normalizedId.includes("claude-3-") ||

@@ -104,8 +104,10 @@ function headerValues(
   headers: readonly (readonly [string, string])[],
   name: string,
 ): string[] {
+  // Case-insensitive: the spelling of a canonical name (`user-agent` or
+  // `User-Agent`) depends on the header layout of the profile in use.
   return headers
-    .filter(([candidate]) => candidate === name)
+    .filter(([candidate]) => candidate.toLowerCase() === name)
     .map(([, value]) => value);
 }
 

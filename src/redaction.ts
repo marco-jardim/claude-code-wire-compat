@@ -82,6 +82,7 @@ const PINNED_PROFILE_IDS: ReadonlySet<string> = new Set([
   "claude-code-2.1.195-sdk-0.94.0",
   "claude-code-2.1.233-sdk-0.112.1",
   "claude-code-2.1.280-sdk-0.112.1",
+  "claude-code-2.1.329-sdk-0.128.0",
 ]);
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const SAFE_ERROR_CODES = new Set([

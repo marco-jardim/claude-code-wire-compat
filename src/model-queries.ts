@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { ClaudeCodeProtocolProfile } from "./contracts.js";
+import type {
+  ClaudeCodeCatalogueEntry,
+  ClaudeCodeProtocolProfile,
+} from "./contracts.js";
 import { supportsStructuredOutputs as portedStructuredOutputs } from "./model-capabilities.js";
-import { modelFamilyOf, normalizeModelId } from "./model-identity.js";
+import type { ModelIdLadder } from "./model-identity.js";
+import {
+  modelFamilyOf,
+  modelIdLadder,
+  normalizeModelId,
+} from "./model-identity.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 
 /*
@@ -42,12 +50,23 @@ import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
  * RUNTIME NEUTRALITY. No builtins, no clock, no randomness, no I/O.
  */
 
-/** Lowercased + dotted-to-dashed id, or `null` for input no predicate can answer for. */
-function normalizedOrNull(model: string): string | null {
+/**
+ * Lowercased + dotted-to-dashed id, or `null` for input no predicate can answer
+ * for.
+ *
+ * Profile-less identity predicates use the extended ladder (the widest the
+ * package knows), so `isSonnet5Model("claude-sonnet-5-5")` is false: the 5.5
+ * ids are their own models. Queries that take a profile pass that profile's
+ * own ladder instead, so 2.1.280 keeps its folding.
+ */
+function normalizedOrNull(
+  model: string,
+  ladder: ModelIdLadder = "extended",
+): string | null {
   if (typeof model !== "string" || model.length === 0) {
     return null;
   }
-  return normalizeModelId(model);
+  return normalizeModelId(model, ladder);
 }
 
 /**
@@ -90,7 +109,7 @@ export function modelCapability(
   capability: string,
   profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
 ): boolean {
-  const id = normalizedOrNull(model);
+  const id = normalizedOrNull(model, modelIdLadder(profile));
   if (
     id === null ||
     typeof capability !== "string" ||
@@ -103,6 +122,26 @@ export function modelCapability(
     return false;
   }
   return entry.capabilities.includes(capability);
+}
+
+/**
+ * The catalogue entry the profile's own normalizer resolves `model` to, or
+ * `undefined` when the model is not a string, is empty, or the profile does not
+ * catalogue the resolved id.
+ *
+ * Folding-consistent: under a profile that follows the base ladder,
+ * `claude-sonnet-5-5` resolves to the `claude-sonnet-5` entry, exactly as the
+ * request builder resolves it for that profile.
+ */
+export function modelCatalogueEntry(
+  model: string,
+  profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
+): ClaudeCodeCatalogueEntry | undefined {
+  const id = normalizedOrNull(model, modelIdLadder(profile));
+  if (id === null || !Object.hasOwn(profile.supportedModels, id)) {
+    return undefined;
+  }
+  return profile.supportedModels[id];
 }
 
 /** Whether `model` normalizes to `claude-opus-4-6`. */
@@ -138,6 +177,26 @@ export function isSonnet46Model(model: string): boolean {
 /** Whether `model` normalizes to `claude-sonnet-5`. */
 export function isSonnet5Model(model: string): boolean {
   return normalizedOrNull(model) === "claude-sonnet-5";
+}
+
+/** Whether `model` normalizes to `claude-sonnet-5-5` (internal). */
+function isSonnet55Model(model: string): boolean {
+  return normalizedOrNull(model) === "claude-sonnet-5-5";
+}
+
+/** Whether `model` normalizes to `claude-haiku-5-5` (internal). */
+function isHaiku55Model(model: string): boolean {
+  return normalizedOrNull(model) === "claude-haiku-5-5";
+}
+
+/** Whether `model` normalizes to `claude-fable-5-2` (internal). */
+function isFable52Model(model: string): boolean {
+  return normalizedOrNull(model) === "claude-fable-5-2";
+}
+
+/** Whether `model` normalizes to `claude-mythos-5-2` (internal). */
+function isMythos52Model(model: string): boolean {
+  return normalizedOrNull(model) === "claude-mythos-5-2";
 }
 
 /** Whether `model` normalizes to `claude-fable-5`. */
@@ -194,7 +253,7 @@ export function isEligibleFor1MContext(
   model: string,
   profile: ClaudeCodeProtocolProfile = CLAUDE_CODE_2_1_195_PROFILE,
 ): boolean {
-  const id = normalizedOrNull(model);
+  const id = normalizedOrNull(model, modelIdLadder(profile));
   if (id === null) {
     return false;
   }
@@ -265,9 +324,13 @@ export function isAdaptiveThinkingModel(model: string): boolean {
     isOpus55Model(model) ||
     isSonnet46Model(model) ||
     isSonnet5Model(model) ||
+    isSonnet55Model(model) ||
+    isHaiku55Model(model) ||
     isFable5Model(model) ||
     isFable51Model(model) ||
+    isFable52Model(model) ||
     isMythos5Model(model) ||
-    isMythos51Model(model)
+    isMythos51Model(model) ||
+    isMythos52Model(model)
   );
 }

@@ -9,16 +9,20 @@ import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 import { clampMaxTokens, resolveThinking } from "./thinking.js";
 import type { ThinkingDisplay, ThinkingRequest } from "./thinking.js";
 
+import type { ClaudeCodeThreadBody } from "./betas.js";
 import { ClaudeCodeWireError } from "./contracts.js";
 import type {
   CacheControlEphemeral,
   ClaudeCodeCacheControlInput,
+  ClaudeCodeControlMessage,
+  ClaudeCodeControlMessageOutputConfig,
   ClaudeCodeProtocolProfile,
   CitationsConfigParam,
   DocumentBlock,
   ImageBlock,
   JsonValue,
   Message,
+  MessageContent,
   MessageContentBlock,
   RedactedThinkingBlock,
   SearchResultBlock,
@@ -33,6 +37,7 @@ import type {
 } from "./contracts.js";
 import { deriveCapabilities } from "./model-capabilities.js";
 import { stripModelMarkers } from "./model-identity.js";
+import { profileBehaviors } from "./profile-behaviors.js";
 import { IDENTITY_TEXT } from "./system-prompt.js";
 import {
   inspectText,
@@ -44,6 +49,12 @@ import { violationDetails, type ViolationPathSegment } from "./violation.js";
 const MAX_DEPTH = 100;
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const MESSAGE_KEYS = new Set(["role", "content"]);
+const CONTROL_MESSAGE_KEYS = new Set(["role", "content", "output_config"]);
+const CONTROL_OUTPUT_CONFIG_KEYS = new Set(["effort", "timing"]);
+const CONTROL_TIMING_KEYS = new Set(["type", "now"]);
+
+/** A validated `messages` entry: a conversation turn or a control message. */
+type WireMessage = Message | ClaudeCodeControlMessage;
 const CACHE_CONTROL_KEYS = new Set(["type", "ttl"]);
 const LEGACY_TEXT_CACHE_CONTROL_KEYS = new Set(["type", "ttl", "scope"]);
 const CITATIONS_CONFIG_KEYS = new Set(["enabled"]);
@@ -702,12 +713,12 @@ function applyToolCacheControl(
  * had placed on its own message blocks.
  */
 function applyMessageCacheControl(
-  value: readonly Message[],
+  value: readonly WireMessage[],
   input: ClaudeCodeCacheControlInput,
-): readonly Message[] {
+): readonly WireMessage[] {
   if (input.enabled !== true) return value;
-  const result = value.map((message): Message => ({
-    role: message.role,
+  const result = value.map((message): WireMessage => ({
+    ...message,
     content:
       typeof message.content === "string"
         ? message.content
@@ -1116,22 +1127,73 @@ function messageContentBlock(
   return fail("INVALID_INPUT");
 }
 
+/**
+ * Validates a per-turn control message's `output_config`: an effort level, a
+ * timing statement, or both. Anything else is refused, because the shape is
+ * transcribed from the genuine client and a package-invented member would be a
+ * wire divergence.
+ */
+function controlOutputConfig(
+  value: unknown,
+): ClaudeCodeControlMessageOutputConfig {
+  const record = requireRecord(value);
+  assertExactKeys(record, CONTROL_OUTPUT_CONFIG_KEYS);
+  const effort = record["effort"];
+  const timing = record["timing"];
+  if (effort === undefined && timing === undefined) fail("INVALID_INPUT");
+  if (
+    effort !== undefined &&
+    effort !== "low" &&
+    effort !== "medium" &&
+    effort !== "high" &&
+    effort !== "xhigh" &&
+    effort !== "max"
+  ) {
+    fail("INVALID_INPUT");
+  }
+  let validTiming: ClaudeCodeControlMessageOutputConfig["timing"];
+  if (timing !== undefined) {
+    const timingRecord = requireRecord(timing);
+    assertExactKeys(timingRecord, CONTROL_TIMING_KEYS);
+    if (timingRecord["type"] !== "now") fail("INVALID_INPUT");
+    const now = timingRecord["now"];
+    if (typeof now === "number") {
+      if (!Number.isFinite(now)) fail("INVALID_INPUT");
+      validTiming = { type: "now", now };
+    } else {
+      const text = requireIdentifier(now);
+      if (text.length === 0 || text.length > 64) fail("INVALID_INPUT");
+      validTiming = { type: "now", now: text };
+    }
+  }
+  return {
+    ...(effort === undefined ? {} : { effort }),
+    ...(validTiming === undefined ? {} : { timing: validTiming }),
+  };
+}
+
 function messages(
   value: unknown,
   preserveThinkingCacheControl: boolean,
-): readonly Message[] {
+  acceptControlMessages: false,
+): readonly Message[];
+function messages(
+  value: unknown,
+  preserveThinkingCacheControl: boolean,
+  acceptControlMessages: boolean,
+): readonly WireMessage[];
+function messages(
+  value: unknown,
+  preserveThinkingCacheControl: boolean,
+  acceptControlMessages: boolean,
+): readonly WireMessage[] {
   if (!Array.isArray(value)) fail("INVALID_INPUT");
   const useIds = new Set<string>();
   const resultIds: string[] = [];
-  const result = value.map((item): Message => {
-    const record = requireRecord(item);
-    assertExactKeys(record, MESSAGE_KEYS);
-    const role = record["role"];
-    if (role !== "user" && role !== "assistant") fail("INVALID_INPUT");
-    const rawContent = record["content"];
-    if (typeof rawContent === "string") return { role, content: rawContent };
+  const messageContent = (rawContent: unknown): MessageContent => {
+    if (typeof rawContent === "string") return rawContent;
     if (!Array.isArray(rawContent)) fail("INVALID_INPUT");
-    const content = rawContent.map((block) => {
+    return rawContent.map((block) => {
       const blockRecord = requireRecord(block);
       if (blockRecord["type"] === "text") return textBlock(blockRecord);
       if (blockRecord["type"] === "tool_use") {
@@ -1147,7 +1209,27 @@ function messages(
       }
       return messageContentBlock(blockRecord, preserveThinkingCacheControl);
     });
-    return { role, content };
+  };
+  const result = value.map((item): WireMessage => {
+    const record = requireRecord(item);
+    assertExactKeys(
+      record,
+      acceptControlMessages ? CONTROL_MESSAGE_KEYS : MESSAGE_KEYS,
+    );
+    const role = record["role"];
+    if (acceptControlMessages && role === "system") {
+      // A control message always carries its statement; the genuine client
+      // never emits one without `output_config`.
+      if (!hasOwn(record, "output_config")) fail("INVALID_INPUT");
+      return {
+        role,
+        content: messageContent(record["content"]),
+        output_config: controlOutputConfig(record["output_config"]),
+      };
+    }
+    if (role !== "user" && role !== "assistant") fail("INVALID_INPUT");
+    if (hasOwn(record, "output_config")) fail("INVALID_INPUT");
+    return { role, content: messageContent(record["content"]) };
   });
   for (const id of resultIds) {
     if (!useIds.has(id)) fail("INVALID_INPUT");
@@ -1772,9 +1854,98 @@ export function canonicalCountTokensLists(
   return {
     // The count-tokens endpoint has no seam of its own, so thinking blocks stay
     // on the strict allowlist here.
-    messages: messages(rawMessages, false),
+    messages: messages(rawMessages, false, false),
     tools: rawTools === undefined ? Object.freeze([]) : tools(rawTools),
   };
+}
+
+/**
+ * The shape of an Anthropic message id as the genuine client's chaining guard
+ * accepts it (`msg_` plus 1-64 identifier characters).
+ */
+const MESSAGE_ID_PATTERN = /^msg_[A-Za-z0-9_]{1,64}$/u;
+
+/**
+ * Validates the `previousMessageId` input: a message id, or `null` (the
+ * genuine client's value on the first request of a thread). Anything else is
+ * `INVALID_INPUT`; unlike the billing chain ids, this one is not silently
+ * dropped, because it is echoed verbatim into the body.
+ */
+export function validatePreviousMessageId(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string" || !MESSAGE_ID_PATTERN.test(value)) {
+    fail("INVALID_INPUT");
+  }
+  return value;
+}
+
+/**
+ * Body fields the request builder derives from the beta composition and the
+ * caller's chaining state rather than from a named body input. Each member is
+ * honoured only under its profile behaviour flag.
+ */
+export interface GeneratedBodyInputs {
+  /** The context-management beta site fired (`ComposedBetas`). */
+  readonly contextManagementComposed?: boolean;
+  /** The cache-diagnosis beta site fired (`ComposedBetas`). */
+  readonly cacheDiagnosisComposed?: boolean;
+  /** The caller's `previousMessageId`; absent is the same as `null`. */
+  readonly previousMessageId?: string | null;
+  /**
+   * The `thread` object the message-threads site decided on (`ComposedBetas`);
+   * absent when the site did not fire or the caller suppressed its beta.
+   */
+  readonly thread?: ClaudeCodeThreadBody;
+}
+
+/**
+ * Body keys in the genuine client's emission order, split around the slot that
+ * collects every key the genuine client's object literal does not name
+ * (`service_tier`, `output_format`, `top_p`, `top_k`, `stop_sequences` and the
+ * caller's experimental fields). View :158392-158394 @20154922-20155417; the
+ * live capture `inter329-205` shows the same sequence, with the host-served
+ * `safeguards` key sitting between `context_management` and `output_config`.
+ */
+const GENUINE_BODY_KEYS_BEFORE_EXTRAS = [
+  "model",
+  "messages",
+  "system",
+  "tools",
+  "tool_choice",
+  "metadata",
+  "max_tokens",
+  "thinking",
+  "temperature",
+  "context_management",
+  "context_hint",
+] as const;
+const GENUINE_BODY_KEYS_AFTER_EXTRAS = [
+  "output_config",
+  "speed",
+  "thread",
+  "diagnostics",
+  "stream",
+] as const;
+const GENUINE_BODY_NAMED_KEYS: ReadonlySet<string> = new Set([
+  ...GENUINE_BODY_KEYS_BEFORE_EXTRAS,
+  ...GENUINE_BODY_KEYS_AFTER_EXTRAS,
+]);
+
+/** Re-emits `result` with its keys in the genuine client's order. */
+function orderGenuineBody(
+  result: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  const ordered: Record<string, unknown> = {};
+  const take = (key: string): void => {
+    if (hasOwn(result, key)) ordered[key] = result[key];
+  };
+  for (const key of GENUINE_BODY_KEYS_BEFORE_EXTRAS) take(key);
+  // Insertion order of `result` is preserved for the extras.
+  for (const key of Object.keys(result)) {
+    if (!GENUINE_BODY_NAMED_KEYS.has(key)) ordered[key] = result[key];
+  }
+  for (const key of GENUINE_BODY_KEYS_AFTER_EXTRAS) take(key);
+  return ordered;
 }
 
 export function buildCanonicalBody(
@@ -1784,6 +1955,7 @@ export function buildCanonicalBody(
   rawMetadata: unknown,
   profile?: ClaudeCodeProtocolProfile,
   thinkingDisplayOverride?: "updates",
+  generated?: GeneratedBodyInputs,
 ): Readonly<Record<string, unknown>> {
   inspectJsonInputs(
     [
@@ -1820,7 +1992,11 @@ export function buildCanonicalBody(
     hasOwn(input, "preserveThinkingBlockCacheControl") &&
     requireBoolean(input["preserveThinkingBlockCacheControl"]);
   let systemBlocks = system(rawSystemBlocks);
-  let messageList = messages(input["messages"], preserveThinkingCacheControl);
+  let messageList = messages(
+    input["messages"],
+    preserveThinkingCacheControl,
+    profileBehaviors(effectiveProfile).perTurnControlMessages,
+  );
   let toolList = hasOwn(input, "tools") ? tools(input["tools"]) : undefined;
   if (cacheOverride !== undefined && cacheOverride !== null) {
     systemBlocks = applySystemCacheControl(systemBlocks, cacheOverride);
@@ -1978,6 +2154,53 @@ export function buildCanonicalBody(
     else if (key === "stream") result["stream"] = requireBoolean(item);
   }
 
+  const behaviors = profileBehaviors(effectiveProfile);
+
+  // Body half of the context-management pair. The genuine client attaches the
+  // clear-thinking edit whenever the beta fired and thinking is on, unless the
+  // caller supplied its own value (an explicit `null` is the caller's too).
+  // Keyed on the composed state, not on the header list, so suppressing the
+  // beta identifier leaves the field in place. A value carried by
+  // `experimentalBodyFields` is the caller's as well.
+  const emittedThinkingType = isRecord(result["thinking"])
+    ? result["thinking"]["type"]
+    : undefined;
+  const experimentalInput = input["experimentalBodyFields"];
+  const callerContextManagement =
+    hasOwn(input, "contextManagement") ||
+    (isRecord(experimentalInput) &&
+      hasOwn(experimentalInput, "context_management"));
+  if (
+    behaviors.generatedContextManagement &&
+    generated?.contextManagementComposed === true &&
+    (emittedThinkingType === "adaptive" || emittedThinkingType === "enabled") &&
+    !callerContextManagement
+  ) {
+    result["context_management"] = {
+      edits: [{ type: "clear_thinking_20251015", keep: "all" }],
+    };
+  }
+
+  // Body half of the cache-diagnosis pair: the previous message id of the
+  // thread, `null` on the first request.
+  if (
+    behaviors.cacheDiagnosisBody &&
+    generated?.cacheDiagnosisComposed === true
+  ) {
+    result["diagnostics"] = {
+      previous_message_id: validatePreviousMessageId(
+        generated.previousMessageId ?? null,
+      ),
+    };
+  }
+
+  // Body half of the message-threads pair. Present only when the site fired and
+  // the beta was not suppressed; `orderGenuineBody` places it before
+  // `diagnostics`.
+  if (behaviors.accountServedInputs && generated?.thread !== undefined) {
+    result["thread"] = generated.thread;
+  }
+
   if (contextHintEnabled(profile)) {
     result["context_hint"] = { enabled: true };
   }
@@ -1991,5 +2214,7 @@ export function buildCanonicalBody(
       result[key] = experimentalBodyFields[key];
     }
   }
-  return deepFreeze(result);
+  return deepFreeze(
+    behaviors.genuineBodyKeyOrder ? orderGenuineBody(result) : result,
+  );
 }
