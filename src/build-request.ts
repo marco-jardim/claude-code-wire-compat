@@ -33,6 +33,7 @@ import { resolveModel } from "./models.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 import { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
 import { CLAUDE_CODE_2_1_280_PROFILE } from "./profiles/claude-code-2.1.280.js";
+import { CLAUDE_CODE_2_1_329_PROFILE } from "./profiles/claude-code-2.1.329.js";
 import type { NormalizedRequestInput } from "./redaction.js";
 import { buildRedactedEvidence, toSafeErrorDetails } from "./redaction.js";
 import {
@@ -377,6 +378,7 @@ const ACCEPTED_PROFILES: ReadonlySet<ClaudeCodeProtocolProfile> = new Set([
   CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
   CLAUDE_CODE_2_1_280_PROFILE,
+  CLAUDE_CODE_2_1_329_PROFILE,
 ]);
 
 /**

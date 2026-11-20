@@ -6,6 +6,7 @@ import {
   BETA_REGISTRY,
   BETA_REGISTRY_2_1_233,
   BETA_REGISTRY_2_1_280,
+  BETA_REGISTRY_2_1_329,
   TOKEN_COUNTING_BETA,
 } from "../../src/index.js";
 
@@ -31,6 +32,7 @@ const registries = [
   ["BETA_REGISTRY", BETA_REGISTRY, 28],
   ["BETA_REGISTRY_2_1_233", BETA_REGISTRY_2_1_233, 31],
   ["BETA_REGISTRY_2_1_280", BETA_REGISTRY_2_1_280, 40],
+  ["BETA_REGISTRY_2_1_329", BETA_REGISTRY_2_1_329, 45],
 ] as const;
 
 describe("public beta registry surface", () => {
@@ -95,6 +97,9 @@ describe("public beta registry surface", () => {
     expect(BETA_REGISTRY_2_1_280.PROMPT_CACHING_SCOPE).toEqual(
       BETA_REGISTRY.PROMPT_CACHING_SCOPE,
     );
+    expect(BETA_REGISTRY_2_1_329.PROMPT_CACHING_SCOPE).toEqual(
+      BETA_REGISTRY.PROMPT_CACHING_SCOPE,
+    );
   });
 
   it("pins the count-tokens beta appended to the count-tokens header set", () => {
@@ -128,7 +133,11 @@ describe("public beta registry surface", () => {
       header: "summarize-connector-text-2026-03-13",
     });
 
-    for (const registry of [BETA_REGISTRY_2_1_233, BETA_REGISTRY_2_1_280]) {
+    for (const registry of [
+      BETA_REGISTRY_2_1_233,
+      BETA_REGISTRY_2_1_280,
+      BETA_REGISTRY_2_1_329,
+    ]) {
       expect(Object.keys(registry)).not.toContain("NARRATION_SUMMARIES");
       expect(
         entriesOf(registry).map(([, entry]) => entry.header),
