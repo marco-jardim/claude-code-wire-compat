@@ -6,6 +6,7 @@ import type { ClaudeCodeProtocolProfile } from "../../src/contracts.js";
 import {
   CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
+  CLAUDE_CODE_2_1_280_PROFILE,
   CLAUDE_CODE_2_1_329_PROFILE,
 } from "../../src/index.js";
 import {
@@ -29,19 +30,50 @@ const LEGACY: ClaudeCodeProfileBehaviors = {
   billingChainSegments: false,
   opus45EffortException: true,
   perTurnControlMessages: false,
+  midConversationSystemFromCatalogue: true,
+  thinkingTokenCountAfterRequestTable: false,
+  longContextExcludesNative1m: false,
+  extendedModelIdLadder: false,
+  genuineHeaderLayout: false,
+  billingTurnSegments: false,
+  generatedContextManagement: false,
+  cacheDiagnosisBody: false,
+  genuineBodyKeyOrder: false,
+  accountServedInputs: false,
 };
 
-const MODERN: ClaudeCodeProfileBehaviors = {
+// The set 2.1.233 and 2.1.280 share, and where an unrecognised id lands.
+const CATALOGUE_ERA: ClaudeCodeProfileBehaviors = {
   requestDerivedTokenCeiling: true,
   billingChainSegments: true,
   opus45EffortException: false,
   perTurnControlMessages: false,
+  midConversationSystemFromCatalogue: true,
+  thinkingTokenCountAfterRequestTable: false,
+  longContextExcludesNative1m: false,
+  extendedModelIdLadder: false,
+  genuineHeaderLayout: false,
+  billingTurnSegments: false,
+  generatedContextManagement: false,
+  cacheDiagnosisBody: false,
+  genuineBodyKeyOrder: false,
+  accountServedInputs: false,
 };
 
-// 2.1.329 is the modern side plus the per-turn control message shape.
+// 2.1.329: catalogue-era request behaviours plus every wire-faithful flag.
 const WIRE_FAITHFUL: ClaudeCodeProfileBehaviors = {
-  ...MODERN,
+  ...CATALOGUE_ERA,
   perTurnControlMessages: true,
+  midConversationSystemFromCatalogue: false,
+  thinkingTokenCountAfterRequestTable: true,
+  longContextExcludesNative1m: true,
+  extendedModelIdLadder: true,
+  genuineHeaderLayout: true,
+  billingTurnSegments: true,
+  generatedContextManagement: true,
+  cacheDiagnosisBody: true,
+  genuineBodyKeyOrder: true,
+  accountServedInputs: true,
 };
 
 describe("profileBehaviors: the shipped profiles", () => {
@@ -49,14 +81,72 @@ describe("profileBehaviors: the shipped profiles", () => {
     expect(profileBehaviors(CLAUDE_CODE_2_1_195_PROFILE)).toEqual(LEGACY);
   });
 
-  it("puts 2.1.233 on the modern side", () => {
-    expect(profileBehaviors(CLAUDE_CODE_2_1_233_PROFILE)).toEqual(MODERN);
+  it("puts 2.1.233 on the catalogue-era side", () => {
+    expect(profileBehaviors(CLAUDE_CODE_2_1_233_PROFILE)).toEqual(
+      CATALOGUE_ERA,
+    );
   });
 
-  it("puts 2.1.329 on the modern side plus its own flag", () => {
+  it("puts 2.1.280 on the catalogue-era side", () => {
+    expect(profileBehaviors(CLAUDE_CODE_2_1_280_PROFILE)).toBe(
+      profileBehaviors(CLAUDE_CODE_2_1_233_PROFILE),
+    );
+    expect(profileBehaviors(CLAUDE_CODE_2_1_280_PROFILE)).toEqual(
+      CATALOGUE_ERA,
+    );
+  });
+
+  it("puts 2.1.329 on the wire-faithful side", () => {
     expect(profileBehaviors(CLAUDE_CODE_2_1_329_PROFILE)).toEqual(
       WIRE_FAITHFUL,
     );
+  });
+
+  describe("the 4-profile x flag table", () => {
+    const FLAG_TABLE: readonly (readonly [
+      keyof ClaudeCodeProfileBehaviors,
+      boolean,
+      boolean,
+      boolean,
+      boolean,
+    ])[] = [
+      ["requestDerivedTokenCeiling", false, true, true, true],
+      ["billingChainSegments", false, true, true, true],
+      ["opus45EffortException", true, false, false, false],
+      ["perTurnControlMessages", false, false, false, true],
+      ["midConversationSystemFromCatalogue", true, true, true, false],
+      ["thinkingTokenCountAfterRequestTable", false, false, false, true],
+      ["longContextExcludesNative1m", false, false, false, true],
+      ["extendedModelIdLadder", false, false, false, true],
+      ["genuineHeaderLayout", false, false, false, true],
+      ["billingTurnSegments", false, false, false, true],
+      ["generatedContextManagement", false, false, false, true],
+      ["cacheDiagnosisBody", false, false, false, true],
+      ["genuineBodyKeyOrder", false, false, false, true],
+      ["accountServedInputs", false, false, false, true],
+    ];
+
+    it("lists every flag exactly once", () => {
+      expect(FLAG_TABLE.map(([flag]) => flag as string).sort()).toEqual(
+        Object.keys(LEGACY).sort(),
+      );
+    });
+
+    const PROFILES = [
+      CLAUDE_CODE_2_1_195_PROFILE,
+      CLAUDE_CODE_2_1_233_PROFILE,
+      CLAUDE_CODE_2_1_280_PROFILE,
+      CLAUDE_CODE_2_1_329_PROFILE,
+    ];
+
+    for (const [flag, ...cells] of FLAG_TABLE) {
+      it(`${flag} resolves ${cells.join("/")} for 195/233/280/329`, () => {
+        const resolved = PROFILES.map((profile) => {
+          return profileBehaviors(profile)[flag];
+        });
+        expect(resolved).toEqual(cells);
+      });
+    }
   });
 
   it("has two shipped behaviour sets disagree on every flag, so no flag is vacuous", () => {
@@ -83,10 +173,10 @@ describe("profileBehaviors: the shipped profiles", () => {
 });
 
 /*
- * An unrecognised profile inherits the MODERN side. A profile ported from a
- * client newer than 2.1.233 must not silently regress to 2.1.195 semantics
- * just because nobody edited the dispatch module; only a profile ported from a
- * client OLDER than 2.1.222 needs an edit there.
+ * An unrecognised profile inherits the CATALOGUE-ERA side, never the
+ * wire-faithful one. A profile must be named in the dispatch module to adopt
+ * the 2.1.329 behaviours, and an overridden id must keep the bytes it had
+ * before that profile existed.
  */
 describe("profileBehaviors: an unrecognised profile", () => {
   const synthetic: ClaudeCodeProtocolProfile = {
@@ -99,8 +189,18 @@ describe("profileBehaviors: an unrecognised profile", () => {
     expect(synthetic.id).not.toBe(CLAUDE_CODE_2_1_233_PROFILE.id);
   });
 
-  it("inherits the modern side", () => {
-    expect(profileBehaviors(synthetic)).toEqual(MODERN);
+  it("inherits the catalogue-era side", () => {
+    expect(profileBehaviors(synthetic)).toEqual(CATALOGUE_ERA);
+  });
+
+  it("resolves an overridden id on a 2.1.329 profile to the catalogue-era set", () => {
+    const overridden: ClaudeCodeProtocolProfile = {
+      ...CLAUDE_CODE_2_1_329_PROFILE,
+      id: "claude-code-custom",
+    };
+    const behaviors = profileBehaviors(overridden);
+    expect(behaviors).toEqual(CATALOGUE_ERA);
+    expect(behaviors.midConversationSystemFromCatalogue).toBe(true);
   });
 
   it("dispatches on the id alone, not on any other profile field", () => {
