@@ -28,7 +28,9 @@ function headerValue(
   headers: readonly (readonly [string, string])[],
   name: string,
 ): string | undefined {
-  return headers.find(([candidate]) => candidate === name)?.[1];
+  // Case-insensitive: the spelling of a canonical name depends on the header
+  // layout of the profile in use.
+  return headers.find(([candidate]) => candidate.toLowerCase() === name)?.[1];
 }
 
 describe("catalogue entry validation coverage", () => {
