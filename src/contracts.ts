@@ -1203,11 +1203,32 @@ export interface ClaudeCodeRequestInput {
    *
    * Validated on every profile (unknown keys and values outside the closed
    * domains are `INVALID_INPUT`); only profiles that honour account-served
-   * inputs (2.1.329) act on it, and older profiles ignore it entirely. Today
-   * only `dispatchId` takes effect: it adds the `anthropic-dispatch-id` header
-   * to messages requests (never to count-tokens).
+   * inputs (2.1.329) act on it, and older profiles ignore it entirely. There:
+   * `dispatchId` adds the `anthropic-dispatch-id` header to messages requests
+   * (never to count-tokens); `inlineTools` composes the inline-tools beta when
+   * the mid-conversation tool-change beta is composed; `toolProvenance`
+   * composes the tool-provenance beta (OAuth only); `thread` composes the
+   * message-threads beta and adds the body's `thread` object (`{type:
+   * "create"}` or `{type: "continue", previous_message_id}`), which is dropped
+   * again when `suppressBetas` removes that beta.
    */
   readonly accountFeatures?: ClaudeCodeAccountFeatures;
+  /**
+   * Marks the request as a side query (the plugin sets it on session-title
+   * requests), which composes the claude-code-side-query beta.
+   *
+   * Validated on every profile (a non-boolean is `INVALID_INPUT`); honoured
+   * only by profiles that honour account-served inputs (2.1.329).
+   */
+  readonly sideQuery?: boolean;
+  /**
+   * Marks the request as an agentic query, which composes the claude-code beta
+   * for a model the per-model table excludes it from (the haiku models).
+   *
+   * Validated on every profile (a non-boolean is `INVALID_INPUT`); honoured
+   * only by profiles that honour account-served inputs (2.1.329).
+   */
+  readonly agenticQuery?: boolean;
   /** Injects the Web Crypto provider used to hash the request body. */
   readonly crypto?: Pick<Crypto, "subtle">;
 }

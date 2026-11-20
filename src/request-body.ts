@@ -9,6 +9,7 @@ import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 import { clampMaxTokens, resolveThinking } from "./thinking.js";
 import type { ThinkingDisplay, ThinkingRequest } from "./thinking.js";
 
+import type { ClaudeCodeThreadBody } from "./betas.js";
 import { ClaudeCodeWireError } from "./contracts.js";
 import type {
   CacheControlEphemeral,
@@ -1890,6 +1891,11 @@ export interface GeneratedBodyInputs {
   readonly cacheDiagnosisComposed?: boolean;
   /** The caller's `previousMessageId`; absent is the same as `null`. */
   readonly previousMessageId?: string | null;
+  /**
+   * The `thread` object the message-threads site decided on (`ComposedBetas`);
+   * absent when the site did not fire or the caller suppressed its beta.
+   */
+  readonly thread?: ClaudeCodeThreadBody;
 }
 
 /**
@@ -2186,6 +2192,13 @@ export function buildCanonicalBody(
         generated.previousMessageId ?? null,
       ),
     };
+  }
+
+  // Body half of the message-threads pair. Present only when the site fired and
+  // the beta was not suppressed; `orderGenuineBody` places it before
+  // `diagnostics`.
+  if (behaviors.accountServedInputs && generated?.thread !== undefined) {
+    result["thread"] = generated.thread;
   }
 
   if (contextHintEnabled(profile)) {

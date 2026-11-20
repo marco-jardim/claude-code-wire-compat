@@ -135,9 +135,9 @@ export interface ClaudeCodeProfileBehaviors {
   /**
    * Whether caller-supplied account-served inputs (dispatch id, inline tools,
    * threads, side-query and agentic-query markers) are honoured. The dispatch
-   * id is read by the header builder in `headers.ts`; the remaining members
-   * are declared ahead of their readers and inert until the beta composer and
-   * body builder read them.
+   * id is read by the header builder in `headers.ts`; the others by the beta
+   * composer in `betas.ts` and, for the thread body, the body builder in
+   * `request-body.ts`.
    */
   readonly accountServedInputs: boolean;
 }

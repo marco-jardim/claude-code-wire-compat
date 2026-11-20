@@ -117,6 +117,8 @@ const INPUT_KEYS = new Set([
   "toolsUsed",
   "previousMessageId",
   "accountFeatures",
+  "sideQuery",
+  "agenticQuery",
   "crypto",
 ]);
 const TURN_POSITION_KEYS = new Set(["promptIndex", "turnIndex"]);
@@ -842,6 +844,8 @@ function validateInput(input: ClaudeCodeRequestInput): {
   readonly toolsUsed: readonly ToolsUsedEntry[] | undefined;
   readonly previousMessageId: string | null | undefined;
   readonly accountFeatures: ClaudeCodeAccountFeatures | undefined;
+  readonly sideQuery: boolean;
+  readonly agenticQuery: boolean;
 } {
   if (!isRecord(input)) fail();
   assertExactKeys(input, INPUT_KEYS);
@@ -930,6 +934,14 @@ function validateInput(input: ClaudeCodeRequestInput): {
   const accountFeatures = Object.hasOwn(input, "accountFeatures")
     ? validateAccountFeatures(ownValue(input, "accountFeatures"))
     : undefined;
+  // Validated on every profile; only profiles honouring account-served inputs
+  // act on them.
+  const sideQuery = Object.hasOwn(input, "sideQuery")
+    ? validateStrictBoolean(ownValue(input, "sideQuery"))
+    : false;
+  const agenticQuery = Object.hasOwn(input, "agenticQuery")
+    ? validateStrictBoolean(ownValue(input, "agenticQuery"))
+    : false;
   return {
     source: input,
     clientRequestId,
@@ -948,7 +960,31 @@ function validateInput(input: ClaudeCodeRequestInput): {
     toolsUsed,
     previousMessageId,
     accountFeatures,
+    sideQuery,
+    agenticQuery,
   };
+}
+
+function validateStrictBoolean(value: unknown): boolean {
+  if (typeof value !== "boolean") fail();
+  return value;
+}
+
+/**
+ * Whether the caller's tool list carries the advisor tool. A defensive scan:
+ * the tool list is validated in full later, by the body builder, so a malformed
+ * entry here is simply not the advisor tool.
+ */
+function hasAdvisorTool(tools: unknown): boolean {
+  return (
+    Array.isArray(tools) &&
+    tools.some(
+      (tool: unknown): boolean =>
+        isRecord(tool) &&
+        Object.hasOwn(tool, "type") &&
+        tool["type"] === "advisor_20260301",
+    )
+  );
 }
 
 /**
@@ -1817,6 +1853,12 @@ export async function buildClaudeCodeRequest(
         ...(validated.betaOverrides?.use1MContext === undefined
           ? {}
           : { use1MContextOverride: validated.betaOverrides.use1MContext }),
+        ...(validated.accountFeatures === undefined
+          ? {}
+          : { accountFeatures: validated.accountFeatures }),
+        hasAdvisorTool: hasAdvisorTool(validated.source.tools),
+        sideQuery: validated.sideQuery,
+        agenticQuery: validated.agenticQuery,
       },
       effectiveProfile,
     );
@@ -1833,6 +1875,9 @@ export async function buildClaudeCodeRequest(
         ...(validated.previousMessageId === undefined
           ? {}
           : { previousMessageId: validated.previousMessageId }),
+        ...(composedBetas.thread === undefined
+          ? {}
+          : { thread: composedBetas.thread }),
       },
     );
     const betas = composedBetas.betas;

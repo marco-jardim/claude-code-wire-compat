@@ -19,7 +19,10 @@ import {
  * the new inputs added must give the same bytes as building it without them,
  * and those bytes are the fixture's own.
  *
- * Later ports of 2.1.329-only inputs extend the `NEW_INPUTS` table below.
+ * Later ports of 2.1.329-only inputs extend the `NEW_INPUTS` table below. The
+ * account-served inputs (`sideQuery`, `agenticQuery` and every
+ * `accountFeatures` member) are covered by that table; the advisor tool is not
+ * an input but a member of `tools`, so it has its own block.
  */
 
 const NEW_INPUTS = {
@@ -33,6 +36,8 @@ const NEW_INPUTS = {
     toolProvenance: true,
     thread: { type: "continue", previousMessageId: "msg_01AbC_dEf" },
   },
+  sideQuery: true,
+  agenticQuery: true,
 } as const;
 
 describe("2.1.329-only inputs are inert on 2.1.280", () => {
@@ -69,6 +74,12 @@ describe("2.1.329-only inputs are inert on 2.1.280", () => {
     expect(withInputs.body).not.toContain("cc_prompt_index");
     expect(withInputs.body).not.toContain("diagnostics");
     expect(withInputs.body).not.toContain("msg_01AbC_dEf");
+    expect(withInputs.body).not.toContain('"thread"');
+    expect(
+      withInputs.headers.find(([name]) => name === "anthropic-beta")?.[1],
+    ).not.toMatch(
+      /inline-tools|tool-provenance|message-threads|claude-code-side-query/u,
+    );
     expect(
       withInputs.headers.map(([name]) => name.toLowerCase()),
     ).not.toContain("anthropic-dispatch-id");
@@ -110,6 +121,34 @@ describe("2.1.329-only inputs are inert on 2.1.280", () => {
 
     expect(withCch.body.replace("cch=abcde;", "cch=00000;")).toBe(plain.body);
     expect(withCch.headers).toEqual(plain.headers);
+  });
+});
+
+describe("an advisor tool composes no advisor beta on earlier profiles", () => {
+  it.each([
+    ["2.1.195", CLAUDE_CODE_2_1_195_PROFILE],
+    ["2.1.233", CLAUDE_CODE_2_1_233_PROFILE],
+    ["2.1.280", CLAUDE_CODE_2_1_280_PROFILE],
+  ])("%s", async (_name, profile) => {
+    const input = syntheticInput(
+      referenceAdapter("outgoing-default-path-2.1.280.json"),
+    );
+    const plain = await buildClaudeCodeRequest(input, profile);
+    const withAdvisor = await buildClaudeCodeRequest(
+      {
+        ...input,
+        tools: [
+          ...(input.tools ?? []),
+          { type: "advisor_20260301", name: "advisor", model: input.model },
+        ],
+      },
+      profile,
+    );
+    const betaHeader = (built: typeof plain): string | undefined =>
+      built.headers.find(([name]) => name === "anthropic-beta")?.[1];
+
+    expect(betaHeader(withAdvisor)).toBe(betaHeader(plain));
+    expect(betaHeader(withAdvisor)).not.toContain("advisor-tool");
   });
 });
 
