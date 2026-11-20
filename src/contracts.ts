@@ -877,6 +877,37 @@ export interface ClaudeCodeToolUsed {
   readonly url?: string;
 }
 
+/**
+ * The values of the `anthropic-dispatch-id` header the genuine client sends
+ * when the account is served the dispatch experiment. See
+ * `ClaudeCodeAccountFeatures.dispatchId`.
+ */
+export type ClaudeCodeDispatchId = "v2d" | "v2s" | "v2p";
+
+/**
+ * Conversation-thread state for the message-threads feature. See
+ * `ClaudeCodeAccountFeatures.thread`.
+ */
+export type ClaudeCodeThreadInput =
+  | { readonly type: "create" }
+  | { readonly type: "continue"; readonly previousMessageId: string };
+
+/**
+ * Features the genuine client turns on only for accounts the server has
+ * enrolled. The package cannot observe that enrolment, so each member is an
+ * explicit opt-in by the caller. See `ClaudeCodeRequestInput.accountFeatures`.
+ */
+export interface ClaudeCodeAccountFeatures {
+  /** Value of the `anthropic-dispatch-id` header. */
+  readonly dispatchId?: ClaudeCodeDispatchId;
+  /** Opts into the inline-tools beta. */
+  readonly inlineTools?: boolean;
+  /** Opts into the tool-provenance beta (off by default, as in the genuine client's OAuth traffic). */
+  readonly toolProvenance?: boolean;
+  /** Message-thread state. */
+  readonly thread?: ClaudeCodeThreadInput;
+}
+
 export interface ClaudeCodeRequestInput {
   readonly accessToken: string;
   readonly model: string;
@@ -1154,6 +1185,29 @@ export interface ClaudeCodeRequestInput {
    * instead because the sentinel is not transcribed).
    */
   readonly toolsUsed?: readonly ClaudeCodeToolUsed[];
+  /**
+   * Supplies the id of the previous response message of this conversation,
+   * which the genuine client echoes in the body's `diagnostics` object
+   * (`diagnostics.previous_message_id`) alongside the cache-diagnosis beta.
+   *
+   * Emitted only by profiles that carry the body field (2.1.329), where
+   * `diagnostics` is always present when the beta is composed: `null` when this
+   * field is omitted or `null` (the first request), the id otherwise. Older
+   * profiles validate and ignore it. A string that does not match
+   * `/^msg_[A-Za-z0-9_]{1,64}$/` is `INVALID_INPUT`, as is a collision with an
+   * `experimentalBodyFields.diagnostics` key.
+   */
+  readonly previousMessageId?: string | null;
+  /**
+   * Opts into features the genuine client enables per account (server-served).
+   *
+   * Validated on every profile (unknown keys and values outside the closed
+   * domains are `INVALID_INPUT`); only profiles that honour account-served
+   * inputs (2.1.329) act on it, and older profiles ignore it entirely. Today
+   * only `dispatchId` takes effect: it adds the `anthropic-dispatch-id` header
+   * to messages requests (never to count-tokens).
+   */
+  readonly accountFeatures?: ClaudeCodeAccountFeatures;
   /** Injects the Web Crypto provider used to hash the request body. */
   readonly crypto?: Pick<Crypto, "subtle">;
 }

@@ -116,28 +116,28 @@ export interface ClaudeCodeProfileBehaviors {
 
   /**
    * Whether the request body carries a generated `context_management` when
-   * the beta fires. Declared ahead of its reader; inert until the body builder
-   * reads it.
+   * the beta fires. Consumed by `buildCanonicalBody` in `request-body.ts`.
    */
   readonly generatedContextManagement: boolean;
 
   /**
    * Whether the request body carries `diagnostics` alongside the cache
-   * diagnosis beta. Declared ahead of its reader; inert until the body builder
-   * reads it.
+   * diagnosis beta. Consumed by `buildCanonicalBody` in `request-body.ts`.
    */
   readonly cacheDiagnosisBody: boolean;
 
   /**
-   * Whether body keys are emitted in the genuine client's order. Declared
-   * ahead of its reader; inert until the body builder reads it.
+   * Whether body keys are emitted in the genuine client's order. Consumed by
+   * `buildCanonicalBody` in `request-body.ts`.
    */
   readonly genuineBodyKeyOrder: boolean;
 
   /**
    * Whether caller-supplied account-served inputs (dispatch id, inline tools,
-   * threads, side-query and agentic-query markers) are honoured. Declared
-   * ahead of its reader; inert until the builders read it.
+   * threads, side-query and agentic-query markers) are honoured. The dispatch
+   * id is read by the header builder in `headers.ts`; the remaining members
+   * are declared ahead of their readers and inert until the beta composer and
+   * body builder read them.
    */
   readonly accountServedInputs: boolean;
 }

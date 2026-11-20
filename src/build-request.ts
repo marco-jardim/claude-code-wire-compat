@@ -2,10 +2,12 @@
 
 import { MAX_COMPOSITE_SIZE, MAX_INPUT_SIZE } from "./limits.js";
 
+import { validateAccountFeatures } from "./account-features.js";
 import { composeBetas, composeBetasWithAudit } from "./betas.js";
 import type {
   BuiltClaudeCodeCountTokensRequest,
   BuiltClaudeCodeRequest,
+  ClaudeCodeAccountFeatures,
   ClaudeCodeBetaOverrides,
   ClaudeCodeCapabilities,
   ClaudeCodeCapabilityDecisions,
@@ -47,6 +49,7 @@ import { buildRedactedEvidence, toSafeErrorDetails } from "./redaction.js";
 import {
   buildCanonicalBody,
   canonicalCountTokensLists,
+  validatePreviousMessageId,
 } from "./request-body.js";
 import { sha256Hex } from "./sha256.js";
 import { buildCanonicalSystem, IDENTITY_TEXT } from "./system-prompt.js";
@@ -112,6 +115,8 @@ const INPUT_KEYS = new Set([
   "turnOrigin",
   "turnPosition",
   "toolsUsed",
+  "previousMessageId",
+  "accountFeatures",
   "crypto",
 ]);
 const TURN_POSITION_KEYS = new Set(["promptIndex", "turnIndex"]);
@@ -835,6 +840,8 @@ function validateInput(input: ClaudeCodeRequestInput): {
   readonly turnOrigin: string | undefined;
   readonly turnPosition: ClaudeCodeTurnPosition | undefined;
   readonly toolsUsed: readonly ToolsUsedEntry[] | undefined;
+  readonly previousMessageId: string | null | undefined;
+  readonly accountFeatures: ClaudeCodeAccountFeatures | undefined;
 } {
   if (!isRecord(input)) fail();
   assertExactKeys(input, INPUT_KEYS);
@@ -914,6 +921,15 @@ function validateInput(input: ClaudeCodeRequestInput): {
   const toolsUsed = Object.hasOwn(input, "toolsUsed")
     ? validateToolsUsed(ownValue(input, "toolsUsed"))
     : undefined;
+  // Validated on every profile; only the 2.1.329 body carries it.
+  const previousMessageId = Object.hasOwn(input, "previousMessageId")
+    ? validatePreviousMessageId(ownValue(input, "previousMessageId"))
+    : undefined;
+  // Validated on every profile; only profiles honouring account-served inputs
+  // act on it.
+  const accountFeatures = Object.hasOwn(input, "accountFeatures")
+    ? validateAccountFeatures(ownValue(input, "accountFeatures"))
+    : undefined;
   return {
     source: input,
     clientRequestId,
@@ -930,6 +946,8 @@ function validateInput(input: ClaudeCodeRequestInput): {
     turnOrigin,
     turnPosition,
     toolsUsed,
+    previousMessageId,
+    accountFeatures,
   };
 }
 
@@ -1432,6 +1450,7 @@ function splitGenuineHeaders(headers: readonly HeaderPair[]): {
   readonly anthropicAdditionalProtection: string | undefined;
   readonly promptId: string | undefined;
   readonly toolsUsed: readonly ToolsUsedEntry[] | undefined;
+  readonly dispatchId: string | undefined;
   readonly extraHeaders: readonly HeaderPair[];
 } {
   const names = GENUINE_HEADER_NAMES;
@@ -1445,6 +1464,7 @@ function splitGenuineHeaders(headers: readonly HeaderPair[]): {
     clientApp: first(names.clientApp),
     anthropicAdditionalProtection: first(names.additionalProtection),
     promptId: first(names.promptId),
+    dispatchId: first(names.dispatchId),
     toolsUsed:
       toolsUsedValue === undefined
         ? undefined
@@ -1807,6 +1827,13 @@ export async function buildClaudeCodeRequest(
       metadata,
       effectiveProfile,
       composedBetas.thinkingDisplayOverride,
+      {
+        contextManagementComposed: composedBetas.contextManagementComposed,
+        cacheDiagnosisComposed: composedBetas.cacheDiagnosisComposed,
+        ...(validated.previousMessageId === undefined
+          ? {}
+          : { previousMessageId: validated.previousMessageId }),
+      },
     );
     const betas = composedBetas.betas;
     const headerPlan = buildOrderedHeaderPlan({
@@ -1832,6 +1859,9 @@ export async function buildClaudeCodeRequest(
       ...(validated.toolsUsed === undefined
         ? {}
         : { toolsUsed: validated.toolsUsed }),
+      ...(validated.accountFeatures?.dispatchId === undefined
+        ? {}
+        : { dispatchId: validated.accountFeatures.dispatchId }),
     });
     const headers = applyEffectiveProfileHeaders(
       headerPlan.headers,
@@ -1958,6 +1988,7 @@ export function parseBuiltClaudeCodeRequest(
           ...splitDynamicAndExtraHeaders(headers),
           promptId: undefined,
           toolsUsed: undefined,
+          dispatchId: undefined,
         };
     const expectedHeaders = buildOrderedHeaders({
       accessToken: read(names.authorization).replace(/^Bearer /u, ""),
@@ -1983,6 +2014,7 @@ export function parseBuiltClaudeCodeRequest(
       requestKind: "messages",
       promptId: additionalHeaders.promptId,
       toolsUsed: additionalHeaders.toolsUsed,
+      dispatchId: additionalHeaders.dispatchId,
     });
     if (JSON.stringify(headers) !== JSON.stringify(expectedHeaders)) fail();
     if (

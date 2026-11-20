@@ -191,6 +191,21 @@ export interface ComposedBetas {
    * `output_config.effort` in the body.
    */
   readonly thinkingDisplayOverride?: "updates";
+  /**
+   * Whether the context-management site (push site 7) fired, i.e. the
+   * experimental gate held and the model declares the capability. Body-side
+   * half of a beta/body pair, like `thinkingDisplayOverride`: the body builder
+   * generates `context_management` from it under
+   * `generatedContextManagement`. Not touched by `suppressBetas`: suppressing
+   * the identifier removes the HEADER only (MEMORY #4).
+   */
+  readonly contextManagementComposed: boolean;
+  /**
+   * Whether the cache-diagnosis site fired (the profile policy enables it).
+   * Body-side half of the pair: the body builder emits `diagnostics` from it
+   * under `cacheDiagnosisBody`. Not touched by `suppressBetas`.
+   */
+  readonly cacheDiagnosisComposed: boolean;
 }
 
 /**
@@ -312,8 +327,9 @@ export function composeBetasWithAudit(
   ) {
     out.push(narrationSummaries.header);
   }
-  if (experimental && input.capabilities.contextManagement)
-    out.push(registry.CONTEXT_MANAGEMENT.header);
+  const contextManagementComposed =
+    experimental && input.capabilities.contextManagement;
+  if (contextManagementComposed) out.push(registry.CONTEXT_MANAGEMENT.header);
   if (
     experimental &&
     supportsStructuredOutputs(input.normalizedId) &&
@@ -495,8 +511,9 @@ export function composeBetasWithAudit(
     out.push(registry.EXTENDED_CACHE_TTL.header);
   }
   if (profile.contextHintEnabled) out.push(registry.CONTEXT_HINT.header);
+  const cacheDiagnosisComposed = policy.cacheDiagnosisEnabled;
   if (
-    policy.cacheDiagnosisEnabled &&
+    cacheDiagnosisComposed &&
     !out.includes(registry.CACHE_DIAGNOSIS.header)
   ) {
     out.push(registry.CACHE_DIAGNOSIS.header);
@@ -526,6 +543,8 @@ export function composeBetasWithAudit(
       ...(thinkingDisplayOverride === undefined
         ? {}
         : { thinkingDisplayOverride }),
+      contextManagementComposed,
+      cacheDiagnosisComposed,
     });
   }
   const suppressed = new Set(validateAdditionalBetas(input.suppressBetas));
@@ -543,5 +562,9 @@ export function composeBetasWithAudit(
     ...(thinkingDisplayOverride === undefined
       ? {}
       : { thinkingDisplayOverride }),
+    // Same reasoning: the body-side halves of the context-management and
+    // cache-diagnosis pairs survive the suppression filter.
+    contextManagementComposed,
+    cacheDiagnosisComposed,
   });
 }

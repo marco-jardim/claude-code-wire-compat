@@ -1858,6 +1858,90 @@ export function canonicalCountTokensLists(
   };
 }
 
+/**
+ * The shape of an Anthropic message id as the genuine client's chaining guard
+ * accepts it (`msg_` plus 1-64 identifier characters).
+ */
+const MESSAGE_ID_PATTERN = /^msg_[A-Za-z0-9_]{1,64}$/u;
+
+/**
+ * Validates the `previousMessageId` input: a message id, or `null` (the
+ * genuine client's value on the first request of a thread). Anything else is
+ * `INVALID_INPUT`; unlike the billing chain ids, this one is not silently
+ * dropped, because it is echoed verbatim into the body.
+ */
+export function validatePreviousMessageId(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string" || !MESSAGE_ID_PATTERN.test(value)) {
+    fail("INVALID_INPUT");
+  }
+  return value;
+}
+
+/**
+ * Body fields the request builder derives from the beta composition and the
+ * caller's chaining state rather than from a named body input. Each member is
+ * honoured only under its profile behaviour flag.
+ */
+export interface GeneratedBodyInputs {
+  /** The context-management beta site fired (`ComposedBetas`). */
+  readonly contextManagementComposed?: boolean;
+  /** The cache-diagnosis beta site fired (`ComposedBetas`). */
+  readonly cacheDiagnosisComposed?: boolean;
+  /** The caller's `previousMessageId`; absent is the same as `null`. */
+  readonly previousMessageId?: string | null;
+}
+
+/**
+ * Body keys in the genuine client's emission order, split around the slot that
+ * collects every key the genuine client's object literal does not name
+ * (`service_tier`, `output_format`, `top_p`, `top_k`, `stop_sequences` and the
+ * caller's experimental fields). View :158392-158394 @20154922-20155417; the
+ * live capture `inter329-205` shows the same sequence, with the host-served
+ * `safeguards` key sitting between `context_management` and `output_config`.
+ */
+const GENUINE_BODY_KEYS_BEFORE_EXTRAS = [
+  "model",
+  "messages",
+  "system",
+  "tools",
+  "tool_choice",
+  "metadata",
+  "max_tokens",
+  "thinking",
+  "temperature",
+  "context_management",
+  "context_hint",
+] as const;
+const GENUINE_BODY_KEYS_AFTER_EXTRAS = [
+  "output_config",
+  "speed",
+  "thread",
+  "diagnostics",
+  "stream",
+] as const;
+const GENUINE_BODY_NAMED_KEYS: ReadonlySet<string> = new Set([
+  ...GENUINE_BODY_KEYS_BEFORE_EXTRAS,
+  ...GENUINE_BODY_KEYS_AFTER_EXTRAS,
+]);
+
+/** Re-emits `result` with its keys in the genuine client's order. */
+function orderGenuineBody(
+  result: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  const ordered: Record<string, unknown> = {};
+  const take = (key: string): void => {
+    if (hasOwn(result, key)) ordered[key] = result[key];
+  };
+  for (const key of GENUINE_BODY_KEYS_BEFORE_EXTRAS) take(key);
+  // Insertion order of `result` is preserved for the extras.
+  for (const key of Object.keys(result)) {
+    if (!GENUINE_BODY_NAMED_KEYS.has(key)) ordered[key] = result[key];
+  }
+  for (const key of GENUINE_BODY_KEYS_AFTER_EXTRAS) take(key);
+  return ordered;
+}
+
 export function buildCanonicalBody(
   rawInput: unknown,
   rawResolvedModel: unknown,
@@ -1865,6 +1949,7 @@ export function buildCanonicalBody(
   rawMetadata: unknown,
   profile?: ClaudeCodeProtocolProfile,
   thinkingDisplayOverride?: "updates",
+  generated?: GeneratedBodyInputs,
 ): Readonly<Record<string, unknown>> {
   inspectJsonInputs(
     [
@@ -2063,6 +2148,46 @@ export function buildCanonicalBody(
     else if (key === "stream") result["stream"] = requireBoolean(item);
   }
 
+  const behaviors = profileBehaviors(effectiveProfile);
+
+  // Body half of the context-management pair. The genuine client attaches the
+  // clear-thinking edit whenever the beta fired and thinking is on, unless the
+  // caller supplied its own value (an explicit `null` is the caller's too).
+  // Keyed on the composed state, not on the header list, so suppressing the
+  // beta identifier leaves the field in place. A value carried by
+  // `experimentalBodyFields` is the caller's as well.
+  const emittedThinkingType = isRecord(result["thinking"])
+    ? result["thinking"]["type"]
+    : undefined;
+  const experimentalInput = input["experimentalBodyFields"];
+  const callerContextManagement =
+    hasOwn(input, "contextManagement") ||
+    (isRecord(experimentalInput) &&
+      hasOwn(experimentalInput, "context_management"));
+  if (
+    behaviors.generatedContextManagement &&
+    generated?.contextManagementComposed === true &&
+    (emittedThinkingType === "adaptive" || emittedThinkingType === "enabled") &&
+    !callerContextManagement
+  ) {
+    result["context_management"] = {
+      edits: [{ type: "clear_thinking_20251015", keep: "all" }],
+    };
+  }
+
+  // Body half of the cache-diagnosis pair: the previous message id of the
+  // thread, `null` on the first request.
+  if (
+    behaviors.cacheDiagnosisBody &&
+    generated?.cacheDiagnosisComposed === true
+  ) {
+    result["diagnostics"] = {
+      previous_message_id: validatePreviousMessageId(
+        generated.previousMessageId ?? null,
+      ),
+    };
+  }
+
   if (contextHintEnabled(profile)) {
     result["context_hint"] = { enabled: true };
   }
@@ -2076,5 +2201,7 @@ export function buildCanonicalBody(
       result[key] = experimentalBodyFields[key];
     }
   }
-  return deepFreeze(result);
+  return deepFreeze(
+    behaviors.genuineBodyKeyOrder ? orderGenuineBody(result) : result,
+  );
 }
