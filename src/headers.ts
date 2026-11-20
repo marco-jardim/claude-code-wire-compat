@@ -10,6 +10,10 @@ import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 import { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
 import { CLAUDE_CODE_2_1_280_PROFILE } from "./profiles/claude-code-2.1.280.js";
 import { CLAUDE_CODE_2_1_329_PROFILE } from "./profiles/claude-code-2.1.329.js";
+import { PROMPT_ID_PATTERN } from "./fingerprint.js";
+import { profileBehaviors } from "./profile-behaviors.js";
+import type { ToolsUsedEntry } from "./tools-used.js";
+import { serializeToolsUsed, validateToolsUsed } from "./tools-used.js";
 
 const HEADER_NAMES = Object.freeze({
   anthropicBeta: "anthropic-beta",
@@ -36,9 +40,85 @@ const HEADER_NAMES = Object.freeze({
   additionalProtection: "x-anthropic-additional-protection",
 } as const);
 
+/** The names a header layout owns, keyed by role. */
+export type HeaderNameTable = {
+  readonly [K in keyof typeof HEADER_NAMES]: string;
+};
+
+/** The genuine layout adds the names the legacy layout never emits. */
+export type GenuineHeaderNameTable = HeaderNameTable & {
+  readonly accept: string;
+  readonly dispatchId: string;
+  readonly requestClass1p: string;
+  readonly requestClass: string;
+  readonly promptId: string;
+  readonly sandyPlover: string;
+};
+
+/**
+ * Header names as the genuine 2.1.329 client writes them (live capture): the
+ * HTTP-standard names and the `User-Agent`/`X-Claude-Code-Session-Id`/
+ * `X-Stainless-*` set are capitalised, everything the Anthropic SDK and the
+ * client add on top is lowercase. The dynamic headers keep their lowercase
+ * names.
+ *
+ * The casing only survives on a case-preserving transport (for example Bun);
+ * Node's undici lowercases every name before it reaches the wire. This table
+ * records what the genuine client hands its transport; it does not change what
+ * a lowercasing transport sends.
+ */
+export const GENUINE_HEADER_NAMES: GenuineHeaderNameTable = Object.freeze({
+  ...HEADER_NAMES,
+  accept: "Accept",
+  authorization: "Authorization",
+  contentType: "Content-Type",
+  userAgent: "User-Agent",
+  sessionId: "X-Claude-Code-Session-Id",
+  arch: "X-Stainless-Arch",
+  lang: "X-Stainless-Lang",
+  os: "X-Stainless-OS",
+  packageVersion: "X-Stainless-Package-Version",
+  retryCount: "X-Stainless-Retry-Count",
+  runtime: "X-Stainless-Runtime",
+  runtimeVersion: "X-Stainless-Runtime-Version",
+  timeout: "X-Stainless-Timeout",
+  dispatchId: "anthropic-dispatch-id",
+  requestClass1p: "x-claude-1p-request-class",
+  requestClass: "x-claude-code-request-class",
+  promptId: "x-claude-code-prompt-id",
+  sandyPlover: "x-claude-code-sandy-plover",
+});
+
+/** Resolves the header name table of the layout a profile follows. */
+export function headerNamesFor(
+  profile: ClaudeCodeProtocolProfile,
+): HeaderNameTable | GenuineHeaderNameTable {
+  return profileBehaviors(profile).genuineHeaderLayout
+    ? GENUINE_HEADER_NAMES
+    : HEADER_NAMES;
+}
+
+/** The names a caller may never supply under the legacy layout. */
 const CANONICAL_NAMES: ReadonlySet<string> = new Set(
   Object.values(HEADER_NAMES),
 );
+
+/**
+ * The names a caller may never supply under the genuine layout, lowercased:
+ * the whole table (so every capitalisation variant is refused) plus the
+ * `anthropic-dispatch-id` name that a later change owns.
+ */
+export const GENUINE_RESERVED_NAMES: ReadonlySet<string> = new Set(
+  Object.values(GENUINE_HEADER_NAMES).map((name) => name.toLowerCase()),
+);
+
+/** Compares two header names by UTF-16 code unit, as a plain `<` does. */
+function compareNames(left: string, right: string): number {
+  if (left < right) return -1;
+  return left > right ? 1 : 0;
+}
+
+type RequestKind = "messages" | "count_tokens";
 
 interface HeaderRuntime {
   readonly sessionId: string;
@@ -63,6 +143,9 @@ interface ValidatedInput {
   readonly extraHeaders: readonly HeaderPair[];
   readonly extraHeaderPolicy: ClaudeCodeExtraHeaderPolicy;
   readonly profile: ClaudeCodeProtocolProfile;
+  readonly requestKind: RequestKind;
+  readonly promptId?: string;
+  readonly toolsUsed: readonly ToolsUsedEntry[];
 }
 
 /** Reports the headers placed on the wire plus what the policy discarded. */
@@ -203,10 +286,32 @@ function optionalHeaderString(
   return value;
 }
 
+function parseRequestKind(value: unknown): RequestKind {
+  if (value === undefined) return "messages";
+  if (value !== "messages" && value !== "count_tokens") {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  return value;
+}
+
+/**
+ * The prompt id is only ever a string; its FORMAT is checked at emission
+ * (`PROMPT_ID_PATTERN`), where a value upstream cannot vouch for is dropped
+ * silently, so an empty or malformed string is not an error here.
+ */
+function parseOptionalPromptId(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") {
+    throw new ClaudeCodeWireError("INVALID_INPUT");
+  }
+  return value;
+}
+
 function parseInput(input: unknown): ValidatedInput {
   if (!isRecord(input)) {
     throw new ClaudeCodeWireError("INVALID_INPUT");
   }
+  const promptId = parseOptionalPromptId(input["promptId"]);
   const stainlessHelper = optionalHeaderString(input, "stainlessHelper");
   const claudeRemoteContainerId = optionalHeaderString(
     input,
@@ -237,6 +342,12 @@ function parseInput(input: unknown): ValidatedInput {
       input["extraHeaderPolicy"] ?? "strict",
     ),
     profile: parseProfile(input["profile"]),
+    requestKind: parseRequestKind(input["requestKind"]),
+    toolsUsed:
+      input["toolsUsed"] === undefined
+        ? []
+        : validateToolsUsed(input["toolsUsed"]),
+    ...(promptId === undefined ? {} : { promptId }),
     ...(stainlessHelper === undefined ? {} : { stainlessHelper }),
     ...(claudeRemoteContainerId === undefined
       ? {}
@@ -321,6 +432,7 @@ function resolveExtraHeaders(
   extraHeaders: readonly HeaderPair[],
   accessToken: string,
   policy: ClaudeCodeExtraHeaderPolicy,
+  canonicalNames: ReadonlySet<string>,
 ): ResolvedExtraHeaders {
   const seenExtras = new Set<string>();
   const kept: HeaderPair[] = [];
@@ -331,7 +443,7 @@ function resolveExtraHeaders(
     const safeName = safeDiagnosticName(normalizedName, accessToken);
     const ownershipConflict = isForbiddenHeader(normalizedName)
       ? "FORBIDDEN_HEADER"
-      : CANONICAL_NAMES.has(normalizedName)
+      : canonicalNames.has(normalizedName)
         ? "DUPLICATE_HEADER"
         : undefined;
     if (ownershipConflict !== undefined) {
@@ -364,10 +476,60 @@ function assertTokenIsolation(
   accessToken: string,
 ): void {
   for (const [name, value] of pairs) {
-    if (name !== HEADER_NAMES.authorization && value.includes(accessToken)) {
+    // Lowercased so the capitalised genuine `Authorization` is exempt too.
+    if (
+      name.toLowerCase() !== HEADER_NAMES.authorization &&
+      value.includes(accessToken)
+    ) {
       throw new ClaudeCodeWireError("INVALID_INPUT");
     }
   }
+}
+
+/**
+ * The built-in pairs of the genuine layout, in no particular order (the caller
+ * sorts). `count_tokens` requests carry neither the request-class pair, the
+ * prompt id nor the tools-used header.
+ */
+function genuineHeaderValues(
+  validated: ValidatedInput,
+  beta: string,
+): (readonly [string, string])[] {
+  const names = GENUINE_HEADER_NAMES;
+  const values: (readonly [string, string])[] = [
+    [names.accept, "application/json"],
+    [names.authorization, `Bearer ${validated.accessToken}`],
+    [names.contentType, "application/json"],
+    [names.userAgent, validated.profile.userAgent],
+    [names.sessionId, validated.runtime.sessionId],
+    [names.arch, validated.runtime.arch],
+    [names.lang, "js"],
+    [names.os, validated.runtime.os],
+    [names.packageVersion, validated.profile.sdkVersion],
+    [names.retryCount, String(validated.stainlessRetryCount)],
+    [names.runtime, validated.runtime.runtime],
+    [names.runtimeVersion, validated.runtime.runtimeVersion],
+    [names.timeout, "600"],
+    [names.anthropicBeta, beta],
+    [names.browserAccess, "true"],
+    [names.anthropicVersion, validated.profile.anthropicVersion],
+    [names.app, validated.app],
+    [names.clientRequestId, validated.clientRequestId],
+  ];
+  if (validated.requestKind === "messages") {
+    values.push(
+      [names.requestClass1p, "main"],
+      [names.requestClass, "main"],
+      [names.sandyPlover, serializeToolsUsed(validated.toolsUsed)],
+    );
+    if (
+      validated.promptId !== undefined &&
+      PROMPT_ID_PATTERN.test(validated.promptId)
+    ) {
+      values.push([names.promptId, validated.promptId]);
+    }
+  }
+  return values;
 }
 
 /**
@@ -387,32 +549,36 @@ export function buildOrderedHeaderPlan(input: unknown): OrderedHeaderPlan {
       Object.hasOwn(input, "clientApp") ||
       Object.hasOwn(input, "anthropicAdditionalProtection"));
   const validated = parseInput(input);
+  const layout = profileBehaviors(validated.profile).genuineHeaderLayout;
   const resolvedExtras = resolveExtraHeaders(
     validated.extraHeaders,
     validated.accessToken,
     validated.extraHeaderPolicy,
+    layout ? GENUINE_RESERVED_NAMES : CANONICAL_NAMES,
   );
 
   const beta = validated.betaFeatures.join(",");
-  const values = [
-    [HEADER_NAMES.anthropicBeta, beta],
-    [HEADER_NAMES.browserAccess, "true"],
-    [HEADER_NAMES.anthropicVersion, validated.profile.anthropicVersion],
-    [HEADER_NAMES.authorization, `Bearer ${validated.accessToken}`],
-    [HEADER_NAMES.contentType, "application/json"],
-    [HEADER_NAMES.userAgent, validated.profile.userAgent],
-    [HEADER_NAMES.app, validated.app],
-    [HEADER_NAMES.sessionId, validated.runtime.sessionId],
-    [HEADER_NAMES.clientRequestId, validated.clientRequestId],
-    [HEADER_NAMES.arch, validated.runtime.arch],
-    [HEADER_NAMES.lang, "js"],
-    [HEADER_NAMES.os, validated.runtime.os],
-    [HEADER_NAMES.packageVersion, validated.profile.sdkVersion],
-    [HEADER_NAMES.retryCount, String(validated.stainlessRetryCount)],
-    [HEADER_NAMES.runtime, validated.runtime.runtime],
-    [HEADER_NAMES.runtimeVersion, validated.runtime.runtimeVersion],
-    [HEADER_NAMES.timeout, "600"],
-  ] as const;
+  const values: (readonly [string, string])[] = layout
+    ? genuineHeaderValues(validated, beta)
+    : [
+        [HEADER_NAMES.anthropicBeta, beta],
+        [HEADER_NAMES.browserAccess, "true"],
+        [HEADER_NAMES.anthropicVersion, validated.profile.anthropicVersion],
+        [HEADER_NAMES.authorization, `Bearer ${validated.accessToken}`],
+        [HEADER_NAMES.contentType, "application/json"],
+        [HEADER_NAMES.userAgent, validated.profile.userAgent],
+        [HEADER_NAMES.app, validated.app],
+        [HEADER_NAMES.sessionId, validated.runtime.sessionId],
+        [HEADER_NAMES.clientRequestId, validated.clientRequestId],
+        [HEADER_NAMES.arch, validated.runtime.arch],
+        [HEADER_NAMES.lang, "js"],
+        [HEADER_NAMES.os, validated.runtime.os],
+        [HEADER_NAMES.packageVersion, validated.profile.sdkVersion],
+        [HEADER_NAMES.retryCount, String(validated.stainlessRetryCount)],
+        [HEADER_NAMES.runtime, validated.runtime.runtime],
+        [HEADER_NAMES.runtimeVersion, validated.runtime.runtimeVersion],
+        [HEADER_NAMES.timeout, "600"],
+      ];
 
   const pairs: HeaderPair[] = [];
   for (const [name, value] of values) {
@@ -439,6 +605,11 @@ export function buildOrderedHeaderPlan(input: unknown): OrderedHeaderPlan {
       pairs.push(freezePair(name, value));
     }
   }
+  // The genuine client sorts every pair, caller extras included, by UTF-16
+  // code unit. `Array.prototype.sort` is stable, so equal names keep their
+  // insertion order. Never `localeCompare`: it is locale-dependent and orders
+  // by collation, not by code unit.
+  if (layout) pairs.sort(([left], [right]) => compareNames(left, right));
   assertTokenIsolation(pairs, validated.accessToken);
   return Object.freeze({
     headers: Object.freeze(pairs),

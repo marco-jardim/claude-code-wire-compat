@@ -16,8 +16,10 @@ const PREVIOUS_REQUEST_ID_PATTERN = /^req_[A-Za-z0-9_-]{1,36}$/;
 /**
  * Upstream guard on `cc_prompt_id`, transcribed verbatim from the same builder.
  * The `i` flag is upstream's, not a relaxation: an upper-case UUID IS emitted.
+ * Exported because the 2.1.329 header layout guards `x-claude-code-prompt-id`
+ * with the same pattern.
  */
-const PROMPT_ID_PATTERN =
+export const PROMPT_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**

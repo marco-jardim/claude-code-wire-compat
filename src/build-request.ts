@@ -25,12 +25,19 @@ import {
   TOKEN_COUNTING_BETA,
 } from "./count-tokens.js";
 import { CCH_PATTERN, createBillingBlock } from "./fingerprint.js";
-import { buildOrderedHeaderPlan, buildOrderedHeaders } from "./headers.js";
+import {
+  buildOrderedHeaderPlan,
+  buildOrderedHeaders,
+  GENUINE_HEADER_NAMES,
+  GENUINE_RESERVED_NAMES,
+  headerNamesFor,
+} from "./headers.js";
 import {
   buildCorrelatedMetadata,
   validateRuntimeIdentity,
 } from "./metadata.js";
 import { resolveModel } from "./models.js";
+import { profileBehaviors } from "./profile-behaviors.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
 import { CLAUDE_CODE_2_1_233_PROFILE } from "./profiles/claude-code-2.1.233.js";
 import { CLAUDE_CODE_2_1_280_PROFILE } from "./profiles/claude-code-2.1.280.js";
@@ -44,6 +51,8 @@ import {
 import { sha256Hex } from "./sha256.js";
 import { buildCanonicalSystem, IDENTITY_TEXT } from "./system-prompt.js";
 import { isThinkingActive, isThinkingDisplayActive } from "./thinking.js";
+import type { ToolsUsedEntry } from "./tools-used.js";
+import { parseToolsUsedHeaderValue, validateToolsUsed } from "./tools-used.js";
 import {
   inspectText,
   TEXT_POLICY_IDENTIFIER,
@@ -102,6 +111,7 @@ const INPUT_KEYS = new Set([
   "cch",
   "turnOrigin",
   "turnPosition",
+  "toolsUsed",
   "crypto",
 ]);
 const TURN_POSITION_KEYS = new Set(["promptIndex", "turnIndex"]);
@@ -794,10 +804,14 @@ function applyEffectiveProfileHeaders(
 ): readonly HeaderPair[] {
   return Object.freeze(
     headers.map(([name, value]): HeaderPair => {
-      if (name === "user-agent") {
+      // Case-insensitive so both layouts' spellings match (`user-agent`,
+      // `User-Agent`). Legacy output is unchanged: every legacy name is
+      // lowercase, and a caller extra can never carry either name.
+      const folded = name.toLowerCase();
+      if (folded === "user-agent") {
         return Object.freeze([name, profile.userAgent]);
       }
-      if (name === "x-stainless-package-version") {
+      if (folded === "x-stainless-package-version") {
         return Object.freeze([name, profile.sdkVersion]);
       }
       return Object.freeze([name, value]);
@@ -820,6 +834,7 @@ function validateInput(input: ClaudeCodeRequestInput): {
   readonly cch: string | undefined;
   readonly turnOrigin: string | undefined;
   readonly turnPosition: ClaudeCodeTurnPosition | undefined;
+  readonly toolsUsed: readonly ToolsUsedEntry[] | undefined;
 } {
   if (!isRecord(input)) fail();
   assertExactKeys(input, INPUT_KEYS);
@@ -895,6 +910,10 @@ function validateInput(input: ClaudeCodeRequestInput): {
   const turnPosition = Object.hasOwn(input, "turnPosition")
     ? validateTurnPosition(ownValue(input, "turnPosition"))
     : undefined;
+  // Validated on every profile; only the 2.1.329 header layout emits it.
+  const toolsUsed = Object.hasOwn(input, "toolsUsed")
+    ? validateToolsUsed(ownValue(input, "toolsUsed"))
+    : undefined;
   return {
     source: input,
     clientRequestId,
@@ -910,6 +929,7 @@ function validateInput(input: ClaudeCodeRequestInput): {
     cch,
     turnOrigin,
     turnPosition,
+    toolsUsed,
   };
 }
 
@@ -1374,12 +1394,65 @@ function parsedBodySessionId(body: UnknownRecord): string {
   return sessionId;
 }
 
-function headerValue(headers: readonly HeaderPair[], name: string): string {
-  const matches = headers.filter(([candidate]) => candidate === name);
+/**
+ * Reads the one header called `name`. Under the genuine layout the match folds
+ * case, so a request whose names were re-cased is still READ; whether it is
+ * ACCEPTED is decided later by the exact byte comparison against the rebuilt
+ * list. Two matches (for example a forged lowercase `user-agent` beside the
+ * real `User-Agent`) are refused here.
+ */
+function headerValue(
+  headers: readonly HeaderPair[],
+  name: string,
+  foldCase = false,
+): string {
+  const wanted = foldCase ? name.toLowerCase() : name;
+  const matches = headers.filter(
+    ([candidate]) =>
+      (foldCase ? candidate.toLowerCase() : candidate) === wanted,
+  );
   if (matches.length !== 1) fail();
   const match = matches[0];
   if (match === undefined) fail();
   return match[1];
+}
+
+/**
+ * The genuine-layout counterpart of `splitDynamicAndExtraHeaders`. The list is
+ * sorted rather than positional, so the dynamic headers are looked up by their
+ * (lowercase) names and the caller extras are whatever carries no name the
+ * layout owns. A header with an owned name that the rebuild does not account
+ * for makes the exact comparison fail, so nothing owned can hide among extras.
+ */
+function splitGenuineHeaders(headers: readonly HeaderPair[]): {
+  readonly stainlessHelper: string | undefined;
+  readonly claudeRemoteContainerId: string | undefined;
+  readonly claudeRemoteSessionId: string | undefined;
+  readonly clientApp: string | undefined;
+  readonly anthropicAdditionalProtection: string | undefined;
+  readonly promptId: string | undefined;
+  readonly toolsUsed: readonly ToolsUsedEntry[] | undefined;
+  readonly extraHeaders: readonly HeaderPair[];
+} {
+  const names = GENUINE_HEADER_NAMES;
+  const first = (name: string): string | undefined =>
+    headers.find(([candidate]) => candidate === name)?.[1];
+  const toolsUsedValue = first(names.sandyPlover);
+  return {
+    stainlessHelper: first(names.stainlessHelper),
+    claudeRemoteContainerId: first(names.remoteContainerId),
+    claudeRemoteSessionId: first(names.remoteSessionId),
+    clientApp: first(names.clientApp),
+    anthropicAdditionalProtection: first(names.additionalProtection),
+    promptId: first(names.promptId),
+    toolsUsed:
+      toolsUsedValue === undefined
+        ? undefined
+        : parseToolsUsedHeaderValue(toolsUsedValue),
+    extraHeaders: headers.filter(
+      ([name]) => !GENUINE_RESERVED_NAMES.has(name.toLowerCase()),
+    ),
+  };
 }
 
 function splitDynamicAndExtraHeaders(headers: readonly HeaderPair[]): {
@@ -1560,6 +1633,9 @@ export async function buildClaudeCodeCountTokensRequest(
       extraHeaders: validated.source.extraHeaders ?? [],
       extraHeaderPolicy: validated.extraHeaderPolicy ?? "strict",
       profile: pinnedProfile,
+      // The genuine layout omits the request-class, prompt-id and tools-used
+      // headers here (and, later, the dispatch id).
+      requestKind: "count_tokens",
     });
     const headers = applyEffectiveProfileHeaders(
       headerPlan.headers,
@@ -1749,6 +1825,13 @@ export async function buildClaudeCodeRequest(
       extraHeaders: validated.source.extraHeaders ?? [],
       extraHeaderPolicy: validated.extraHeaderPolicy ?? "strict",
       profile: pinnedProfile,
+      requestKind: "messages",
+      ...(validated.promptId === undefined
+        ? {}
+        : { promptId: validated.promptId }),
+      ...(validated.toolsUsed === undefined
+        ? {}
+        : { toolsUsed: validated.toolsUsed }),
     });
     const headers = applyEffectiveProfileHeaders(
       headerPlan.headers,
@@ -1863,26 +1946,32 @@ export function parseBuiltClaudeCodeRequest(
     ) {
       fail();
     }
-    const sessionId = headerValue(headers, "x-claude-code-session-id");
-    const additionalHeaders = splitDynamicAndExtraHeaders(headers);
+    // The layout decides which spelling of each name is read (legacy: exact
+    // lowercase; genuine: folded, table of capitalised names).
+    const genuine = profileBehaviors(pinnedProfile).genuineHeaderLayout;
+    const names = headerNamesFor(pinnedProfile);
+    const read = (name: string): string => headerValue(headers, name, genuine);
+    const sessionId = read(names.sessionId);
+    const additionalHeaders = genuine
+      ? splitGenuineHeaders(headers)
+      : {
+          ...splitDynamicAndExtraHeaders(headers),
+          promptId: undefined,
+          toolsUsed: undefined,
+        };
     const expectedHeaders = buildOrderedHeaders({
-      accessToken: headerValue(headers, "authorization").replace(
-        /^Bearer /u,
-        "",
-      ),
+      accessToken: read(names.authorization).replace(/^Bearer /u, ""),
       runtime: {
         sessionId,
-        runtime: headerValue(headers, "x-stainless-runtime"),
-        runtimeVersion: headerValue(headers, "x-stainless-runtime-version"),
-        os: headerValue(headers, "x-stainless-os"),
-        arch: headerValue(headers, "x-stainless-arch"),
+        runtime: read(names.runtime),
+        runtimeVersion: read(names.runtimeVersion),
+        os: read(names.os),
+        arch: read(names.arch),
       },
-      clientRequestId: headerValue(headers, "x-client-request-id"),
+      clientRequestId: read(names.clientRequestId),
       betaFeatures: evidence.betaFeatures,
-      app: headerValue(headers, "x-app"),
-      stainlessRetryCount: Number(
-        headerValue(headers, "x-stainless-retry-count"),
-      ),
+      app: read(names.app),
+      stainlessRetryCount: Number(read(names.retryCount)),
       stainlessHelper: additionalHeaders.stainlessHelper,
       claudeRemoteContainerId: additionalHeaders.claudeRemoteContainerId,
       claudeRemoteSessionId: additionalHeaders.claudeRemoteSessionId,
@@ -1891,6 +1980,9 @@ export function parseBuiltClaudeCodeRequest(
         additionalHeaders.anthropicAdditionalProtection,
       extraHeaders: additionalHeaders.extraHeaders,
       profile: pinnedProfile,
+      requestKind: "messages",
+      promptId: additionalHeaders.promptId,
+      toolsUsed: additionalHeaders.toolsUsed,
     });
     if (JSON.stringify(headers) !== JSON.stringify(expectedHeaders)) fail();
     if (
