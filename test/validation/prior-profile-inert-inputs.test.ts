@@ -26,6 +26,13 @@ const NEW_INPUTS = {
   turnOrigin: "human",
   turnPosition: { promptIndex: 1, turnIndex: 1 },
   toolsUsed: [{ name: "Read" }, { name: "mcp__server__tool", mcp: true }],
+  previousMessageId: "msg_01AbC_dEf",
+  accountFeatures: {
+    dispatchId: "v2d",
+    inlineTools: true,
+    toolProvenance: true,
+    thread: { type: "continue", previousMessageId: "msg_01AbC_dEf" },
+  },
 } as const;
 
 describe("2.1.329-only inputs are inert on 2.1.280", () => {
@@ -60,6 +67,11 @@ describe("2.1.329-only inputs are inert on 2.1.280", () => {
     expect(withInputs.evidence).toEqual(plain.evidence);
     expect(withInputs.body).not.toContain("cc_turn_origin");
     expect(withInputs.body).not.toContain("cc_prompt_index");
+    expect(withInputs.body).not.toContain("diagnostics");
+    expect(withInputs.body).not.toContain("msg_01AbC_dEf");
+    expect(
+      withInputs.headers.map(([name]) => name.toLowerCase()),
+    ).not.toContain("anthropic-dispatch-id");
   });
 
   it("emits no 2.1.329 header for the tools-used input or the prompt id", async () => {
