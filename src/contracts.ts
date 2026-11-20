@@ -1136,6 +1136,20 @@ export interface ClaudeCodeProtocolProfile {
   readonly anthropicVersion: "2023-06-01";
   readonly contextHintEnabled: boolean;
   readonly betaPolicy: ClaudeCodeBetaPolicy;
+  /**
+   * The `X-Stainless-Runtime-Version` the genuine client of this release
+   * reports. Optional profile DATA: only profiles that record it carry it, so
+   * older profiles are unaffected. This package never applies it -- the caller
+   * still supplies `runtime.runtimeVersion` -- it exists so a host can read the
+   * value the genuine binary sent.
+   */
+  readonly runtimeVersion?: string;
+  /**
+   * The OAuth scopes the genuine client requests on its authorize URL, in the
+   * order it lists them. Optional profile DATA for a host that builds the
+   * authorize URL; this package builds none.
+   */
+  readonly oauthAuthorizeScopes?: readonly string[];
   readonly supportedModels: Readonly<Record<string, ClaudeCodeCatalogueEntry>>;
 }
 

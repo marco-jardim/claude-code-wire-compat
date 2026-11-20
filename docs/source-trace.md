@@ -80,6 +80,25 @@ a gap — while the new `claude-mythos-5-1` carries twelve capabilities but neit
 nor `refusal_fallback`, unlike the otherwise similar `claude-fable-5-1`. The eleven-capability entry
 is `claude-fable-5`.
 
+### Profile `claude-code-2.1.329-sdk-0.128.0`
+
+| Field           | Pinned value                                             |
+| --------------- | -------------------------------------------------------- |
+| Profile id      | `claude-code-2.1.329-sdk-0.128.0`                        |
+| Claude Code CLI | `2.1.329`                                                |
+| Anthropic SDK   | `0.128.0`                                                |
+| Build time      | `2026-11-19T16:23:05Z`                                   |
+| Git SHA         | `6a49dd29d929a6fe40c060bbccfeb5a7f037c958`               |
+| Analysis        | `docs/protocol/versions/claude-code-2.1.329-analysis.md` |
+| Profile module  | `src/profiles/claude-code-2.1.329.ts`                    |
+
+The catalogue holds 24 entries. The extractor report lists three further bare dated ids
+(`claude-haiku-4-5-20251001`, `claude-opus-4-1-20250805`, `claude-opus-4-5-20251101`) with no family,
+capabilities or limits; they belong to a second model list picked up by the multi-module dump and are
+excluded, as three spurious entries were at 2.1.280. Capability strings are copied verbatim from the
+report, including those the package does not map. The profile additionally carries two optional,
+data-only fields recorded from a live genuine session: `runtimeVersion` and `oauthAuthorizeScopes`.
+
 ### Drift monitoring is the tracking runbook, not an external checkout
 
 An earlier revision of this document described an offline drift verifier that compared the pinned
