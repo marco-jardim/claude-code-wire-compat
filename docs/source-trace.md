@@ -331,12 +331,16 @@ supersedes, if any.
 | Fixture                                                              | Model                 | SHA-256                                                            |
 | -------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------ |
 | `test/fixtures/golden/decision-context-hint-rejected.json`           | n/a (decision record) | `6957d363e1e9512eb1a8d2c7170fa208b92e28460e7fb3b8576aa3814cdf4582` |
+| `test/fixtures/golden/outgoing-account-features-2.1.329.json`        | `claude-opus-5-5`     | `044fedfe93c3be6b9e4498831dc469fdb023f3384cb1745dcc30db0cfb41bb63` |
 | `test/fixtures/golden/outgoing-canary-context-hint-off-2.1.233.json` | `claude-opus-4-8`     | `03d89e63545585041ebfba41ddcdb878efc24d3033e55130d96eab3b3c1fd6f6` |
 | `test/fixtures/golden/outgoing-canary-context-hint-off-2.1.280.json` | `claude-opus-4-8`     | `523633ec0aac5d9d602f46289abd091a74c9f6b66dd50499eeb41a0841e53ac8` |
+| `test/fixtures/golden/outgoing-canary-context-hint-off-2.1.329.json` | `claude-opus-4-8`     | `11f34c2c960eef4292f1e3f367775a420e13b3652335178af3fd866139f4bba4` |
 | `test/fixtures/golden/outgoing-canary-context-hint-off.json`         | `claude-opus-4-8`     | `af9fa1a299ba9b3cf493e1e5b2e0bb8b935e1089c2679ead615fe87c459bf3db` |
 | `test/fixtures/golden/outgoing-default-path-2.1.280.json`            | `claude-opus-5-5`     | `b4cf334ba5e5c073ec9558d986258ae6bd47c5a946cb87002558187e66f3afff` |
+| `test/fixtures/golden/outgoing-default-path-2.1.329.json`            | `claude-opus-5-5`     | `c73ec745d58a4866a0aaf06cd81c0147adb1523113ea23e742df5b931a216594` |
 | `test/fixtures/golden/outgoing-foreground-2.1.233.json`              | `claude-sonnet-4-5`   | `5926a3403f87e3b1c023c76075e0844266b5cb910f038bad5802deba45e14feb` |
 | `test/fixtures/golden/outgoing-foreground-2.1.280.json`              | `claude-sonnet-4-5`   | `246ebe18f51ab5bcf9f30edbe083d3eddc6b28e59688ebc1727b778a86581550` |
+| `test/fixtures/golden/outgoing-foreground-2.1.329.json`              | `claude-sonnet-4-5`   | `d2a3864ff18018e336e6c81afa881dd5a88d6db81076b77c4faacf7d425e56cf` |
 | `test/fixtures/golden/outgoing-foreground.json`                      | `claude-sonnet-4-5`   | `62748f01fcc20ae48f40dc4b628a094db5e06cd809d64d0c9163c0e69b0a98ea` |
 
 `test/fixtures/golden/manifest.json` is the machine-readable copy of these hashes and is the
