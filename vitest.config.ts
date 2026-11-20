@@ -9,7 +9,7 @@ export default defineConfig({
       reporter: ["text", "json-summary"],
       // Raised when Stryker mutation testing was removed: coverage is now the
       // primary structural floor, so these are pinned just below the measured
-      // level (98.82 / 98.39 / 100 / 99.61) to lock it in while leaving a small
+      // level (98.84 / 98.64 / 100 / 99.48) to lock it in while leaving a small
       // margin for ordinary refactors. Coverage cannot detect a weak assertion
       // over covered code the way mutation testing did; the @vitest/eslint-plugin
       // rules in `npm run lint` are the complementary test-quality signal.
