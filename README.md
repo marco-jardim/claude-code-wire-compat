@@ -130,6 +130,8 @@ required](./docs/protocol/versions/README.md):
   — the release this package's default profile pins; records the build-shape
   change that breaks the old carving rule, nine new betas, three new models,
   and the first wire-visible `thinking` sub-fields since 2.1.222.
+- [Claude Code 2.1.329](./docs/protocol/versions/claude-code-2.1.329-analysis.md)
+  — analysis of 2.1.329, not yet ported: no profile exists for it.
 
 ## Development
 
