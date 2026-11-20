@@ -59,6 +59,14 @@ interface BetaRegistryEntry {
  * registry absence does not keep its site inert there; what does is the
  * catalogue, because no 2.1.233 model declares the backing capability. The two
  * mechanisms are not interchangeable and both are load-bearing.
+ *
+ * `MID_CONVERSATION_SYSTEM` is the one key that went from required to optional.
+ * Registries up to 2.1.280 carry it with a header. A later registry may carry
+ * it header-less upstream (the slot exists but no identifier is sent), in which
+ * case it is simply omitted from that registry. The push site then emits no
+ * header, while the two sites that read "the mid-conversation-system site is
+ * active" (11b and 11c) keep keying on the activity outcome and not on the
+ * registry entry, exactly as upstream keys on the composed state.
  */
 export interface ComposableBetaRegistry {
   readonly CLAUDE_CODE: BetaRegistryEntry;
@@ -70,7 +78,7 @@ export interface ComposableBetaRegistry {
   readonly CONTEXT_MANAGEMENT: BetaRegistryEntry;
   readonly STRUCTURED_OUTPUTS: BetaRegistryEntry;
   readonly PROMPT_CACHING_SCOPE: BetaRegistryEntry;
-  readonly MID_CONVERSATION_SYSTEM: BetaRegistryEntry;
+  readonly MID_CONVERSATION_SYSTEM?: BetaRegistryEntry;
   readonly PER_MESSAGE_EFFORT?: BetaRegistryEntry;
   readonly MID_CONV_TOOL_CHANGE?: BetaRegistryEntry;
   readonly MID_CONVERSATION_SYSTEM_CLEAR_AT?: BetaRegistryEntry;
@@ -292,17 +300,20 @@ export function composeBetasWithAudit(
   if (experimental) out.push(registry.PROMPT_CACHING_SCOPE.header);
 
   /*
-   * Upstream `jR`. The local boolean below records that this site PUSHED, which
-   * is what sites 11b and 11c gate on -- upstream reads `Ee.includes(jR)`, the
-   * composed array, not the registry. Asking the registry instead would fire
-   * those two sites for a model this one skipped.
+   * Upstream `jR`. The local boolean below records that this site is ACTIVE for
+   * the model, which is what sites 11b and 11c gate on -- upstream reads
+   * `Ee.includes(jR)`, the composed state, not the registry. Asking the
+   * registry instead would fire those two sites for a model this one skipped.
+   * The header is pushed only when the registry carries one; a registry whose
+   * slot is header-less leaves the site active and the list unchanged.
    */
-  const midConversationSystemFired = supportsMidConversationSystem(
+  const midConversationSystemActive = supportsMidConversationSystem(
     input.normalizedId,
     profile,
   );
-  if (midConversationSystemFired) {
-    out.push(registry.MID_CONVERSATION_SYSTEM.header);
+  const midConversationSystem = registry.MID_CONVERSATION_SYSTEM;
+  if (midConversationSystemActive && midConversationSystem !== undefined) {
+    out.push(midConversationSystem.header);
   }
 
   /*
@@ -329,7 +340,7 @@ export function composeBetasWithAudit(
   const midConvToolChange = registry.MID_CONV_TOOL_CHANGE;
   if (
     experimental &&
-    midConversationSystemFired &&
+    midConversationSystemActive &&
     input.capabilities.midConvToolChange &&
     midConvToolChange !== undefined
   ) {
@@ -350,13 +361,13 @@ export function composeBetasWithAudit(
    * holds because `Vr` is a per-session latch, and a stateless package composes
    * every request as a first request. `Mee`'s other terms are fixed on the
    * first-party path. What is left is `Ee.includes(jR)`, which is precisely the
-   * `midConversationSystemFired` outcome recorded at site 11.
+   * `midConversationSystemActive` outcome recorded at site 11.
    */
   const midConversationSystemClearAt =
     registry.MID_CONVERSATION_SYSTEM_CLEAR_AT;
   if (
     experimental &&
-    midConversationSystemFired &&
+    midConversationSystemActive &&
     midConversationSystemClearAt !== undefined
   ) {
     out.push(midConversationSystemClearAt.header);
