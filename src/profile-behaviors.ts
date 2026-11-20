@@ -2,6 +2,7 @@
 
 import type { ClaudeCodeProtocolProfile } from "./contracts.js";
 import { CLAUDE_CODE_2_1_195_PROFILE } from "./profiles/claude-code-2.1.195.js";
+import { CLAUDE_CODE_2_1_329_PROFILE } from "./profiles/claude-code-2.1.329.js";
 
 /**
  * Per-profile behaviour dispatch.
@@ -56,6 +57,16 @@ export interface ClaudeCodeProfileBehaviors {
    * predicate is wire-authoritative for that profile alone.
    */
   readonly opus45EffortException: boolean;
+
+  /**
+   * Whether `messages` may carry `role: "system"` control messages with an
+   * `output_config` (the per-turn effort and timing statements).
+   *
+   * Consumed by the message canonicaliser in `request-body.ts`. False means
+   * such a message is refused with `INVALID_INPUT`, which is what every
+   * profile did before the shape was transcribed.
+   */
+  readonly perTurnControlMessages: boolean;
 }
 
 /**
@@ -67,6 +78,7 @@ const LEGACY_BEHAVIORS: ClaudeCodeProfileBehaviors = Object.freeze({
   requestDerivedTokenCeiling: false,
   billingChainSegments: false,
   opus45EffortException: true,
+  perTurnControlMessages: false,
 });
 
 /**
@@ -78,6 +90,17 @@ const MODERN_BEHAVIORS: ClaudeCodeProfileBehaviors = Object.freeze({
   requestDerivedTokenCeiling: true,
   billingChainSegments: true,
   opus45EffortException: false,
+  perTurnControlMessages: false,
+});
+
+/**
+ * Upstream 2.1.329: the modern set, plus the per-turn control message shape
+ * the client sends to change effort mid-conversation without rewriting the
+ * cached prefix.
+ */
+const WIRE_FAITHFUL_BEHAVIORS: ClaudeCodeProfileBehaviors = Object.freeze({
+  ...MODERN_BEHAVIORS,
+  perTurnControlMessages: true,
 });
 
 /**
@@ -109,6 +132,9 @@ export function profileBehaviors(
    */
   if (profile.id === CLAUDE_CODE_2_1_195_PROFILE.id) {
     return LEGACY_BEHAVIORS;
+  }
+  if (profile.id === CLAUDE_CODE_2_1_329_PROFILE.id) {
+    return WIRE_FAITHFUL_BEHAVIORS;
   }
   return MODERN_BEHAVIORS;
 }

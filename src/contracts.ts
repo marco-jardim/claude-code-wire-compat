@@ -282,6 +282,31 @@ export interface Message {
   readonly role: "user" | "assistant";
   readonly content: MessageContent;
 }
+
+/** The effort statement a per-turn control message carries. */
+export interface ClaudeCodeControlMessageOutputConfig {
+  readonly effort?: ClaudeCodeEffort;
+  readonly timing?: {
+    readonly type: "now";
+    readonly now: string | number;
+  };
+}
+
+/**
+ * A mid-conversation control message: the wire shape the genuine 2.1.329 client
+ * uses to change effort (or report timing) between turns without rewriting the
+ * cached prefix. It is a `role: "system"` entry of `messages` carrying
+ * `output_config` and, for a pure statement, empty `content`.
+ *
+ * Accepted only by profiles whose behaviour set honours it (2.1.329); every
+ * other profile rejects it with `INVALID_INPUT`, exactly as before. It is
+ * passed through verbatim after validation and never derived by this package.
+ */
+export interface ClaudeCodeControlMessage {
+  readonly role: "system";
+  readonly content: MessageContent;
+  readonly output_config: ClaudeCodeControlMessageOutputConfig;
+}
 export type SystemInput = string | TextBlock;
 
 export interface ToolInputSchema {
@@ -836,7 +861,7 @@ export interface ClaudeCodeRequestInput {
   readonly accessToken: string;
   readonly model: string;
   readonly maxTokens: number;
-  readonly messages: readonly Message[];
+  readonly messages: readonly (Message | ClaudeCodeControlMessage)[];
   readonly system?: readonly SystemInput[];
   readonly tools?: readonly ToolDefinition[];
   readonly cacheControl?: ClaudeCodeCacheControlInput | null;
@@ -1085,7 +1110,6 @@ export type ClaudeCodeCountTokensInput = Pick<
   ClaudeCodeRequestInput,
   | "accessToken"
   | "model"
-  | "messages"
   | "tools"
   | "runtime"
   | "clientRequestId"
@@ -1100,7 +1124,10 @@ export type ClaudeCodeCountTokensInput = Pick<
   | "anthropicAdditionalProtection"
   | "extraHeaders"
   | "extraHeaderPolicy"
->;
+> & {
+  /** The count-tokens endpoint has no control-message seam. */
+  readonly messages: readonly Message[];
+};
 
 export interface BuiltClaudeCodeCountTokensRequest extends Omit<
   BuiltClaudeCodeRequest,

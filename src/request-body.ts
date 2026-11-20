@@ -13,12 +13,15 @@ import { ClaudeCodeWireError } from "./contracts.js";
 import type {
   CacheControlEphemeral,
   ClaudeCodeCacheControlInput,
+  ClaudeCodeControlMessage,
+  ClaudeCodeControlMessageOutputConfig,
   ClaudeCodeProtocolProfile,
   CitationsConfigParam,
   DocumentBlock,
   ImageBlock,
   JsonValue,
   Message,
+  MessageContent,
   MessageContentBlock,
   RedactedThinkingBlock,
   SearchResultBlock,
@@ -33,6 +36,7 @@ import type {
 } from "./contracts.js";
 import { deriveCapabilities } from "./model-capabilities.js";
 import { stripModelMarkers } from "./model-identity.js";
+import { profileBehaviors } from "./profile-behaviors.js";
 import { IDENTITY_TEXT } from "./system-prompt.js";
 import {
   inspectText,
@@ -44,6 +48,12 @@ import { violationDetails, type ViolationPathSegment } from "./violation.js";
 const MAX_DEPTH = 100;
 const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const MESSAGE_KEYS = new Set(["role", "content"]);
+const CONTROL_MESSAGE_KEYS = new Set(["role", "content", "output_config"]);
+const CONTROL_OUTPUT_CONFIG_KEYS = new Set(["effort", "timing"]);
+const CONTROL_TIMING_KEYS = new Set(["type", "now"]);
+
+/** A validated `messages` entry: a conversation turn or a control message. */
+type WireMessage = Message | ClaudeCodeControlMessage;
 const CACHE_CONTROL_KEYS = new Set(["type", "ttl"]);
 const LEGACY_TEXT_CACHE_CONTROL_KEYS = new Set(["type", "ttl", "scope"]);
 const CITATIONS_CONFIG_KEYS = new Set(["enabled"]);
@@ -702,12 +712,12 @@ function applyToolCacheControl(
  * had placed on its own message blocks.
  */
 function applyMessageCacheControl(
-  value: readonly Message[],
+  value: readonly WireMessage[],
   input: ClaudeCodeCacheControlInput,
-): readonly Message[] {
+): readonly WireMessage[] {
   if (input.enabled !== true) return value;
-  const result = value.map((message): Message => ({
-    role: message.role,
+  const result = value.map((message): WireMessage => ({
+    ...message,
     content:
       typeof message.content === "string"
         ? message.content
@@ -1116,22 +1126,73 @@ function messageContentBlock(
   return fail("INVALID_INPUT");
 }
 
+/**
+ * Validates a per-turn control message's `output_config`: an effort level, a
+ * timing statement, or both. Anything else is refused, because the shape is
+ * transcribed from the genuine client and a package-invented member would be a
+ * wire divergence.
+ */
+function controlOutputConfig(
+  value: unknown,
+): ClaudeCodeControlMessageOutputConfig {
+  const record = requireRecord(value);
+  assertExactKeys(record, CONTROL_OUTPUT_CONFIG_KEYS);
+  const effort = record["effort"];
+  const timing = record["timing"];
+  if (effort === undefined && timing === undefined) fail("INVALID_INPUT");
+  if (
+    effort !== undefined &&
+    effort !== "low" &&
+    effort !== "medium" &&
+    effort !== "high" &&
+    effort !== "xhigh" &&
+    effort !== "max"
+  ) {
+    fail("INVALID_INPUT");
+  }
+  let validTiming: ClaudeCodeControlMessageOutputConfig["timing"];
+  if (timing !== undefined) {
+    const timingRecord = requireRecord(timing);
+    assertExactKeys(timingRecord, CONTROL_TIMING_KEYS);
+    if (timingRecord["type"] !== "now") fail("INVALID_INPUT");
+    const now = timingRecord["now"];
+    if (typeof now === "number") {
+      if (!Number.isFinite(now)) fail("INVALID_INPUT");
+      validTiming = { type: "now", now };
+    } else {
+      const text = requireIdentifier(now);
+      if (text.length === 0 || text.length > 64) fail("INVALID_INPUT");
+      validTiming = { type: "now", now: text };
+    }
+  }
+  return {
+    ...(effort === undefined ? {} : { effort }),
+    ...(validTiming === undefined ? {} : { timing: validTiming }),
+  };
+}
+
 function messages(
   value: unknown,
   preserveThinkingCacheControl: boolean,
-): readonly Message[] {
+  acceptControlMessages: false,
+): readonly Message[];
+function messages(
+  value: unknown,
+  preserveThinkingCacheControl: boolean,
+  acceptControlMessages: boolean,
+): readonly WireMessage[];
+function messages(
+  value: unknown,
+  preserveThinkingCacheControl: boolean,
+  acceptControlMessages: boolean,
+): readonly WireMessage[] {
   if (!Array.isArray(value)) fail("INVALID_INPUT");
   const useIds = new Set<string>();
   const resultIds: string[] = [];
-  const result = value.map((item): Message => {
-    const record = requireRecord(item);
-    assertExactKeys(record, MESSAGE_KEYS);
-    const role = record["role"];
-    if (role !== "user" && role !== "assistant") fail("INVALID_INPUT");
-    const rawContent = record["content"];
-    if (typeof rawContent === "string") return { role, content: rawContent };
+  const messageContent = (rawContent: unknown): MessageContent => {
+    if (typeof rawContent === "string") return rawContent;
     if (!Array.isArray(rawContent)) fail("INVALID_INPUT");
-    const content = rawContent.map((block) => {
+    return rawContent.map((block) => {
       const blockRecord = requireRecord(block);
       if (blockRecord["type"] === "text") return textBlock(blockRecord);
       if (blockRecord["type"] === "tool_use") {
@@ -1147,7 +1208,27 @@ function messages(
       }
       return messageContentBlock(blockRecord, preserveThinkingCacheControl);
     });
-    return { role, content };
+  };
+  const result = value.map((item): WireMessage => {
+    const record = requireRecord(item);
+    assertExactKeys(
+      record,
+      acceptControlMessages ? CONTROL_MESSAGE_KEYS : MESSAGE_KEYS,
+    );
+    const role = record["role"];
+    if (acceptControlMessages && role === "system") {
+      // A control message always carries its statement; the genuine client
+      // never emits one without `output_config`.
+      if (!hasOwn(record, "output_config")) fail("INVALID_INPUT");
+      return {
+        role,
+        content: messageContent(record["content"]),
+        output_config: controlOutputConfig(record["output_config"]),
+      };
+    }
+    if (role !== "user" && role !== "assistant") fail("INVALID_INPUT");
+    if (hasOwn(record, "output_config")) fail("INVALID_INPUT");
+    return { role, content: messageContent(record["content"]) };
   });
   for (const id of resultIds) {
     if (!useIds.has(id)) fail("INVALID_INPUT");
@@ -1772,7 +1853,7 @@ export function canonicalCountTokensLists(
   return {
     // The count-tokens endpoint has no seam of its own, so thinking blocks stay
     // on the strict allowlist here.
-    messages: messages(rawMessages, false),
+    messages: messages(rawMessages, false, false),
     tools: rawTools === undefined ? Object.freeze([]) : tools(rawTools),
   };
 }
@@ -1820,7 +1901,11 @@ export function buildCanonicalBody(
     hasOwn(input, "preserveThinkingBlockCacheControl") &&
     requireBoolean(input["preserveThinkingBlockCacheControl"]);
   let systemBlocks = system(rawSystemBlocks);
-  let messageList = messages(input["messages"], preserveThinkingCacheControl);
+  let messageList = messages(
+    input["messages"],
+    preserveThinkingCacheControl,
+    profileBehaviors(effectiveProfile).perTurnControlMessages,
+  );
   let toolList = hasOwn(input, "tools") ? tools(input["tools"]) : undefined;
   if (cacheOverride !== undefined && cacheOverride !== null) {
     systemBlocks = applySystemCacheControl(systemBlocks, cacheOverride);

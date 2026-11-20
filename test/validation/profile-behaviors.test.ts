@@ -6,6 +6,7 @@ import type { ClaudeCodeProtocolProfile } from "../../src/contracts.js";
 import {
   CLAUDE_CODE_2_1_195_PROFILE,
   CLAUDE_CODE_2_1_233_PROFILE,
+  CLAUDE_CODE_2_1_329_PROFILE,
 } from "../../src/index.js";
 import {
   profileBehaviors,
@@ -27,12 +28,20 @@ const LEGACY: ClaudeCodeProfileBehaviors = {
   requestDerivedTokenCeiling: false,
   billingChainSegments: false,
   opus45EffortException: true,
+  perTurnControlMessages: false,
 };
 
 const MODERN: ClaudeCodeProfileBehaviors = {
   requestDerivedTokenCeiling: true,
   billingChainSegments: true,
   opus45EffortException: false,
+  perTurnControlMessages: false,
+};
+
+// 2.1.329 is the modern side plus the per-turn control message shape.
+const WIRE_FAITHFUL: ClaudeCodeProfileBehaviors = {
+  ...MODERN,
+  perTurnControlMessages: true,
 };
 
 describe("profileBehaviors: the shipped profiles", () => {
@@ -44,13 +53,24 @@ describe("profileBehaviors: the shipped profiles", () => {
     expect(profileBehaviors(CLAUDE_CODE_2_1_233_PROFILE)).toEqual(MODERN);
   });
 
-  it("disagrees on every flag, so no flag is vacuous", () => {
-    const legacy = profileBehaviors(CLAUDE_CODE_2_1_195_PROFILE);
-    const modern = profileBehaviors(CLAUDE_CODE_2_1_233_PROFILE);
-    const keys = Object.keys(legacy) as (keyof ClaudeCodeProfileBehaviors)[];
+  it("puts 2.1.329 on the modern side plus its own flag", () => {
+    expect(profileBehaviors(CLAUDE_CODE_2_1_329_PROFILE)).toEqual(
+      WIRE_FAITHFUL,
+    );
+  });
+
+  it("has two shipped behaviour sets disagree on every flag, so no flag is vacuous", () => {
+    const sets = [
+      profileBehaviors(CLAUDE_CODE_2_1_195_PROFILE),
+      profileBehaviors(CLAUDE_CODE_2_1_233_PROFILE),
+      profileBehaviors(CLAUDE_CODE_2_1_329_PROFILE),
+    ];
+    const keys = Object.keys(
+      sets[0] ?? {},
+    ) as (keyof ClaudeCodeProfileBehaviors)[];
     expect(keys.length).toBeGreaterThan(0);
     for (const key of keys) {
-      expect(legacy[key]).not.toBe(modern[key]);
+      expect(new Set(sets.map((set) => set[key])).size).toBe(2);
     }
   });
 
