@@ -48,9 +48,12 @@ New versions enter the next cycle.
 ## Architecture breadcrumbs
 
 - **Profiles are data**: `src/profiles/claude-code-<v>.ts` (scalars + model
-  catalogue: 14 models for 2.1.195, 17 for 2.1.233, 20 for 2.1.280, pinned
-  in `test/tooling/profile-matrix.test.ts`) and `src/profiles/beta-registry-<v>.ts` (ordered beta
-  registry). Extracted from the binary, never invented.
+  catalogue: 14 models for 2.1.195, 17 for 2.1.233, 20 for 2.1.280, 24 for
+  2.1.329, pinned in `test/tooling/profile-matrix.test.ts`) and
+  `src/profiles/beta-registry-<v>.ts` (ordered beta registry: 28, 31 and 40
+  entries for the first three profiles, 45 for 2.1.329). Extracted from the
+  binary, never invented. The 2.1.329 profile also carries optional data-only
+  fields (`runtimeVersion`, `oauthAuthorizeScopes`) that older profiles omit.
 - **Behaviour is flags**: `src/profile-behaviors.ts` holds every per-version
   behaviour decision behind named flags with a single demarcated
   `profile.id` comparison. `test/governance/version-dispatch.test.ts` fails
@@ -70,6 +73,16 @@ New versions enter the next cycle.
   profile's registry skips its step silently. The thinking-display-updates
   site is coupled: when it fires it also removes the previously composed
   redact-thinking identifier, so that site both pushes and removes.
+  2.1.329 adds sites without moving any existing one, each on an optional
+  registry key: 6′ (thinking-token-count again, after the per-request sites and
+  before clear-at 11c, under `thinkingTokenCountAfterRequestTable`; site 6
+  then stands down), 11d (inline-tools, right after 11b), 11e (tool-provenance,
+  opt-in, between 11d and 11f), 11f (advisor-tool, before 6′), the side-query
+  site (after clear-at 11c, before effort 12), the agentic-query re-push of
+  `claude-code-20250219` (right after the per-model table, before the
+  per-request sites) and 18 (message-threads, after cache-diagnosis). The
+  mid-conversation-system header is gone from that registry (optional key),
+  but 11b and 11c still key on its condition.
 - **Fingerprint**: salt `59cf53e54c78` + characters 4/7/20 of the first user
   text + version string, SHA-256, first 3 hex chars. Known-answer vectors
   must be computed independently outside this package (a vector produced by

@@ -362,3 +362,28 @@ task, which is exactly what Steps 1 through 3 exist to structure.
 >    committed together with it. The seal refuses a dirty tree outside its own
 >    two write targets, so a new fixture must be committed before it can be
 >    sealed. The fixture-and-seal step is therefore two commits, not one.
+
+> **Amendment 2026-11-19 (2.1.329 port).** Two procedural lessons:
+>
+> 1. **A future port must name its own id in `src/profile-behaviors.ts`.** The
+>    fall-through of the demarcated `profile.id` block returns the pre-329 set on
+>    purpose, so that a profile the evidence does not cover (a `profileOverride`
+>    id, an older pin) keeps its bytes. A new profile that is not named there
+>    silently inherits the old behaviour, and nothing fails. Add its `if` line
+>    and its behaviour set in the same commit that registers the profile, and
+>    decide each flag from the new binary, not by inheriting the previous
+>    profile's value.
+> 2. **Snapshot the prior profiles' wire output before the first behaviour
+>    change, and treat that snapshot as two further rows of the Step 4 gate
+>    checklist** (`test/validation/prior-profile-snapshots.test.ts` and
+>    `test/validation/prior-profile-inert-inputs.test.ts`, each needing an
+>    update whenever a port adds a scenario or an input). The 2.1.329 port
+>    landed `test/validation/prior-profile-snapshots.test.ts` (a hash of the
+>    request, headers, body and evidence per scenario for every earlier profile)
+>    and `test/validation/prior-profile-inert-inputs.test.ts` (every new input
+>    is inert on the previous profile) before any mechanism commit, so each later
+>    commit proved the older profiles had not moved. The packed-consumer digests
+>    cannot see this: they probe one model. When a port adds scenarios (a new
+>    model id, a new input), add the matching snapshot row for every prior
+>    profile, and add the new profile to `test/support/profile-matrix.ts` and the
+>    row counts in `test/tooling/profile-matrix.test.ts` in the same sweep.

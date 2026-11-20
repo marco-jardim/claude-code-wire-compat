@@ -21,12 +21,17 @@
 
 - **Date**: 2026-11-19
 - **Target**: `@anthropic-ai/claude-code-win32-x64@2.1.329`
-- **Compared against**: `2.1.280` (the release this package pins today)
+- **Compared against**: `2.1.280` (the release this package pinned when this
+  analysis was written)
 - **Supersedes**: nothing.
-- **Status**: analysis only. **No 2.1.329 profile is ported**: nothing under
-  `src/` references this release, the default profile is unchanged, and this
-  document records findings, not a contract. Section 13 records corrections to
-  the 2.1.280 analysis that this work surfaced.
+- **Status**: ported in this branch (`port/claude-code-2.1.329`) and the
+  package's default profile since the `0.8.0-rc.1` prerelease (2026-11-19). The
+  profile is `claude-code-2.1.329-sdk-0.128.0` and `2.1.280` stays exported for
+  rollback. The decisions taken are in `MEMORY.md` (2026-11-19 entries) and
+  what was deliberately left out is in `docs/source-trace.md` under "2.1.329 —
+  recorded, not ported". The sections below are the evidence as it stood when
+  this document was written, and are not rewritten. Section 13 records
+  corrections to the 2.1.280 analysis that this work surfaced.
 
 ---
 
