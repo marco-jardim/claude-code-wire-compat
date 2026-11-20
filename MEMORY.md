@@ -6,6 +6,44 @@ Append-only log of non-obvious maintenance decisions and their reasoning, so
 future work does not re-litigate or accidentally reverse them. Newest entries
 first. Keep entries dated, factual, and in consumer-neutral language.
 
+## 2026-11-19 — claude-code 2.1.329 analysed; no port yet; open decisions recorded
+
+Context: the 2.1.329 release was analysed against the pinned 2.1.280 profile,
+with local TLS-intercepted captures of the genuine 2.1.280 and 2.1.329 binaries
+(`-p` mode, API-key auth, so not the interactive OAuth path). Analysis only: no
+profile was ported, nothing under `src/` changed, the default profile and every
+frozen digest are untouched. Full findings:
+`docs/protocol/versions/claude-code-2.1.329-analysis.md`.
+
+Recorded, with the decision still pending:
+
+1. **`cch` is not static on the genuine wire.** Both captures carry a
+   per-request 5-hex value while the bundle only writes `cch=00000`; the
+   substitution happens below the JS. This contradicts the earlier static-`cch`
+   record in `docs/source-trace.md`. It does **not** reverse the policy not to
+   port a native hash: the algorithm is not recoverable from the JS. Options
+   (keep `00000` as a known difference, or add a host seam) await a decision.
+2. **Pre-existing 2.1.280 omissions are confirmed live**: the
+   `x-claude-code-request-class` header, the `cc_turn_origin` billing segment,
+   generated `context_management`, `diagnostics`, `anthropic-dispatch-id`, the
+   genuine body key order and header capitalisation. Fixing any of them for
+   2.1.280 moves its frozen digest, so a backport is a separate, deliberate
+   decision; a 2.1.329-only fix does not touch the frozen digests.
+3. **Account-served features**: `anthropic-dispatch-id`,
+   `message-threads` with `thread`, `inline-tools` and `advisor-tool` are sent
+   because of per-account remote flags, not code defaults. Model them, if at
+   all, as opt-in caller inputs.
+4. **`mid-conversation-system-2026-04-07` graduated to GA.** The header is
+   retired (the registry slot is header-less) but the condition stays live and
+   still gates clear-at and tool-changes. Recommended port: an optional registry
+   key plus a behaviour flag `midConversationSystemFromCatalogue`.
+
+Resolved the same day by the maintainer: (1) both options, so `cch=00000`
+stays the default and an optional host seam may supply the per-request value;
+(2) the omissions are fixed for the 2.1.329 profile only, and no frozen digest
+moves; (3) the account-served features become opt-in caller inputs, off by
+default; (4) the mid-conversation port follows the recommendation.
+
 ## 2026-09-26 - Input ceilings follow the 32 MiB API request limit (0.7.1)
 
 Context: long sessions on 1M-token models failed before fetch with

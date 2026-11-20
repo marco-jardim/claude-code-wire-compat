@@ -401,6 +401,8 @@ Neither segment is ever emitted. `cc_workload` describes a background workload a
 
 The `index.mjs:5569` comment claiming cch attestation was “RE-ENABLED” is **STALE**. Lines 5569-5572 describe the compiled Bun binary's separate attestation-header mechanism, not this request-body system field. `_xxh64Raw` is declared at `index.mjs:5575` and assigned at `index.mjs:5577`; repository search finds no executable read of it (the other textual occurrences are documentation examples). Therefore xxHash **MUST NOT** be ported. Lock this exclusion in `test/system-prompt.test.ts` and `test/security/core-adversarial.test.ts`.
 
+> **2026-11-19 — observation, not a reversal.** Live captures of the genuine 2.1.280 and 2.1.329 binaries show a per-request 5-hex `cch` value on the wire, while the JavaScript only ever writes `cch=00000`; the substitution happens below the JS. This contradicts the "static" premise above for the genuine client. See `docs/protocol/versions/claude-code-2.1.329-analysis.md` §4.1 and §6.2.
+
 ## Environment-dependent inputs (must become injected inputs)
 
 `buildAnthropicBillingHeader` reads ambient state at `lib/mimicry/system-prompt.mjs:134-159`. The runtime-neutral package must instead accept these explicit inputs:

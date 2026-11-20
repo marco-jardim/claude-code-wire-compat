@@ -164,6 +164,10 @@ Binary extraction:
   most 2.1.233 additions (cache-evict, per-turn-effort, server-side
   fallback, auto-mode classifier) never emit in the main request path under
   defaults — see the analysis docs before modelling a new beta as emitted.
+- From 2.1.329 the module banner text changed (the second line is now
+  `// (c) Anthropic PBC. All rights reserved. …` instead of the Beta-product
+  line), so the `.modules.js` predicate must use the banner of the build being
+  carved; the old banner selects zero modules.
 
 Process:
 

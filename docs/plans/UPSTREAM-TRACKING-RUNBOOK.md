@@ -99,6 +99,22 @@ version number for a different platform. Rediscover the region every time.
 The carved file is a multi-hundred-megabyte text file. Keep it outside the
 repository working tree; it must never be committed.
 
+> **Amendment 2026-11-19 (2.1.329 analysis).** Two lessons for carving and
+> for live captures:
+>
+> 1. **The module banner changed.** Through 2.1.280 the second line of a module
+>    is `// Claude Code is a Beta product per Anthropic's Commercial Terms of Service.`
+>    From 2.1.329 it is
+>    `// (c) Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements outlined here: https://code.claude.com/docs/en/legal-and-compliance.`
+>    The `.modules.js` banner predicate must therefore be chosen per build:
+>    inspect the second line of the most common run prefix first. Applying the
+>    old banner to 2.1.329 selects zero modules, and the dump is silently empty.
+> 2. **Live TLS-intercepted captures work with the Bun-compiled binary.** Run
+>    mitmproxy as an HTTPS forward proxy and start the genuine binary with
+>    `HTTPS_PROXY` and `NODE_EXTRA_CA_CERTS` pointing at the proxy CA. Note that
+>    an intercepting proxy disables 2.1.329's default request-body gzip, so a
+>    capture taken this way does not exercise gzip or its padding.
+
 ## Step 1 — run the extractor
 
 ```
