@@ -2,6 +2,79 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0-rc.1]
+
+Prerelease. Ports Claude Code 2.1.329 (SDK 0.128.0) and makes it the default
+profile. Do not publish to `latest`.
+
+### Breaking
+
+- **The default profile is now `CLAUDE_CODE_2_1_329_PROFILE`.** A caller that
+  passes no profile gets 2.1.329 bytes. Rollback: pass
+  `CLAUDE_CODE_2_1_280_PROFILE` explicitly to `buildClaudeCodeRequest`,
+  `buildClaudeCodeCountTokensRequest` and `parseBuiltClaudeCodeRequest` (the
+  parser recomputes the expected headers under the profile it is given, so
+  pinning the builders alone is not enough). The 2.1.195, 2.1.233 and 2.1.280
+  profiles are byte-for-byte unchanged and their frozen digests did not move.
+- **What changes on the wire for 2.1.329:**
+  - Header names use the genuine capitalisation (`Accept`, `Authorization`,
+    `Content-Type`, `User-Agent`, `X-Stainless-*`, `X-Claude-Code-Session-Id`)
+    and every header is sorted by UTF-16 code unit. Capitalisation survives
+    only on a case-preserving transport; Node's `fetch` lowercases it.
+  - A new `Accept: application/json` header, plus `x-claude-1p-request-class`,
+    `x-claude-code-request-class`, `x-claude-code-sandy-plover` (`[]` by
+    default) and, when a valid prompt id is supplied, `x-claude-code-prompt-id`.
+    Count-tokens requests omit the request-class, prompt-id and sandy-plover
+    headers.
+  - The body follows the genuine key order, carries a generated
+    `context_management` (`clear_thinking_20251015`, keep all) when the
+    context-management beta composes with thinking, and carries `diagnostics`
+    (`previous_message_id`, `null` by default) whenever cache-diagnosis
+    composes.
+  - `mid-conversation-system-2026-04-07` is no longer sent (retired upstream);
+    its condition still gates clear-at and tool-changes.
+  - `thinking-token-count` is pushed after the per-request betas instead of
+    before them, so its position in `anthropic-beta` moves.
+  - `context-1m` is no longer sent for natively-1M models.
+  - The billing block gains `cc_turn_origin`, `cc_prompt_index` and
+    `cc_turn_index` when the caller supplies them.
+  - Existing callers' extra headers named `accept`, `anthropic-dispatch-id` or
+    any `x-claude-*` header that the new layout owns are now reserved and
+    rejected on 2.1.329.
+
+### Changed
+
+- `isFable5Model` and `isMythos5Model` now hold for `claude-fable-5-2` and
+  `claude-mythos-5-2`, and `isAdaptiveThinkingModel` is true for
+  `claude-haiku-5-5`. The model-id normalizer has a second, extended ladder
+  (the four 5.5/5.2 rungs transcribed from the 2.1.329 bundle) that only the
+  2.1.329 profile follows; under the earlier profiles `claude-sonnet-5-5` still
+  folds to `claude-sonnet-5`.
+- The mid-conversation-system registry key is optional and 2.1.329's registry
+  omits it; behaviour sets are split into legacy, catalogue-era and
+  wire-faithful, and any profile id the port does not name keeps the pre-329
+  behaviour.
+
+### Added
+
+- Profile `CLAUDE_CODE_2_1_329_PROFILE` (id `claude-code-2.1.329-sdk-0.128.0`,
+  24 models, a 45-entry beta registry) and the subpath export
+  `./profiles/claude-code-2.1.329`. Optional profile data `runtimeVersion` and
+  `oauthAuthorizeScopes`.
+- Request inputs, validated on every profile and honoured only by 2.1.329
+  (except `cch`, which every profile honours): `cch`, `turnOrigin`,
+  `turnPosition`, `toolsUsed`, `previousMessageId`, `accountFeatures`
+  (`dispatchId`, `inlineTools`, `toolProvenance`, `thread`), `sideQuery` and
+  `agenticQuery`. `toolProvenance` is opt-in and off by default.
+- Types `ClaudeCodeDispatchId`, `ClaudeCodeThreadInput`,
+  `ClaudeCodeAccountFeatures`, `ClaudeCodeToolUsed`, `ClaudeCodeTurnPosition`
+  and `ClaudeCodeControlMessage`.
+- Per-turn control messages (`{role: "system", content: [], output_config}`)
+  are accepted in `messages` as pass-through on 2.1.329.
+- `modelCatalogueEntry(model, profile)`.
+- New beta sites for 2.1.329: inline-tools, tool-provenance, advisor-tool,
+  side-query and message-threads, plus the thinking-token-count re-push.
+
 ## [0.7.1] - 2026-09-26
 
 ### Fixed
