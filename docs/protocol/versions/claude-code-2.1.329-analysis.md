@@ -587,6 +587,124 @@ differences that do not depend on either.
 
 ---
 
+### 4.3 Genuine OAuth captures `[LIVE]`
+
+> **Amendment 2026-11-19 (OAuth captures).** After the local OAuth session was
+> renewed, three further genuine captures were taken: an interactive `cli`
+> request, an auxiliary quota probe and a `-p` (`sdk-cli`) request, all as an
+> OAuth subscriber on `claude-opus-5-5`, plus the `claude auth login --claudeai`
+> exchange. They supersede the API-key caveat of §4.0 for everything below.
+> Identifiers, tokens and local paths are scrubbed; every id is written
+> `<uuid>`. Where this section contradicts §5.2 or §5.5 (`[DER]`), this section
+> wins.
+
+**Headers (interactive, wire order).** `Accept: application/json`, then
+`Authorization` capitalised (it sits between `Accept` and `Content-Type`), then
+`Content-Type`, `User-Agent`, `X-Claude-Code-Session-Id`, the `X-Stainless-*`
+set (`Arch`, `Lang`, `OS`, `Package-Version` `0.128.0`, `Retry-Count`,
+`Runtime`, `Runtime-Version` `v26.12.1`, `Timeout`), then the lowercase block:
+`anthropic-beta`, `anthropic-dangerous-direct-browser-access`,
+`anthropic-dispatch-id` (`v2d`), `anthropic-version`, `x-app`,
+`x-claude-1p-request-class` (`main`), `x-claude-code-prompt-id`,
+`x-claude-code-request-class` (`main`), `x-claude-code-sandy-plover` (`[]`
+when no tool was used), `x-client-request-id`. The auxiliary quota probe
+(haiku, `max_tokens: 1`) carries no `claude-code` beta, request class
+`auxiliary`, 1p class `summary-extraction`, and neither `anthropic-dispatch-id`
+nor a prompt id.
+
+**Billing line, interactive.**
+`x-anthropic-billing-header: cc_version=2.1.329.e8c; cc_entrypoint=cli; cch=<5 hex>; cc_prompt_id=<uuid>; cc_turn_origin=human; cc_prompt_index=1; cc_turn_index=1;`
+The `-p` request carries `cc_turn_origin=sdk; cc_prompt_index=0; cc_turn_index=1;`
+and `cc_entrypoint=sdk-cli`. `cch` is a per-request value in both, which is why
+the maintainer decision of §2.3 keeps `cch=00000` as the default and adds an
+optional seam.
+
+**Default beta composition, interactive (20 identifiers, wire order).**
+`claude-code`, `oauth`, `interleaved-thinking`, `context-management`,
+`prompt-caching-scope`, `per-turn-control`, `mid-conversation-tool-changes`,
+`inline-tools`, `advisor-tool`, `thinking-token-count`, `advanced-tool-use`,
+`mid-conversation-system-clear-at`, `effort`, `dangerous-tool-use`,
+`thinking-binding-controls`, `thinking-display-updates`, `afk-mode`,
+`extended-cache-ttl`, `cache-diagnosis`, `message-threads`. The `-p` list is the
+same without `thinking-display-updates`. The 1h cache TTL and
+`extended-cache-ttl` are on by default; thinking is `adaptive` with display
+`updates` (interactive) or `omitted` (`-p`).
+
+**`tool-provenance-2026-10-26` is absent from both OAuth captures**, which
+contradicts §5.2 and §5.5 (`[DER]`). The port therefore treats it as an
+opt-in, account-served feature, off by default.
+
+**Body order (both).** `model, messages, system, tools, metadata, max_tokens,
+thinking, context_management, safeguards, output_config, thread, diagnostics,
+stream`. `context_management` is generated
+(`{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]}`), `thread` is
+`{"type":"create"}`, `diagnostics` is `{"previous_message_id":null}`,
+`output_config` is `{"effort":"medium"}`. Source: view lines 158392-158394
+(`@20154922`-`@20155417`); the call that assembles it is `NBn` at view line
+158372 (`@20148818`).
+
+**Inline-tools body coupling.** With `inline-tools-2026-09-15` on the wire, the
+`-p` capture carries `role: "system"` entries in `messages` whose content holds
+`tool_addition` blocks (the last one carrying the 1h cache marker), and the
+`advisor` tool (`advisor_20260301`, deferred) is appended last in `tools`. The
+header alone is therefore a half port of the feature; this package emits the
+header only.
+
+**OAuth login.** The authorize URL of `claude auth login --claudeai` requests
+the scopes `org:create_api_key user:profile user:inference
+user:sessions:claude_code user:mcp_servers user:file_upload user:plugins
+user:privacy_consents:write org:desktop_config`. The token exchange is a JSON
+POST made by `axios/1.15.2` (`Accept: application/json, text/plain, */*`,
+`Content-Type: application/json`, no `anthropic-beta`), body keys
+`grant_type, code, redirect_uri, client_id, code_verifier, state`. The follow-up
+profile, roles and bootstrap requests use `User-Agent: claude-code/2.1.329`.
+
+**Server-served capability.** `acceptsForcedToolChoice` reads a capability the
+server supplies, not the static catalogue (view line 154029, `@19042742`), so a
+forced-`tool_choice` refusal demotion cannot be modelled from the bundle.
+
+#### 4.3.1 Per-turn effort control message `[BIN]`
+
+The genuine client changes effort mid-conversation without rewriting the cached
+prefix by inserting a `role: "system"` entry into `messages`. Transcribed from
+the bundle:
+
+- `tRt` (view lines 157741-157742, `@19965809`) walks the conversation and,
+  where the effort for a turn differs from the effort in force, queues an
+  `outputConfig` of `{ effort?, timing?: { type: "now", now } }`. If the next
+  entry is already an `api_system` message it attaches the `outputConfig` to it
+  (`{...z, outputConfig: A}`); otherwise it pushes `A5n(A)`.
+- `A5n(e)` (view line 157748, `@19967585`) is
+  `{...QEe(""), outputConfig: e}`: an `api_system` message with empty content.
+- The wire mapping (view lines 158726-158727, `@20255444`) emits
+  `{role: "system", content: <blocks or []>, output_config: <outputConfig>}`.
+  For the empty statement `content` is `[]` (`Pn || []`); with tool additions it
+  is the block list. `output_config` is omitted when there is no `outputConfig`.
+- The `per-turn-control-2026-07-01` beta is registry key `per_message_effort`
+  (`TV` at view line 109433). It is gated by the catalogue capability
+  `per_turn_effort`, which 2.1.329 declares on `claude-haiku-5-5`,
+  `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-fable-5-1`, `claude-fable-5-2`
+  and `claude-mythos-5-2`.
+
+Wire shape, for a one-statement conversation:
+
+```
+{"role":"system","content":[],"output_config":{"effort":"medium"}}
+```
+
+Library handling: `messages` validation accepts exactly this shape on 2.1.329
+and passes it through verbatim (`role`, `content`, `output_config` in that
+order; `output_config` limited to `effort` and a `timing` of
+`{type: "now", now}`), refuses it on every other profile as before, and refuses
+it on count-tokens. The type of `now` is not established by the bundle; the
+package accepts a short string or a finite number.
+
+Not transcribed in this pass: the normalizer `NK`, the date guard `V2e`, the
+billing template and integer guard, the turn-position helper `Xno`, the
+sandy-plover helpers `ka`/`yp`/`bao`/`_p`/`Aa`/`va`, and the per-request beta
+table `CW`. They are required by later commits (C11, C13, C9, C18) and are
+transcribed there.
+
 ## 5. Beta surface
 
 Evidence here is `[BIN]` unless marked. Offsets index `cc-2.1.329.full.js`.
