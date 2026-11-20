@@ -14,6 +14,7 @@ import type {
   ClaudeCodeProtocolProfile,
   ClaudeCodeCountTokensInput,
   ClaudeCodeRequestInput,
+  ClaudeCodeTurnPosition,
   HeaderPair,
   RedactedRequestEvidence,
 } from "./contracts.js";
@@ -23,7 +24,7 @@ import {
   filterCountTokensBetas,
   TOKEN_COUNTING_BETA,
 } from "./count-tokens.js";
-import { createBillingBlock } from "./fingerprint.js";
+import { CCH_PATTERN, createBillingBlock } from "./fingerprint.js";
 import { buildOrderedHeaderPlan, buildOrderedHeaders } from "./headers.js";
 import {
   buildCorrelatedMetadata,
@@ -98,8 +99,12 @@ const INPUT_KEYS = new Set([
   "extraHeaderPolicy",
   "previousRequestId",
   "promptId",
+  "cch",
+  "turnOrigin",
+  "turnPosition",
   "crypto",
 ]);
+const TURN_POSITION_KEYS = new Set(["promptIndex", "turnIndex"]);
 const BETA_OVERRIDE_KEYS = new Set(["use1MContext"]);
 const METADATA_OVERRIDE_KEYS = new Set(["userId", "userIdFields"]);
 const COUNT_TOKENS_INPUT_KEYS = new Set([
@@ -812,6 +817,9 @@ function validateInput(input: ClaudeCodeRequestInput): {
   readonly preserveThinkingBlockCacheControl: boolean;
   readonly previousRequestId: string | undefined;
   readonly promptId: string | undefined;
+  readonly cch: string | undefined;
+  readonly turnOrigin: string | undefined;
+  readonly turnPosition: ClaudeCodeTurnPosition | undefined;
 } {
   if (!isRecord(input)) fail();
   assertExactKeys(input, INPUT_KEYS);
@@ -878,6 +886,15 @@ function validateInput(input: ClaudeCodeRequestInput): {
   const promptId = Object.hasOwn(input, "promptId")
     ? validateBillingChainId(ownValue(input, "promptId"))
     : undefined;
+  const cch = Object.hasOwn(input, "cch")
+    ? validateCch(ownValue(input, "cch"))
+    : undefined;
+  const turnOrigin = Object.hasOwn(input, "turnOrigin")
+    ? validateBillingChainId(ownValue(input, "turnOrigin"))
+    : undefined;
+  const turnPosition = Object.hasOwn(input, "turnPosition")
+    ? validateTurnPosition(ownValue(input, "turnPosition"))
+    : undefined;
   return {
     source: input,
     clientRequestId,
@@ -890,7 +907,35 @@ function validateInput(input: ClaudeCodeRequestInput): {
     preserveThinkingBlockCacheControl,
     previousRequestId,
     promptId,
+    cch,
+    turnOrigin,
+    turnPosition,
   };
+}
+
+/**
+ * Unlike the chaining ids, the `cch` value is validated HERE, and a malformed
+ * one is `INVALID_INPUT`: it is a value the caller computed to replace a
+ * placeholder, not conversation state upstream would silently drop, so a
+ * wrong one is a caller bug that must not pass quietly.
+ */
+function validateCch(value: unknown): string {
+  if (typeof value !== "string" || !CCH_PATTERN.test(value)) fail();
+  return value;
+}
+
+/**
+ * Type and shape check only. The RANGE of both indexes is deliberately not
+ * checked here: upstream guards them at the point of emission and drops the
+ * pair silently, and `createBillingBlock` owns that guard.
+ */
+function validateTurnPosition(value: unknown): ClaudeCodeTurnPosition {
+  if (!isRecord(value)) fail();
+  assertExactKeys(value, TURN_POSITION_KEYS);
+  const promptIndex = ownValue(value, "promptIndex");
+  const turnIndex = ownValue(value, "turnIndex");
+  if (typeof promptIndex !== "number" || typeof turnIndex !== "number") fail();
+  return { promptIndex, turnIndex };
 }
 
 /**
@@ -1619,6 +1664,13 @@ export async function buildClaudeCodeRequest(
         }),
         ...(validated.promptId !== undefined && {
           promptId: validated.promptId,
+        }),
+        ...(validated.cch !== undefined && { cch: validated.cch }),
+        ...(validated.turnOrigin !== undefined && {
+          turnOrigin: validated.turnOrigin,
+        }),
+        ...(validated.turnPosition !== undefined && {
+          turnPosition: validated.turnPosition,
         }),
       },
     );

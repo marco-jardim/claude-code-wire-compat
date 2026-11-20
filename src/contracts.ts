@@ -857,6 +857,16 @@ export interface ClaudeCodeMetadataOverrides {
  */
 export type ClaudeCodeExtraHeaderPolicy = "strict" | "dropConflicting";
 
+/**
+ * Where a request sits in the conversation, as the genuine client counts it:
+ * which prompt of the session and which model turn within that prompt. See
+ * `ClaudeCodeRequestInput.turnPosition`.
+ */
+export interface ClaudeCodeTurnPosition {
+  readonly promptIndex: number;
+  readonly turnIndex: number;
+}
+
 export interface ClaudeCodeRequestInput {
   readonly accessToken: string;
   readonly model: string;
@@ -1088,6 +1098,37 @@ export interface ClaudeCodeRequestInput {
    * mirroring upstream. A non-string value is still `INVALID_INPUT`.
    */
   readonly promptId?: string;
+  /**
+   * Supplies the value of the `cch=` segment of the canonical billing block.
+   *
+   * Exactly five lowercase hexadecimal characters; anything else is
+   * `INVALID_INPUT`. Honoured by every profile. When omitted the segment keeps
+   * the placeholder `00000`, so a request built without it is byte-identical to
+   * one built before this field existed. Computing the value is the caller's
+   * business: this package only places it. Ignored when `suppressBillingBlock`
+   * is set, because there is no block to carry it.
+   */
+  readonly cch?: string;
+  /**
+   * Supplies the `cc_turn_origin` segment of the canonical billing block: who
+   * started the turn (for example `human`).
+   *
+   * Emitted only by profiles that carry the segment (2.1.329); older profiles
+   * ignore it. A value that does not match `/^[a-z][a-z_]{0,31}$/` is SILENTLY
+   * omitted, mirroring upstream. A non-string value is `INVALID_INPUT`.
+   */
+  readonly turnOrigin?: string;
+  /**
+   * Supplies the `cc_prompt_index` and `cc_turn_index` segments of the
+   * canonical billing block.
+   *
+   * Emitted only by profiles that carry the segments (2.1.329); older profiles
+   * ignore it. Both indexes must be integers (`promptIndex` from 0, `turnIndex`
+   * from 1, neither above ten million) or the pair is SILENTLY omitted,
+   * mirroring upstream. A value that is not an object with exactly those two
+   * number-typed keys is `INVALID_INPUT`.
+   */
+  readonly turnPosition?: ClaudeCodeTurnPosition;
   /** Injects the Web Crypto provider used to hash the request body. */
   readonly crypto?: Pick<Crypto, "subtle">;
 }

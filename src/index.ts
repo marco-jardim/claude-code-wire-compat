@@ -33,6 +33,7 @@ export type {
   ClaudeCodeCountTokensInput,
   ClaudeCodeRequestInput,
   ClaudeCodeRuntimeIdentity,
+  ClaudeCodeTurnPosition,
   ClaudeCodeWireErrorCode,
   HeaderPair,
   JsonPrimitive,
