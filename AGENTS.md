@@ -84,6 +84,10 @@ New versions enter the next cycle.
   string=`d7b` (both too short to reach any sampled index, so their hashed
   material is identical), and `"\u{1F642}wire compat probe"`=`76f` (a
   leading non-BMP character, proving UTF-16 code-unit indexing).
+  2.1.329 → `offline cch probe`=`100`, `hello wire compat`=`dac`,
+  `canary probe`=`776`, the pangram=`945`, `hi`=`3c4`, the empty
+  string=`3c4`, `"\u{1F642}wire compat probe"`=`878`, and the LIVE vector
+  `hello`=`e8c` (the fingerprint of a genuine 2.1.329 capture).
 
 ## Proof obligations (what "green" means)
 
@@ -91,7 +95,8 @@ New versions enter the next cycle.
   from a packed tarball. Every frozen digest must never move:
   2.1.195 = `6b9609b29463c890544845dd94acf560206b6f8165538faafd8886750037d277`,
   2.1.233 = `4e06af42310d63549a4fa9af60ff0c9b13e95d7864624c6b7bf94d45ce9a3997`,
-  2.1.280 = `9a531ed01ddd3440ce5b7f25c6caf5f045a9b4e78d885b5317508e21a22ada90`.
+  2.1.280 = `9a531ed01ddd3440ce5b7f25c6caf5f045a9b4e78d885b5317508e21a22ada90`,
+  2.1.329 = `d8cd6493322a5b4c31fd8ae5e74a6ce62a394b6d67afe3965b4e6e9dcbb343a5`.
 - `npm run fixtures:check` — byte seal over `test/fixtures/golden/`.
 - `test/conformance/differential.test.ts` — behavioural replay of fixtures
   through the builder. The seal guards echoed bytes; the differential guards
