@@ -67,9 +67,10 @@ release.
   `turnPosition`, `toolsUsed`, `previousMessageId`, `accountFeatures`
   (`dispatchId`, `inlineTools`, `toolProvenance`, `thread`), `sideQuery` and
   `agenticQuery`. `toolProvenance` is opt-in and off by default.
+- Value export `BETA_REGISTRY_2_1_329`, the 2.1.329 beta registry.
 - Types `ClaudeCodeDispatchId`, `ClaudeCodeThreadInput`,
-  `ClaudeCodeAccountFeatures`, `ClaudeCodeToolUsed`, `ClaudeCodeTurnPosition`
-  and `ClaudeCodeControlMessage`.
+  `ClaudeCodeAccountFeatures`, `ClaudeCodeToolUsed`, `ClaudeCodeTurnPosition`,
+  `ClaudeCodeControlMessage` and `ClaudeCodeControlMessageOutputConfig`.
 - Per-turn control messages (`{role: "system", content: [], output_config}`)
   are accepted in `messages` as pass-through on 2.1.329.
 - `modelCatalogueEntry(model, profile)`.
